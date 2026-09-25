@@ -12,6 +12,9 @@
 - `../docs/user/vsm_baseline_vertical_slice.md` — первый целевой срез;
 - `../docs/user/project_direction.md` — границы модулей и переносимой логики.
 
+В ветке `feature/mechanics-playground` первичная реализация ведётся по
+[`docs/agent/mechanics-playground-plan.md`](docs/agent/mechanics-playground-plan.md).
+
 Необязательные локальные инструменты и их параметры описаны в
 `docs/agent/tools.md`.
 
