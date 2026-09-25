@@ -12,6 +12,7 @@ import {
   tileToScreen,
   zoneOf,
 } from './map';
+import { installPlaceholderTextures } from './placeholders';
 import type { NpcView, ObservableSnapshot, PoiView, ZoneId } from './protocol';
 
 export interface Selection {
@@ -82,31 +83,8 @@ export class ClientScene extends Phaser.Scene {
     super('ClientScene');
   }
 
-  preload(): void {
-    const sprites = [
-      'floor_car',
-      'floor_aisle',
-      'floor_platform',
-      'floor_service',
-      'floor_door',
-      'seat',
-      'window_wall',
-      'door',
-      'panel',
-      'extinguisher',
-      'service',
-      'toilet',
-      'fire',
-      'smoke',
-    ];
-    for (const name of sprites) this.load.image(name, `./sprites/${name}.png`);
-    for (const name of ['conductor', ...NPC_TEXTURES]) {
-      this.load.spritesheet(name, `./sprites/${name}.png`, { frameWidth: 48, frameHeight: 76 });
-    }
-  }
-
   create(): void {
-    this.ready = true;
+    installPlaceholderTextures(this);
     this.playerTile = zoneSpawn(this.snapshot?.playerZone ?? 'platform');
     this.cameras.main.setBackgroundColor('#132b35');
     this.cameras.main.setBounds(0, 0, 1600, 820);
@@ -151,6 +129,7 @@ export class ClientScene extends Phaser.Scene {
         this.say('Проводник идёт по проходу.');
       },
     );
+    this.ready = true;
     if (this.snapshot !== null) this.sync(this.snapshot, this.status, '', this.snapshotSerial);
     if (this.deferredAnchor !== null) {
       const anchor = this.deferredAnchor;
