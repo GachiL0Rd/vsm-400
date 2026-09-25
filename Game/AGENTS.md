@@ -9,7 +9,7 @@
 Перед изменением прочитайте:
 
 - `../docs/user/README.md` — индекс действующих требований;
-- `../docs/user/vsm_baseline_vertical_slice.md` — первый целевой срез;
+- `../docs/user/duolingo_local_prototype.md` — текущий целевой срез;
 - `../docs/user/project_direction.md` — границы модулей и переносимой логики.
 
 Необязательные локальные инструменты и их параметры описаны в
@@ -36,8 +36,8 @@ npm run dev
 npm run verify
 ```
 
-`verify` включает форматирование в режиме проверки, lint, TypeScript typecheck
-и production-сборку. `npm run format` и `npm run check:write` меняют файлы и
+`verify` включает форматирование в режиме проверки, lint, TypeScript typecheck,
+доменные тесты и production-сборку. `npm run format` и `npm run check:write` меняют файлы и
 запускаются только намеренно.
 
 ## Границы реализации

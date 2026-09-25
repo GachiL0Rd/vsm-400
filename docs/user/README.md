@@ -5,16 +5,20 @@
 
 ## С чего начать
 
-1. [`vsm_baseline_vertical_slice.md`](vsm_baseline_vertical_slice.md) — первый
-   полностью проходимый вертикальный срез.
-2. [`vsm_conductor_game_concept.md`](vsm_conductor_game_concept.md) — общая
-   концепция игрового процесса.
-3. [`project_direction.md`](project_direction.md) — границы будущих модулей и
+1. [`duolingo_local_prototype.md`](duolingo_local_prototype.md) — текущее
+   направление и объём локального прототипа.
+2. [`project_direction.md`](project_direction.md) — границы будущих модулей и
    переносимой игровой логики.
-4. [`conductor_research.md`](conductor_research.md) — упрощённая фактическая
+3. [`conductor_research.md`](conductor_research.md) — упрощённая фактическая
    база о работе проводника.
-5. [`conductor_working_environment.md`](conductor_working_environment.md) —
+4. [`conductor_working_environment.md`](conductor_working_environment.md) —
    объекты и рабочее окружение.
+
+[`vsm_baseline_vertical_slice.md`](vsm_baseline_vertical_slice.md) и
+[`vsm_conductor_game_concept.md`](vsm_conductor_game_concept.md) описывают
+предыдущее направление с непрерывной сменой и пространственным симулятором.
+Для текущего прототипа приоритет имеет короткий учебный путь с диалогами и
+выбором действий.
 
 Фактические документы намеренно являются самодостаточными сводками. Полный
 массив оригинальных нормативных материалов в игровой репозиторий не входит.
