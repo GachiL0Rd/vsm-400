@@ -83,7 +83,8 @@ export function attemptToExtinguishFire(
       state: {
         ...state,
         failedAttempts: state.failedAttempts + 1,
-        responseQuality: state.responseQuality === 'unassessed' ? 'incorrect' : state.responseQuality,
+        responseQuality:
+          state.responseQuality === 'unassessed' ? 'incorrect' : state.responseQuality,
       },
     };
   }

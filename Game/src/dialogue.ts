@@ -1,10 +1,10 @@
 import {
-  decideDocuments,
-  setPassengerMood,
   type DocumentDecision,
+  decideDocuments,
   type PassengerDefinition,
   type PassengerMood,
   type PassengerState,
+  setPassengerMood,
 } from './passenger';
 
 export interface PassengerCondition {
@@ -92,7 +92,10 @@ export function applyDialogueOption(
   };
 }
 
-function matchesCondition(condition: PassengerCondition | undefined, state: PassengerState): boolean {
+function matchesCondition(
+  condition: PassengerCondition | undefined,
+  state: PassengerState,
+): boolean {
   if (condition === undefined) {
     return true;
   }

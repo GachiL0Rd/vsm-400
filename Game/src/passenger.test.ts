@@ -44,7 +44,11 @@ describe('passenger autonomous behaviour', () => {
   });
 
   it('records document quality separately and does not block the passenger state machine', () => {
-    const rejected = decideDocuments(DEMO_PASSENGER, createPassengerState(DEMO_PASSENGER), 'reject');
+    const rejected = decideDocuments(
+      DEMO_PASSENGER,
+      createPassengerState(DEMO_PASSENGER),
+      'reject',
+    );
     const later = advancePassenger(
       DEMO_PASSENGER,
       rejected.state,

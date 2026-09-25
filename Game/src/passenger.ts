@@ -104,11 +104,7 @@ export function decideDocuments(
     (decision === 'admit') === shouldAdmit ? 'correct' : 'incorrect';
 
   const mood: PassengerMood =
-    decisionQuality === 'correct'
-      ? decision === 'admit'
-        ? 'calm'
-        : 'neutral'
-      : 'annoyed';
+    decisionQuality === 'correct' ? (decision === 'admit' ? 'calm' : 'neutral') : 'annoyed';
 
   const message =
     decisionQuality === 'correct'

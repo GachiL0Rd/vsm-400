@@ -16,15 +16,19 @@
     "check:write": "biome check --write .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "verify": "npm run check:biome && npm run typecheck && npm run test && npm run build"
+    "check:bundle": "node scripts/check-bundle.mjs",
+    "verify": "npm run check:biome && npm run typecheck && npm run test && npm run build && npm run check:bundle"
   },
   "dependencies": {
     "phaser": "4.2.1"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.14",
+    "@types/ws": "8.18.1",
+    "playwright": "1.63.0",
     "typescript": "5.9.3",
     "vite": "8.3.1",
-    "vitest": "5.0.1"
+    "vitest": "5.0.1",
+    "ws": "8.21.3"
   }
 }

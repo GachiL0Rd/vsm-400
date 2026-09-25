@@ -24,7 +24,6 @@ export function createPressureSystemState(): PressureSystemState {
   };
 }
 
-
 export function quickInspectPressureSystem(state: PressureSystemState): PressureSystemAction {
   if (state.quickInspected) {
     return {
@@ -79,9 +78,7 @@ export function createPressureInspection(
     actions: [
       {
         id: 'check-pressure-indicator',
-        label: state.indicatorChecked
-          ? definition.copy.checkedAction
-          : definition.copy.checkAction,
+        label: state.indicatorChecked ? definition.copy.checkedAction : definition.copy.checkAction,
         enabled: !state.indicatorChecked,
         ...(state.indicatorChecked ? { disabledReason: definition.copy.checkedReason } : {}),
       },
