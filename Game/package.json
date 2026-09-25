@@ -15,7 +15,8 @@
     "check:biome": "biome ci .",
     "check:write": "biome check --write .",
     "typecheck": "tsc --noEmit",
-    "verify": "npm run check:biome && npm run typecheck && npm run build"
+    "test": "vitest run",
+    "verify": "npm run check:biome && npm run typecheck && npm run test && npm run build"
   },
   "dependencies": {
     "phaser": "4.2.1"
@@ -23,6 +24,7 @@
   "devDependencies": {
     "@biomejs/biome": "2.5.14",
     "typescript": "5.9.3",
-    "vite": "8.3.1"
+    "vite": "8.3.1",
+    "vitest": "5.0.1"
   }
 }

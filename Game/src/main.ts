@@ -1,4 +1,11 @@
 import Phaser from 'phaser';
+import {
+  advanceWorld,
+  createWorldState,
+  setWorldSpeed,
+  type WorldSpeed,
+  type WorldState,
+} from './world';
 
 type Point = Phaser.Math.Vector2;
 
@@ -20,7 +27,9 @@ class PlaygroundScene extends Phaser.Scene {
   private sensorView!: Phaser.GameObjects.Rectangle;
   private prompt!: Phaser.GameObjects.Text;
   private status!: Phaser.GameObjects.Text;
+  private timeHud!: Phaser.GameObjects.Text;
   private inspected = false;
+  private world: WorldState = createWorldState();
 
   constructor() {
     super('PlaygroundScene');
@@ -76,6 +85,19 @@ class PlaygroundScene extends Phaser.Scene {
       .setScrollFactor(0)
       .setDepth(10);
 
+    this.timeHud = this.add
+      .text(20, 162, '', {
+        backgroundColor: '#111820bb',
+        color: '#dce8ed',
+        fontFamily: 'Arial, sans-serif',
+        fontSize: '16px',
+        padding: { x: 12, y: 8 },
+      })
+      .setScrollFactor(0)
+      .setDepth(10);
+    this.addTimeControls();
+    this.refreshTimeHud();
+
     this.add
       .text(
         20,
@@ -121,6 +143,12 @@ class PlaygroundScene extends Phaser.Scene {
   }
 
   override update(_: number, delta: number): void {
+    const scheduledChange = this.world.scheduledChange;
+    this.world = advanceWorld(this.world, delta / 1000);
+    if (scheduledChange === 'pending' && this.world.scheduledChange === 'completed') {
+      this.showStatus('Плановое изменение: освещение вагона переведено в режим посадки.');
+    }
+
     this.walkRoute((PLAYER_SPEED * delta) / 1000);
     this.playerView.setPosition(this.player.x, this.player.y);
     this.playerLabel.setPosition(this.player.x, this.player.y - 38);
@@ -129,6 +157,43 @@ class PlaygroundScene extends Phaser.Scene {
     this.prompt
       .setText(this.inspected ? 'Датчик осмотрен' : 'Быстрый осмотр: клик или Space')
       .setVisible(nearby);
+    this.refreshTimeHud();
+  }
+
+  private addTimeControls(): void {
+    const controls: ReadonlyArray<{ readonly label: string; readonly speed: WorldSpeed }> = [
+      { label: 'Пауза', speed: 0 },
+      { label: 'Обычно', speed: 1 },
+      { label: '×3', speed: 3 },
+    ];
+
+    controls.forEach((control, index) => {
+      const button = this.add
+        .text(20 + index * 108, 224, control.label, {
+          backgroundColor: '#31414b',
+          color: '#ffffff',
+          fontFamily: 'Arial, sans-serif',
+          fontSize: '16px',
+          padding: { x: 10, y: 7 },
+        })
+        .setInteractive({ useHandCursor: true })
+        .setScrollFactor(0)
+        .setDepth(10);
+
+      button.on(Phaser.Input.Events.POINTER_UP, () => {
+        this.world = setWorldSpeed(this.world, control.speed);
+        this.refreshTimeHud();
+      });
+    });
+  }
+
+  private refreshTimeHud(): void {
+    const speedLabel = this.world.speed === 0 ? 'пауза' : `×${this.world.speed}`;
+    const eventLabel =
+      this.world.scheduledChange === 'pending' ? 'ожидается' : 'выполнено один раз';
+    this.timeHud.setText(
+      `Игровое время: ${this.world.elapsedSeconds.toFixed(1)} с | скорость: ${speedLabel}\nПлановое изменение: ${eventLabel}`,
+    );
   }
 
   private drawLocation(): void {
