@@ -76,3 +76,45 @@ health e2e подменяет Prisma и Redis.
 | `npm run prisma:deploy` | `migrate deploy` |
 | `npm run prisma:seed` | Проверка соединения |
 | `npm run verify` | Biome, типы, тесты, сборка |
+
+## Аутентификация
+
+`POST /api/v1/auth/login` ставит `vsm_access` (JWT HS256, 15 минут, Path=/,
+SameSite=Lax) и `vsm_refresh` (32 байта, 7 суток, Path=/api/v1/auth,
+SameSite=Strict). Оба HttpOnly, флаг Secure берётся из `COOKIE_SECURE`.
+Неверный логин и неверный пароль отвечают одинаково: 401 `INVALID_CREDENTIALS`.
+На логин — 5 попыток в минуту на пару IP и логин. Счётчик лежит в Redis
+(`auth:throttle:*`, база из `REDIS_URL`).
+
+`POST /api/v1/auth/refresh` вращает refresh. Повтор уже заменённого токена
+отзывает все сессии пользователя и пишет аудит. `POST /api/v1/auth/logout`
+отзывает текущую сессию и очищает cookies. `POST /api/v1/auth/password`
+принимает `{current, next}` (next от 10 символов), снимает `mustChangePassword`
+и отзывает остальные сессии. `GET /api/v1/auth/session` возвращает текущего
+пользователя.
+
+Пока `mustChangePassword=true`, доступны только пути `/auth/` и `/me`
+(403 `PASSWORD_CHANGE_REQUIRED`).
+
+Если в базе нет ни одного `ADMIN`, старт создаёт логин `admin`
+(`mustChangePassword=true`) и один раз печатает логин, пароль и
+`http://localhost:PORT/api/docs`. Пароль — `crypto.randomBytes(18)` в base64url,
+либо строка из `BOOTSTRAP_ADMIN_PASSWORD`. Этой переменной нет в zod-схеме
+`src/config`: схема чужая, bootstrap читает `process.env` напрямую.
+При `NODE_ENV=test` bootstrap не запускается, чтобы health-тесты с моком Prisma
+не падали.
+
+Админ: `POST/GET /api/v1/admin/users`, `PATCH /api/v1/admin/users/:id`,
+`POST /api/v1/admin/users/:id/reset-password`, `GET /api/v1/admin/audit`.
+Позывной — 4 символа `[A-Z0-9]`, пароль новой учётки возвращается один раз.
+Оргструктура: `GET /api/v1/org/depots`, `/org/depots/:id/brigades`,
+`/org/brigades/:id`. Логины участников видит только ADMIN. CHIEF и CONDUCTOR
+открывают состав только своей бригады, METHODIST — любой.
+
+Внутренние ручки помечаются `@InternalService()`: это `@Public()`,
+`ServiceTokenGuard` (заголовок `X-Service-Token`, сверка через `timingSafeEqual`)
+и схема Swagger `service-token`. Guard и декоратор экспортирует `AuthModule`.
+
+Лимит логина считает `RedisThrottlerStorage` поверх уже созданного `RedisService`.
+Пакет `@nest-lab/throttler-storage-redis@1.2.0` совместим с Nest 11, но открывает
+второй клиент ioredis и не закрывает его при остановке приложения.
