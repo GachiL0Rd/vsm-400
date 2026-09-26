@@ -38,6 +38,7 @@ export function Nav({ unread, callsign, level }: NavProps) {
   return (
     <nav className="nav" aria-label="Разделы">
       <Link className="nav__brand" to={paths.shift}>
+        <span className="nav__logo" aria-hidden="true" />
         Перегон
       </Link>
       <ul className="nav__list">
@@ -46,10 +47,11 @@ export function Nav({ unread, callsign, level }: NavProps) {
           return (
             <li key={tab.id}>
               <Link
-                className={`nav__item${active ? ' nav__item--active' : ''}`}
+                className={`nav__item nav__item--${tab.id}${active ? ' nav__item--active' : ''}`}
                 to={paths[tab.id]}
                 aria-current={current}
               >
+                <span className="nav__mark" aria-hidden="true" />
                 <span className="nav__icon">
                   <Icon name={tab.icon} />
                   {tab.id === 'feed' && unread > 0 && (

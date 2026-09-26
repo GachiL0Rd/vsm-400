@@ -4,7 +4,7 @@
   inset: auto 0 0;
   z-index: 10;
   border-top: 1px solid var(--line);
-  background: var(--white);
+  background: var(--paper);
   padding-bottom: env(safe-area-inset-bottom);
 }
 
@@ -22,15 +22,32 @@
 }
 
 .nav__item {
+  --mark: var(--ink);
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 2px;
-  padding: 10px 0;
+  gap: 3px;
+  padding: 8px 0 6px;
   color: var(--iron);
   font-size: 12px;
   font-weight: 700;
   text-decoration: none;
+}
+
+.nav__item--shift {
+  --mark: var(--route-shift);
+}
+
+.nav__item--rating {
+  --mark: var(--route-rating);
+}
+
+.nav__item--profile {
+  --mark: var(--route-profile);
+}
+
+.nav__item--feed {
+  --mark: var(--route-feed);
 }
 
 .nav__item:hover {
@@ -40,6 +57,25 @@
 .nav__item--active {
   color: var(--ink);
   font-weight: 800;
+  box-shadow: inset 0 4px 0 var(--mark);
+}
+
+/* Пустая станция. Заливка — только у активной линии, чтобы меню не стало радугой. */
+.nav__mark {
+  flex: none;
+  box-sizing: border-box;
+  width: 8px;
+  height: 8px;
+  border: 2px solid var(--iron);
+  border-radius: 50%;
+  background: var(--paper);
+}
+
+.nav__item--active .nav__mark {
+  width: 10px;
+  height: 10px;
+  border-color: var(--mark);
+  background: var(--mark);
 }
 
 /* Кольцо внутрь: бренд и пункты прижаты к краю окна, внешний offset обрезается. */
@@ -58,8 +94,9 @@
   right: -12px;
   min-width: 18px;
   padding: 0 4px;
+  border-radius: 0;
   background: var(--signal);
-  color: var(--ink);
+  color: var(--white);
   font-size: 11px;
   font-weight: 800;
   line-height: 16px;
@@ -78,17 +115,32 @@
     padding: 32px 0 24px;
     border-top: 0;
     border-right: 1px solid var(--line);
-    background: var(--white);
+    background: var(--paper);
   }
 
   .nav__brand {
-    display: block;
+    display: flex;
+    align-items: center;
+    gap: 12px;
     padding: 0 24px;
     color: var(--ink);
     font-size: 26px;
     font-weight: 800;
-    letter-spacing: -0.02em;
+    letter-spacing: -0.03em;
     text-decoration: none;
+  }
+
+  /* Знак пересадки: залитый кружок и жёсткое кольцо, без размытия. */
+  .nav__logo {
+    flex: none;
+    width: 12px;
+    height: 12px;
+    margin: 5px;
+    border-radius: 50%;
+    background: var(--ink);
+    box-shadow:
+      0 0 0 3px var(--paper),
+      0 0 0 5px var(--ink);
   }
 
   .nav__list {
@@ -98,9 +150,13 @@
 
   .nav__item {
     flex-direction: row;
-    gap: 14px;
+    gap: 12px;
     padding: 12px 24px;
     font-size: 16px;
+  }
+
+  .nav__item--active {
+    box-shadow: inset 6px 0 0 var(--mark);
   }
 
   .nav__me {

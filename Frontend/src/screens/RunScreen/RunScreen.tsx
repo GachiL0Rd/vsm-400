@@ -29,7 +29,7 @@ export function RunScreen() {
   const lucky = run.decisions.filter((d) => d.lucky).length;
 
   return (
-    <div className="screen">
+    <div className="screen screen--shift">
       <Link className="back" to={paths.shift}>
         <Icon name="back" size={20} />
         Журнал рейсов

@@ -3,11 +3,28 @@
 }
 
 .screen {
+  --route: var(--ink);
   display: flex;
   flex-direction: column;
   gap: 32px;
   max-width: 960px;
   margin: 0 auto;
+}
+
+.screen--shift {
+  --route: var(--route-shift);
+}
+
+.screen--rating {
+  --route: var(--route-rating);
+}
+
+.screen--profile {
+  --route: var(--route-profile);
+}
+
+.screen--feed {
+  --route: var(--route-feed);
 }
 
 .screen__head {
@@ -20,7 +37,17 @@
   font-size: 32px;
   font-weight: 800;
   line-height: 1.1;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.03em;
+}
+
+/* Линейка раздела: толстая линия своего цвета, на всю ширину заголовка. */
+.screen__title::after {
+  content: "";
+  display: block;
+  width: 100%;
+  height: 6px;
+  margin-top: 12px;
+  background: var(--route);
 }
 
 .screen__title:focus {

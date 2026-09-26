@@ -4,23 +4,50 @@
   gap: 18px;
 }
 
+.me > div {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
 .progress {
   display: grid;
   gap: 32px;
 }
 
 .streak {
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  gap: 4px;
+  position: relative;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  height: 28px;
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
+.streak::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  left: 6px;
+  height: 4px;
+  margin-top: -2px;
+  background: var(--ink);
+}
+
 .streak__day {
-  height: 28px;
-  background: var(--cloud);
+  position: relative;
+  z-index: 1;
+  box-sizing: border-box;
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--ink);
+  border-radius: 50%;
+  background: var(--white);
 }
 
 .streak__day--done {
@@ -28,8 +55,10 @@
 }
 
 .streak__day--today {
-  border: 2px dashed var(--smoke);
   background: var(--white);
+  box-shadow:
+    0 0 0 2px var(--paper),
+    0 0 0 4px var(--ink);
 }
 
 .stats {

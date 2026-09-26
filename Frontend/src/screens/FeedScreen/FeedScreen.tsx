@@ -20,7 +20,7 @@ export function FeedScreen({ unread }: { unread: number }) {
   usePageTitle('Лента');
 
   return (
-    <div className="screen">
+    <div className="screen screen--feed">
       <header className="screen__head">
         <h1 className="screen__title" tabIndex={-1}>
           Лента

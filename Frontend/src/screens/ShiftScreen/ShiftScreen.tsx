@@ -19,7 +19,7 @@ export function ShiftScreen() {
   const focus = [first, ...rest.map((title) => title.toLowerCase())].join(', ');
 
   return (
-    <div className="screen">
+    <div className="screen screen--shift">
       <h1 className="screen__title" tabIndex={-1}>
         Смена
       </h1>

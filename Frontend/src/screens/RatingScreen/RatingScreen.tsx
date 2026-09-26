@@ -19,7 +19,7 @@ export function RatingScreen() {
   const me = board.rows.find((r) => r.me);
 
   return (
-    <div className="screen">
+    <div className="screen screen--rating">
       <header className="screen__head">
         <h1 className="screen__title" tabIndex={-1}>
           Рейтинг

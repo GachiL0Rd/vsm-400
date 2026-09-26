@@ -5,16 +5,20 @@
   margin: 0;
   padding: 0;
   border: 2px solid var(--ink);
+  border-radius: 0;
+  background: var(--white);
 }
 
 .segmented__item {
   padding: 10px 0;
   border: 0;
-  background: var(--white);
+  border-radius: 0;
+  background: transparent;
   color: var(--ink);
   font-size: 15px;
   font-weight: 700;
   cursor: pointer;
+  appearance: none;
 }
 
 .segmented__item + .segmented__item {
@@ -87,7 +91,7 @@
   font-weight: 700;
 }
 
-/* «Вы здесь» — тот же оранжевый маркер, что в навигации */
+/* «Вы здесь» — сигнальный маркер, не цвет линии рейтинга. */
 .board__row--me {
   font-weight: 800;
 }
@@ -96,7 +100,7 @@
   content: "";
   position: absolute;
   inset: 0 auto 0 0;
-  width: 4px;
+  width: 6px;
   background: var(--signal);
 }
 

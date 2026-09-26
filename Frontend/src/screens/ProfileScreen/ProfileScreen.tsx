@@ -15,7 +15,7 @@ export function ProfileScreen() {
   usePageTitle('Профиль');
 
   return (
-    <div className="screen">
+    <div className="screen screen--profile">
       <ProfileHeader />
       <ProfileFacts />
       <div className="progress">
