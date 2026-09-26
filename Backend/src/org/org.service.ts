@@ -8,15 +8,23 @@ import { PrismaService } from '../prisma/prisma.service';
 export class OrgService {
   constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
 
-  listDepots() {
+  listDepots(actor: AuthUser) {
+    if (!seesAllOrg(actor) && !actor.depotId) {
+      return [];
+    }
     return this.prisma.depot.findMany({
+      where: seesAllOrg(actor) ? undefined : { id: actor.depotId ?? undefined },
       orderBy: { code: 'asc' },
       select: { id: true, code: true, name: true, city: true },
     });
   }
 
-  async listBrigades(depotId: string) {
+  async listBrigades(depotId: string, actor: AuthUser) {
     if (!isUuid(depotId)) {
+      throw new NotFoundException({ message: 'Депо не найдено', code: 'NOT_FOUND' });
+    }
+    // Чужой id не подтверждаем: тот же 404, что и для пустого депо.
+    if (!seesAllOrg(actor) && actor.depotId !== depotId) {
       throw new NotFoundException({ message: 'Депо не найдено', code: 'NOT_FOUND' });
     }
     const depot = await this.prisma.depot.findUnique({
@@ -26,8 +34,11 @@ export class OrgService {
     if (!depot) {
       throw new NotFoundException({ message: 'Депо не найдено', code: 'NOT_FOUND' });
     }
+    if (!seesAllOrg(actor) && !actor.brigadeId) {
+      return [];
+    }
     return this.prisma.brigade.findMany({
-      where: { depotId },
+      where: seesAllOrg(actor) ? { depotId } : { depotId, id: actor.brigadeId ?? undefined },
       orderBy: { code: 'asc' },
       select: { id: true, code: true, name: true, depotId: true },
     });
@@ -69,6 +80,10 @@ export class OrgService {
       })),
     };
   }
+}
+
+function seesAllOrg(actor: AuthUser): boolean {
+  return actor.role === Role.ADMIN || actor.role === Role.METHODIST;
 }
 
 function canSeeMembers(actor: AuthUser, brigadeId: string): boolean {
