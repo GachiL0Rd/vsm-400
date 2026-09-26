@@ -196,6 +196,11 @@
   text-align: right;
 }
 
+/* «22 низкая» остаётся одной строкой и в карточке, и в колонке таблицы. */
+.journal__num.down {
+  white-space: nowrap;
+}
+
 .journal__points {
   grid-column: 2;
   grid-row: 2;

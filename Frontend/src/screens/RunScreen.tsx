@@ -147,7 +147,10 @@ function Scale({ title, value }: { title: string; value: number }) {
     <div className="scale">
       <div className="row">
         <span className="label">{title}</span>
-        <b className={`scale__value num${failed ? ' down' : ''}`}>{value}</b>
+        <b className={`scale__value num${failed ? ' down' : ''}`}>
+          {value}
+          {failed && <span className="label down"> низкая</span>}
+        </b>
       </div>
       <Meter percent={value} stop={failed} />
     </div>

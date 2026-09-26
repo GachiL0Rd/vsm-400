@@ -137,6 +137,7 @@ function Score({ title, value }: { title: string; value: number }) {
   return (
     <td className={`journal__num num${value < FAIL_SCORE ? ' down' : ''}`} data-label={title}>
       {value}
+      {value < FAIL_SCORE && <span className="label down"> низкая</span>}
     </td>
   );
 }
