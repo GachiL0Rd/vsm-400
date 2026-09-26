@@ -36,6 +36,10 @@ Vite поднимает тестовый WebSocket на `/game-ws`. В инте�
 задачи, наблюдения и действия открываются через строку «Задачи · Сигналы ·
 Действия» над картой.
 
+`GameScene` собирает менеджеры мира, персонажей, маршрутов, ввода, HUD, диалога,
+звука, эффектов и dev-паузы. Их владельцы и поток данных описаны в
+[`docs/agent/game-client-architecture.md`](docs/agent/game-client-architecture.md).
+
 Полная проверка:
 
 ```powershell
@@ -47,11 +51,13 @@ npm run verify
 ```powershell
 node scripts/browser-smoke.mjs
 node scripts/browser-flow.mjs
+node scripts/browser-lifecycle.mjs
 ```
 
 При другом порте задайте `GAME_URL` для этих команд. Скриншоты сохраняются в
 `artifacts/`, который исключён из Git. `browser-flow.mjs` проходит четыре
-ветки с настоящим WebSocket и проверяет успешный и неуспешный пожар. Полная
+ветки с настоящим WebSocket и проверяет успешный и неуспешный пожар;
+`browser-lifecycle.mjs` проверяет управление, паузу, повторный запуск сцены и очистку при закрытии игры. Полная
 карта 51 ситуации Dataset: [`docs/agent/dataset-scenario-map.md`](docs/agent/dataset-scenario-map.md).
 
 Если установлен `just`, доступны эквивалентные сокращения `just setup`,
