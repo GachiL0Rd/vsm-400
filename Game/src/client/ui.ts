@@ -72,10 +72,10 @@ export class ClientUI {
     const header = node('div', 'panel-header');
     header.append(node('h1', '', 'ВСМ · Смена 04'), this.status);
     panel.append(header, this.clock, this.metrics, this.message);
-    this.dashboard.open = window.innerWidth >= 760;
-    let wasNarrow = window.innerWidth < 760;
+    this.dashboard.open = window.innerWidth > 760;
+    let wasNarrow = window.innerWidth <= 760;
     window.addEventListener('resize', () => {
-      const narrow = window.innerWidth < 760;
+      const narrow = window.innerWidth <= 760;
       if (narrow !== wasNarrow) this.dashboard.open = !narrow;
       wasNarrow = narrow;
     });
@@ -90,7 +90,7 @@ export class ClientUI {
     itemSection.append(node('h2', '', 'Предмет'), this.item);
     this.dashboard.append(itemSection, this.footer);
     this.dashboard.addEventListener('click', (event) => {
-      if (window.innerWidth < 760 && event.target instanceof HTMLButtonElement)
+      if (window.innerWidth <= 760 && event.target instanceof HTMLButtonElement)
         this.dashboard.open = false;
     });
     panel.append(this.dashboard);

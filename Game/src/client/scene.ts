@@ -345,7 +345,7 @@ export class ClientScene extends Phaser.Scene {
   private resizeCamera(): void {
     const width = this.scale.width;
     const height = this.scale.height;
-    const narrow = width < 760;
+    const narrow = width <= 760;
     const left = narrow ? 0 : 330;
     const top = narrow ? 166 : 0;
     const bottom = narrow ? 82 : 0;
