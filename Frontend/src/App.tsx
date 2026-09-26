@@ -6,6 +6,7 @@ import { type Route, useRoute } from './route';
 import { FeedScreen } from './screens/FeedScreen';
 import { ProfileScreen } from './screens/ProfileScreen';
 import { RatingScreen } from './screens/RatingScreen';
+import { RunScreen } from './screens/RunScreen';
 import { ShiftScreen } from './screens/ShiftScreen';
 import './App.css';
 
@@ -37,6 +38,7 @@ function App() {
         {route.name === 'profile' && <ProfileScreen />}
         {route.name === 'rating' && <RatingScreen />}
         {route.name === 'feed' && <FeedScreen />}
+        {route.name === 'run' && <RunScreen id={route.id} />}
         {route.name === 'missing' && <NotFound />}
       </main>
     </div>
