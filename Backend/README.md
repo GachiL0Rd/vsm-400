@@ -169,3 +169,12 @@ METHODIST и ADMIN любой. `GET /api/v1/analytics/scenarios/:id` — вор�
 публикует `assignment.created`. CHIEF назначает только свою бригаду.
 `GET /api/v1/assignments?brigadeId`, `DELETE /api/v1/assignments/:id` ставит
 `CANCELLED`.
+
+### Прогрессия
+
+Рейс пишется по событию `run.completed` (одна транзакция, повтор по `sessionId` ничего не делает). После коммита — `run.recorded`.
+
+- `GET /api/v1/promotions?status=PENDING` — очередь рекомендаций. Начальник видит свою бригаду, администратор — все.
+- `POST /api/v1/promotions/:id/decision` — тело `{ "approve": true|false }`. Начальник своей бригады или администратор. Утверждение меняет грейд.
+
+`GET /api/v1/me/achievements` отдаёт кабинет. Список собирает `AchievementsService.listForUser`: `code`, `title`, `description`, `earnedAt` или `null`, для незакрытых счётчиков ещё `progress`.
