@@ -1,109 +1,328 @@
+@font-face {
+  font-family: "Moscow Sans";
+  src: url("./assets/fonts/MoscowSans-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Moscow Sans";
+  src: url("./assets/fonts/MoscowSans-Medium.woff2") format("woff2");
+  font-weight: 500;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Moscow Sans";
+  src: url("./assets/fonts/MoscowSans-Bold.woff2") format("woff2");
+  font-weight: 700;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Moscow Sans";
+  src: url("./assets/fonts/MoscowSans-ExtraBold.woff2") format("woff2");
+  font-weight: 800;
+  font-display: swap;
+}
+
 :root {
-  --text: #6b6375;
-  --text-h: #08060d;
-  --bg: #fff;
-  --border: #e5e4e7;
-  --code-bg: #f4f3ec;
-  --accent: #aa3bff;
-  --accent-bg: rgba(170, 59, 255, 0.1);
-  --accent-border: rgba(170, 59, 255, 0.5);
-  --social-bg: rgba(244, 243, 236, 0.5);
-  --shadow: rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
+  /* Нейтральная шкала: основа интерфейса. */
+  --white: #ffffff;
+  --cloud: #e8e8e6;
+  --line: #dcdcd9;
+  --smoke: #a3a5a8;
+  --iron: #6b6e73;
+  /* Основной цвет текста и контуров — графит, как ливрея поездов ВСМ. */
+  --ink: #25282c;
 
-  --sans: system-ui, "Segoe UI", Roboto, sans-serif;
-  --heading: system-ui, "Segoe UI", Roboto, sans-serif;
-  --mono: ui-monospace, Consolas, monospace;
+  /* Единственный акцент — сигнальный оранжевый. Только действие и «вы здесь». */
+  --signal: #ff6700;
+  --signal-press: #e65c00;
 
-  font: 18px / 145% var(--sans);
-  letter-spacing: 0.18px;
-  color-scheme: light dark;
-  color: var(--text);
-  background: var(--bg);
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  /* Статусы по логике светофора */
+  --ok: #1f7a34;
+  --warn: #7a5900;
+  --warn-line: #f0cf5a;
+  --stop: #c62828;
 
-  @media (max-width: 1024px) {
-    font-size: 16px;
-  }
+  --font: "Moscow Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --text: #9ca3af;
-    --text-h: #f3f4f6;
-    --bg: #16171d;
-    --border: #2e303a;
-    --code-bg: #1f2028;
-    --accent: #c084fc;
-    --accent-bg: rgba(192, 132, 252, 0.15);
-    --accent-border: rgba(192, 132, 252, 0.5);
-    --social-bg: rgba(47, 48, 58, 0.5);
-    --shadow: rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
-  }
-
-  #social .button-icon {
-    filter: invert(1) brightness(2);
-  }
-}
-
-#root {
-  width: 1126px;
-  max-width: 100%;
-  margin: 0 auto;
-  text-align: center;
-  border-inline: 1px solid var(--border);
-  min-height: 100svh;
-  display: flex;
-  flex-direction: column;
+* {
   box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
 }
 
 body {
   margin: 0;
+  min-width: 320px;
+  background: var(--white);
+  color: var(--ink);
+  font-family: var(--font);
+  font-size: 16px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
 }
 
 h1,
-h2 {
-  font-family: var(--heading);
-  font-weight: 500;
-  color: var(--text-h);
-}
-
-h1 {
-  font-size: 56px;
-  letter-spacing: -1.68px;
-  margin: 32px 0;
-  @media (max-width: 1024px) {
-    font-size: 36px;
-    margin: 20px 0;
-  }
-}
-h2 {
-  font-size: 24px;
-  line-height: 118%;
-  letter-spacing: -0.24px;
-  margin: 0 0 8px;
-  @media (max-width: 1024px) {
-    font-size: 20px;
-  }
-}
+h2,
+h3,
 p {
   margin: 0;
 }
 
-code,
-.counter {
-  font-family: var(--mono);
-  display: inline-flex;
-  border-radius: 4px;
-  color: var(--text-h);
+a {
+  color: inherit;
 }
 
-code {
+button {
+  font: inherit;
+}
+
+:focus-visible {
+  outline: 3px solid var(--signal);
+  outline-offset: 2px;
+}
+
+/* ---------- Общие элементы ---------- */
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.section__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  padding-bottom: 10px;
+  border-bottom: 2px solid var(--ink);
+}
+
+.section__title {
+  font-size: 20px;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--iron);
+}
+
+.row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.num {
+  font-variant-numeric: tabular-nums;
+}
+
+.btn {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  padding: 13px 24px;
+  border: 0;
+  border-bottom: 3px solid var(--signal-press);
+  background: var(--signal);
+  color: var(--ink);
+  font-size: 17px;
+  font-weight: 700;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.btn:hover {
+  background: #ff7a1f;
+}
+
+.btn:active {
+  border-bottom-width: 1px;
+  margin-top: 2px;
+}
+
+.btn--ghost {
+  border: 2px solid var(--ink);
+  background: var(--white);
+}
+
+.btn--ghost:hover {
+  background: var(--ink);
+  color: var(--white);
+}
+
+.btn--ghost:active {
+  border-bottom-width: 2px;
+}
+
+.btn[aria-disabled="true"] {
+  border-color: var(--cloud);
+  background: var(--cloud);
+  color: var(--iron);
+  cursor: not-allowed;
+}
+
+/*
+ * Статусы по принципу «тёмной кабины»: норма не выделяется,
+ * отклонение горит сплошной плашкой.
+ */
+.tag {
+  display: inline-block;
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.tag--ok {
+  color: var(--iron);
+}
+
+.tag--warn,
+.tag--stop,
+.tag--new {
+  padding: 1px 8px;
+  color: var(--white);
+  font-weight: 700;
+}
+
+.tag--warn {
+  background: var(--warn);
+}
+
+.tag--stop {
+  background: var(--stop);
+}
+
+/* Непрочитанное — тот же оранжевый, что у счётчика в меню */
+.tag--new {
+  background: var(--signal);
+}
+
+/* Показатели в строку: серая подпись, жирное значение */
+.metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 20px;
+  margin: 0;
   font-size: 15px;
-  line-height: 135%;
-  padding: 4px 8px;
-  background: var(--code-bg);
+}
+
+.metrics div {
+  display: flex;
+  gap: 6px;
+}
+
+.metrics dt {
+  color: var(--iron);
+}
+
+.metrics dd {
+  margin: 0;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Пары «подпись — значение» в строку */
+.facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 12px 20px;
+  margin: 0;
+}
+
+.facts dd {
+  margin: 0;
+  font-weight: 700;
+}
+
+/* Пары «подпись — значение» списком, с линейками */
+.ledger {
+  margin: 0;
+}
+
+.ledger__row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 16px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.ledger__row dt {
+  color: var(--iron);
+}
+
+.ledger__row dd {
+  margin: 0;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.ledger__note {
+  display: block;
+  color: var(--iron);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.track {
+  height: 8px;
+  background: var(--cloud);
+  overflow: hidden;
+}
+
+.track__fill {
+  display: block;
+  height: 100%;
+  background: var(--ink);
+}
+
+.track__fill--stop {
+  background: var(--stop);
+}
+
+.up {
+  color: var(--ok);
+}
+
+.down {
+  color: var(--stop);
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.avatar {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border: 2px solid var(--ink);
+  background: var(--white);
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 800;
 }
