@@ -4,11 +4,12 @@
   place-items: center;
   width: 52px;
   height: 52px;
+  border-radius: 0;
 }
 
 .badge--earned {
-  background: var(--ink);
-  color: var(--white);
+  background: var(--paper);
+  color: var(--night);
 }
 
 .badge--locked {

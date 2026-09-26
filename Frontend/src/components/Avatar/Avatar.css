@@ -4,9 +4,10 @@
   place-items: center;
   width: 40px;
   height: 40px;
-  border: 2px solid var(--ink);
-  background: var(--white);
-  color: var(--ink);
+  border: 2px solid var(--mist);
+  border-radius: 0;
+  background: var(--lift);
+  color: var(--paper);
   font-size: 14px;
   font-weight: 800;
 }

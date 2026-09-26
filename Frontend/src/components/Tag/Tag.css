@@ -1,6 +1,6 @@
 /*
- * Статусы по принципу «тёмной кабины»: норма не выделяется,
- * отклонение горит сплошной плашкой.
+ * Норма — тихий текст. Отклонение — сплошная плашка
+ * с контрастным текстом, без рамки и без заливки-подложки.
  */
 .tag {
   display: inline-block;
@@ -12,27 +12,28 @@
 }
 
 .tag--ok {
-  color: var(--iron);
+  color: var(--mist);
 }
 
 .tag--warn,
 .tag--stop,
 .tag--new {
   padding: 1px 8px;
-  color: var(--white);
   font-weight: 700;
 }
 
 .tag--warn {
   background: var(--warn);
+  color: var(--on-warn);
 }
 
 .tag--stop {
-  background: var(--stop);
+  background: var(--stop-plate);
+  color: var(--on-stop);
 }
 
-/* Непрочитанное — тот же оранжевый, что у счётчика в меню. Текст графитом: белый на #ff6700 не добирает контраст. */
+/* Непрочитанное — белая плашка, не синий акцент: синий занят действием и «вы здесь». */
 .tag--new {
-  background: var(--signal);
-  color: var(--ink);
+  background: var(--paper);
+  color: var(--night);
 }

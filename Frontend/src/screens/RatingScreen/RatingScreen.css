@@ -4,21 +4,23 @@
   max-width: 480px;
   margin: 0;
   padding: 0;
-  border: 2px solid var(--ink);
+  border: 2px solid var(--paper);
+  background: var(--lift);
 }
 
 .segmented__item {
   padding: 10px 0;
   border: 0;
-  background: var(--white);
-  color: var(--ink);
+  border-radius: 0;
+  background: transparent;
+  color: var(--paper);
   font-size: 15px;
   font-weight: 700;
   cursor: pointer;
 }
 
 .segmented__item + .segmented__item {
-  border-left: 2px solid var(--ink);
+  border-left: 2px solid var(--paper);
 }
 
 .segmented__item:hover {
@@ -27,8 +29,9 @@
 
 .segmented__item--on,
 .segmented__item--on:hover {
-  background: var(--ink);
-  color: var(--white);
+  background: var(--signal);
+  color: var(--on-signal);
+  text-decoration: none;
 }
 
 .rating__me {
@@ -37,7 +40,7 @@
 }
 
 .rating__me b {
-  color: var(--ink);
+  color: var(--paper);
 }
 
 .board {
@@ -46,7 +49,7 @@
   max-width: var(--measure);
   margin: 0;
   padding: 0;
-  border-top: 2px solid var(--ink);
+  border-top: 1px solid var(--line);
   list-style: none;
 }
 
@@ -87,17 +90,28 @@
   font-weight: 700;
 }
 
-/* «Вы здесь» — тот же оранжевый маркер, что в навигации */
+/* «Вы здесь» — та же синяя плашка, что у отправления. Стрелки на ней белые: зелёный и красный на синем не добирают контраст. */
 .board__row--me {
+  background: var(--signal);
+  color: var(--on-signal);
   font-weight: 800;
+  border-bottom-color: var(--signal-press);
 }
 
-.board__row--me::before {
-  content: "";
-  position: absolute;
-  inset: 0 auto 0 0;
-  width: 4px;
-  background: var(--signal);
+.board__row--me .up,
+.board__row--me .down {
+  color: var(--on-signal);
+}
+
+.board__row--me .avatar {
+  border-color: var(--paper);
+  background: var(--paper);
+  color: var(--night);
+}
+
+.board__row--me.board__row--gap {
+  margin-top: 16px;
+  border-top: 0;
 }
 
 .rating__brigade {

@@ -20,11 +20,20 @@
   font-size: 32px;
   font-weight: 800;
   line-height: 1.1;
-  letter-spacing: -0.01em;
+  letter-spacing: 0;
+  overflow-wrap: break-word;
 }
 
 .screen__title:focus {
   outline: none;
+}
+
+/* Фигурная скобка только у заголовка «Смена»: знак титула, не код. */
+.screen__mark {
+  margin-right: 0.12em;
+  color: var(--signal);
+  font-weight: 400;
+  letter-spacing: 0;
 }
 
 .screen__sub {

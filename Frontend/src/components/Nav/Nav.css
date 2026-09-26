@@ -1,10 +1,10 @@
-/* Мобильная раскладка: нижняя панель */
+/* Мобильная раскладка: нижняя панель. Фон ночной, чтобы синие ступеньки читались. */
 .nav {
   position: fixed;
   inset: auto 0 0;
   z-index: 10;
   border-top: 1px solid var(--line);
-  background: var(--white);
+  background: var(--night);
   padding-bottom: env(safe-area-inset-bottom);
 }
 
@@ -22,11 +22,12 @@
 }
 
 .nav__item {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 2px;
-  padding: 10px 0;
+  padding: 20px 0 8px;
   color: var(--iron);
   font-size: 12px;
   font-weight: 700;
@@ -34,12 +35,24 @@
 }
 
 .nav__item:hover {
-  color: var(--ink);
+  color: var(--paper);
 }
 
 .nav__item--active {
-  color: var(--ink);
+  color: var(--paper);
   font-weight: 800;
+}
+
+/* Две ступеньки над активным пунктом. Место заложено в padding, высота панели не прыгает. */
+.nav__item--active::before {
+  content: "";
+  position: absolute;
+  top: 4px;
+  left: calc(50% - 8px);
+  width: 6px;
+  height: 6px;
+  background: var(--signal);
+  box-shadow: 8px 8px 0 var(--signal);
 }
 
 /* Кольцо внутрь: бренд и пункты прижаты к краю окна, внешний offset обрезается. */
@@ -58,8 +71,8 @@
   right: -12px;
   min-width: 18px;
   padding: 0 4px;
-  background: var(--signal);
-  color: var(--ink);
+  background: var(--paper);
+  color: var(--night);
   font-size: 11px;
   font-weight: 800;
   line-height: 16px;
@@ -78,16 +91,16 @@
     padding: 32px 0 24px;
     border-top: 0;
     border-right: 1px solid var(--line);
-    background: var(--white);
+    background: var(--night);
   }
 
   .nav__brand {
     display: block;
     padding: 0 24px;
-    color: var(--ink);
+    color: var(--paper);
     font-size: 26px;
     font-weight: 800;
-    letter-spacing: -0.02em;
+    letter-spacing: 0;
     text-decoration: none;
   }
 
@@ -103,13 +116,24 @@
     font-size: 16px;
   }
 
+  .nav__item--active::before {
+    top: calc(50% - 9px);
+    left: 0;
+    width: 8px;
+    height: 8px;
+    background: var(--signal);
+    box-shadow:
+      0 10px 0 var(--signal),
+      10px 10px 0 var(--signal);
+  }
+
   .nav__me {
     display: flex;
     align-items: center;
     gap: 12px;
     margin-top: auto;
     padding: 12px 24px;
-    color: var(--ink);
+    color: var(--paper);
     line-height: 1.25;
     text-decoration: none;
   }

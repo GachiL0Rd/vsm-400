@@ -11,7 +11,7 @@
 .track__fill {
   display: block;
   height: 100%;
-  background: var(--ink);
+  background: var(--paper);
 }
 
 .track__fill--stop {

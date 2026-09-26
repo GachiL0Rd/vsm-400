@@ -21,6 +21,9 @@ export function ShiftScreen() {
   return (
     <div className="screen">
       <h1 className="screen__title" tabIndex={-1}>
+        <span className="screen__mark" aria-hidden="true">
+          {'{'}
+        </span>
         Смена
       </h1>
 

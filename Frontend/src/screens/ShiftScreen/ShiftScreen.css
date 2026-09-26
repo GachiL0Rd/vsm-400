@@ -1,30 +1,52 @@
-/* ---------- Следующий рейс: строка вокзального табло ---------- */
+/* ---------- Следующий рейс: сплошная синяя плашка ---------- */
 
 .departure {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 24px;
   padding: 24px 20px;
-  border: 2px solid var(--ink);
-  border-top-width: 6px;
-  background: var(--white);
+  background: var(--signal);
+  color: var(--paper);
+}
+
+/* Три белых квадрата лесенкой в правом верхнем углу. */
+.departure::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 12px;
+  height: 12px;
+  background: var(--paper);
+  box-shadow:
+    -16px 16px 0 var(--paper),
+    -32px 32px 0 var(--paper);
+  pointer-events: none;
 }
 
 .departure__label {
-  color: var(--iron);
-  font-size: 14px;
+  padding-right: 48px;
+  color: var(--paper);
+  font-size: 13px;
   font-weight: 500;
+  letter-spacing: 0.18em;
 }
 
 .departure__main {
   display: flex;
+  flex-wrap: wrap;
   align-items: flex-start;
   gap: 20px;
-  margin-top: -12px;
+  min-width: 0;
+}
+
+.departure__main > div {
+  min-width: 0;
 }
 
 .departure__time {
-  color: var(--signal);
+  color: var(--paper);
   font-size: 44px;
   font-weight: 800;
   line-height: 1;
@@ -37,12 +59,13 @@
 }
 
 .departure__from {
-  color: var(--iron);
+  color: var(--paper);
 }
 
 .departure__facts dt {
-  color: var(--iron);
+  color: var(--paper);
   font-size: 13px;
+  font-weight: 500;
 }
 
 .departure__focus {
@@ -51,6 +74,27 @@
 
 .departure__start {
   align-self: stretch;
+  background: var(--paper);
+  color: var(--night);
+}
+
+.departure__start:hover {
+  background: var(--mist);
+  color: var(--night);
+}
+
+.departure__start:active {
+  background: var(--mist);
+  color: var(--night);
+}
+
+/* На синей плашке белый текст не проходит как «приглушённый», поэтому недоступная кнопка — контур. */
+.departure .departure__start[aria-disabled="true"],
+.departure .departure__start[aria-disabled="true"]:hover,
+.departure .departure__start[aria-disabled="true"]:active {
+  background: transparent;
+  color: var(--on-signal);
+  box-shadow: inset 0 0 0 2px var(--on-signal);
 }
 
 @media (min-width: 600px) {
@@ -83,10 +127,12 @@
 .line__stop {
   position: relative;
   flex: 1;
+  min-width: 0;
   padding-top: 20px;
-  color: var(--iron);
+  color: var(--paper);
   font-size: 13px;
   text-align: center;
+  overflow-wrap: break-word;
 }
 
 .line__stop::before {
@@ -96,7 +142,7 @@
   left: 0;
   right: 0;
   height: 2px;
-  background: var(--line);
+  background: var(--paper);
 }
 
 .line__stop:first-child::before {
@@ -114,18 +160,18 @@
   left: calc(50% - 5px);
   width: 10px;
   height: 10px;
-  background: var(--iron);
+  background: var(--paper);
 }
 
 .line__stop:first-child,
 .line__stop:last-child {
-  color: var(--ink);
+  color: var(--paper);
   font-weight: 700;
 }
 
 .line__stop:first-child::after,
 .line__stop:last-child::after {
-  background: var(--ink);
+  background: var(--paper);
 }
 
 /* ---------- Журнал рейсов ---------- */
