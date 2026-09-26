@@ -4,7 +4,7 @@
   inset: auto 0 0;
   z-index: 10;
   border-top: 1px solid var(--line);
-  background: var(--white);
+  background: var(--canvas);
   padding-bottom: env(safe-area-inset-bottom);
 }
 
@@ -22,6 +22,7 @@
 }
 
 .nav__item {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -42,6 +43,17 @@
   font-weight: 800;
 }
 
+/* «Вы здесь»: тот же оранжевый штрих, что у своей строки рейтинга. */
+.nav__item--active::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 16px;
+  right: 16px;
+  height: 3px;
+  background: var(--signal);
+}
+
 /* Кольцо внутрь: бренд и пункты прижаты к краю окна, внешний offset обрезается. */
 .nav :focus-visible {
   outline-offset: -3px;
@@ -58,8 +70,9 @@
   right: -12px;
   min-width: 18px;
   padding: 0 4px;
-  background: var(--signal);
-  color: var(--ink);
+  border-radius: var(--radius);
+  background: var(--ink);
+  color: var(--canvas);
   font-size: 11px;
   font-weight: 800;
   line-height: 16px;
@@ -78,7 +91,16 @@
     padding: 32px 0 24px;
     border-top: 0;
     border-right: 1px solid var(--line);
-    background: var(--white);
+    background: var(--canvas);
+  }
+
+  .nav__item--active::before {
+    top: 0;
+    bottom: 0;
+    left: 0;
+    right: auto;
+    width: 4px;
+    height: auto;
   }
 
   .nav__brand {

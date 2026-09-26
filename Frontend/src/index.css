@@ -27,26 +27,33 @@
 }
 
 :root {
-  /* Нейтральная шкала: основа интерфейса. */
-  --white: #ffffff;
-  --cloud: #e8e8e6;
-  --line: #dcdcd9;
-  --smoke: #a3a5a8;
-  --iron: #6b6e73;
-  /* Основной цвет текста и контуров — графит, как ливрея поездов ВСМ. */
-  --ink: #25282c;
-  --ink-08: rgb(37 40 44 / 8%);
+  /* Ночная кабина. Графит, не чёрный: страница и на две ступени светлее. */
+  --canvas: #17191c;
+  --panel: #262b31;
+  --track: #3a414a;
+  --line: #6e767f;
+  --smoke: #969ca3;
+  /* Тёплый светлый текст. Вторичный держит ≥4.5:1 на панели и на странице. */
+  --iron: #b0aaa2;
+  --ink: #e4dfd6;
+  --veil: rgb(228 223 214 / 16%);
 
-  /* Единственный акцент — сигнальный оранжевый. Только действие и «вы здесь». */
+  /* Единственный акцент — время, основная кнопка, маркер «вы здесь». */
   --signal: #ff6700;
   --signal-hover: #ff7a1f;
   --signal-press: #e65c00;
+  --on-signal: #1a140e;
 
-  /* Статусы по логике светофора */
-  --ok: #1f7a34;
-  --warn: #7a5900;
-  --warn-line: #f0cf5a;
-  --stop: #c62828;
+  /* Светофор на тёмном: норма тихая, отклонение — сплошная плашка. */
+  --ok: #8aa67c;
+  --warn: #e2b340;
+  --on-warn: #1a1408;
+  --warn-line: #e2b340;
+  --stop: #ee6d5e;
+  --on-stop: #1c110e;
+
+  /* Один радиус на всё: кромка прибора, без скругления. */
+  --radius: 0;
 
   --font: "Moscow Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
 
@@ -62,12 +69,14 @@
 
 html {
   -webkit-text-size-adjust: 100%;
+  background: var(--canvas);
+  color-scheme: dark;
 }
 
 body {
   margin: 0;
   min-width: 320px;
-  background: var(--white);
+  background: var(--canvas);
   color: var(--ink);
   font-family: var(--font);
   font-size: 16px;
@@ -93,6 +102,11 @@ button {
 :focus-visible {
   outline: 3px solid var(--signal);
   outline-offset: 2px;
+}
+
+::selection {
+  background: var(--ink);
+  color: var(--canvas);
 }
 
 /* ---------- Общие элементы ---------- */
@@ -122,8 +136,9 @@ button {
   padding: 13px 24px;
   border: 0;
   border-bottom: 3px solid var(--signal-press);
+  border-radius: var(--radius);
   background: var(--signal);
-  color: var(--ink);
+  color: var(--on-signal);
   font-size: 17px;
   font-weight: 700;
   text-decoration: none;
@@ -134,6 +149,10 @@ button {
   background: var(--signal-hover);
 }
 
+.btn:focus-visible {
+  outline-color: var(--ink);
+}
+
 .btn:active {
   border-bottom-width: 1px;
   margin-top: 2px;
@@ -141,12 +160,17 @@ button {
 
 .btn--ghost {
   border: 2px solid var(--ink);
-  background: var(--white);
+  background: transparent;
+  color: var(--ink);
 }
 
 .btn--ghost:hover {
   background: var(--ink);
-  color: var(--white);
+  color: var(--canvas);
+}
+
+.btn--ghost:focus-visible {
+  outline-color: var(--signal);
 }
 
 .btn--ghost:active {
@@ -155,8 +179,9 @@ button {
 }
 
 .btn[aria-disabled="true"] {
-  border-color: var(--cloud);
-  background: var(--cloud);
+  border: 1px solid var(--line);
+  border-bottom-width: 3px;
+  background: var(--canvas);
   color: var(--iron);
   cursor: not-allowed;
 }

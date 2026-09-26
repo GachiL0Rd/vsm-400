@@ -5,7 +5,8 @@
   width: 40px;
   height: 40px;
   border: 2px solid var(--ink);
-  background: var(--white);
+  border-radius: var(--radius);
+  background: var(--panel);
   color: var(--ink);
   font-size: 14px;
   font-weight: 800;

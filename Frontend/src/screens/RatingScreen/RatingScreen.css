@@ -5,12 +5,13 @@
   margin: 0;
   padding: 0;
   border: 2px solid var(--ink);
+  border-radius: var(--radius);
 }
 
 .segmented__item {
   padding: 10px 0;
   border: 0;
-  background: var(--white);
+  background: transparent;
   color: var(--ink);
   font-size: 15px;
   font-weight: 700;
@@ -28,7 +29,7 @@
 .segmented__item--on,
 .segmented__item--on:hover {
   background: var(--ink);
-  color: var(--white);
+  color: var(--canvas);
 }
 
 .rating__me {
