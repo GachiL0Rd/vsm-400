@@ -6,7 +6,7 @@ import type { RedisService } from '../redis/redis.service';
 import type { NoticeRow } from './notice';
 import { HEARTBEAT_MS, NotificationsService } from './notifications.service';
 
-type Note = NoticeRow & { userId: string };
+type Note = NoticeRow & { userId: string; dedupKey: string | null };
 
 function clauses(
   value: Prisma.NotificationWhereInput | Prisma.NotificationWhereInput[] | undefined,
@@ -78,6 +78,12 @@ function memory() {
     notification: {
       findFirst: async ({ where }: { where: Prisma.NotificationWhereInput }) =>
         notes.find((row) => match(row, where)) ?? null,
+      findUnique: async ({ where }: { where: { dedupKey?: string; id?: string } }) =>
+        notes.find(
+          (row) =>
+            (where.dedupKey !== undefined && row.dedupKey === where.dedupKey) ||
+            (where.id !== undefined && row.id === where.id),
+        ) ?? null,
       findMany: async ({
         where,
         take,
@@ -108,6 +114,7 @@ function memory() {
           title: string;
           text: string;
           link?: string;
+          dedupKey?: string;
         };
       }) => {
         seq += 1;
@@ -118,6 +125,7 @@ function memory() {
           title: data.title,
           text: data.text,
           link: data.link ?? null,
+          dedupKey: data.dedupKey ?? null,
           createdAt: new Date(Date.UTC(2026, 8, 26, 12, seq)),
           readAt: null,
         };
@@ -172,9 +180,9 @@ describe('NotificationsService', () => {
       kind: NotificationKind.advice,
       title: 'Смена',
       text: 'Текст',
-      link: 'vsm:hidden',
+      link: '/shifts/1',
     });
-    expect(notice.link).toBeUndefined();
+    expect(notice.link).toBe('/shifts/1');
     expect(events.some((event) => event.type === 'new-notification' && event.data === notice)).toBe(
       true,
     );
@@ -204,13 +212,13 @@ describe('NotificationsService', () => {
     vi.useRealTimers();
   });
 
-  it('повтор vsm-маркера не создаёт вторую запись', async () => {
+  it('повтор dedupKey не создаёт вторую запись', async () => {
     const { service, notes, published } = memory();
     const draft = {
       kind: NotificationKind.assignment,
       title: 'Назначен сценарий',
       text: 'med',
-      link: 'vsm:assignment:a1',
+      dedupKey: 'assignment:a1',
     };
     await service.create('user-1', draft);
     await service.create('user-1', draft);

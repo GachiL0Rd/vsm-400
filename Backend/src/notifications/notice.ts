@@ -16,6 +16,8 @@ export type NoticeDraft = {
   title: string;
   text: string;
   link?: string;
+  /** Глобально уникальный ключ идемпотентности. Пустой — каждый вызов новая строка. */
+  dedupKey?: string;
 };
 
 export type NoticePage = {
@@ -39,12 +41,8 @@ export type NoticeRow = {
   readAt: Date | null;
 };
 
-/**
- * Префикс vsm: — маркер идемпотентности (в схеме нет отдельного поля).
- * Клиенту такую ссылку не отдаём: кабинет вешает на link роутер.
- */
 export function visibleLink(link: string | null | undefined): string | undefined {
-  if (!link || link.startsWith('vsm:')) {
+  if (!link) {
     return undefined;
   }
   return link;

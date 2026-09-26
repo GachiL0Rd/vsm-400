@@ -24,6 +24,7 @@ type Note = {
   title: string;
   text: string;
   link: string | null;
+  dedupKey: string | null;
   createdAt: Date;
   readAt: Date | null;
 };
@@ -102,17 +103,9 @@ function harness() {
       },
     },
     notification: {
-      findFirst: async ({
-        where,
-      }: {
-        where: { userId?: string; link?: string; kind?: NotificationKind };
-      }) =>
-        notes.find(
-          (row) =>
-            (!where.userId || row.userId === where.userId) &&
-            (where.link === undefined || row.link === where.link) &&
-            (!where.kind || row.kind === where.kind),
-        ) ?? null,
+      findUnique: async ({ where }: { where: { dedupKey?: string } }) =>
+        notes.find((row) => where.dedupKey !== undefined && row.dedupKey === where.dedupKey) ??
+        null,
       create: async ({
         data,
       }: {
@@ -122,6 +115,7 @@ function harness() {
           title: string;
           text: string;
           link?: string;
+          dedupKey?: string;
         };
       }) => {
         seq += 1;
@@ -132,6 +126,7 @@ function harness() {
           title: data.title,
           text: data.text,
           link: data.link ?? null,
+          dedupKey: data.dedupKey ?? null,
           createdAt: new Date(),
           readAt: null,
         };
@@ -205,6 +200,7 @@ describe('сгорание баллов', () => {
       title: '120 баллов спишутся 29 сентября',
       text: EXPIRY_HINT,
     });
-    expect(notes[0]?.link).toBe('vsm:ledger:soon');
+    expect(notes[0]?.dedupKey).toBe('ledger:soon');
+    expect(notes[0]?.link).toBeNull();
   });
 });

@@ -174,8 +174,14 @@ class Harness {
   seasons: SeasonRow[] = [];
   failUpsert = false;
   readonly redis = new MemoryRedis();
-  readonly created: { userId: string; kind: string; title: string; text: string; link?: string }[] =
-    [];
+  readonly created: {
+    userId: string;
+    kind: string;
+    title: string;
+    text: string;
+    link?: string;
+    dedupKey?: string;
+  }[] = [];
   readonly season: SeasonRow;
   readonly service: LeaderboardService;
 
@@ -193,7 +199,7 @@ class Harness {
       create: vi.fn(
         async (
           userId: string,
-          draft: { kind: string; title: string; text: string; link?: string },
+          draft: { kind: string; title: string; text: string; link?: string; dedupKey?: string },
         ) => {
           this.created.push({ userId, ...draft });
           return { id: 'n' };
@@ -391,7 +397,7 @@ describe('рейтинг', () => {
         kind: NotificationKind.overtaken,
         title: '#BBBB поднялся на 2-е место в бригаде',
         text: 'Вы на 3-м месте, разница 20 баллов.',
-        link: 'vsm:overtaken:b2:a',
+        dedupKey: 'overtaken:b2:a',
       },
     ]);
     const score = db.scores.find((row) => row.userId === 'b');

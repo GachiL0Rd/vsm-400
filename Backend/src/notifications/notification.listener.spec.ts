@@ -12,6 +12,7 @@ type Note = {
   title: string;
   text: string;
   link: string | null;
+  dedupKey: string | null;
   createdAt: Date;
   readAt: Date | null;
 };
@@ -32,18 +33,9 @@ function harness() {
   const runs = [{ id: 'run-9', userId: 'conductor', finishedAt: new Date('2026-09-26T10:00:00Z') }];
   const api = {
     notification: {
-      findFirst: async ({
-        where,
-      }: {
-        where: { userId?: string; kind?: NotificationKind; title?: string; link?: string };
-      }) =>
-        notes.find(
-          (row) =>
-            (!where.userId || row.userId === where.userId) &&
-            (!where.kind || row.kind === where.kind) &&
-            (!where.title || row.title === where.title) &&
-            (where.link === undefined || row.link === where.link),
-        ) ?? null,
+      findUnique: async ({ where }: { where: { dedupKey?: string } }) =>
+        notes.find((row) => where.dedupKey !== undefined && row.dedupKey === where.dedupKey) ??
+        null,
       create: async ({
         data,
       }: {
@@ -53,6 +45,7 @@ function harness() {
           title: string;
           text: string;
           link?: string;
+          dedupKey?: string;
         };
       }) => {
         seq += 1;
@@ -63,6 +56,7 @@ function harness() {
           title: data.title,
           text: data.text,
           link: data.link ?? null,
+          dedupKey: data.dedupKey ?? null,
           createdAt: new Date(),
           readAt: null,
         };

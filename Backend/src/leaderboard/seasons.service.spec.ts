@@ -9,7 +9,7 @@ describe('SeasonsService.current', () => {
     const rows: Season[] = [];
     const api = {
       season: {
-        findFirst: async ({ where }: { where: { startsAt: Date } }) =>
+        findUnique: async ({ where }: { where: { startsAt: Date } }) =>
           rows.find((row) => row.startsAt.getTime() === where.startsAt.getTime()) ?? null,
         create: async ({ data }: { data: { title: string; startsAt: Date; endsAt: Date } }) => {
           const row = { id: `s${rows.length + 1}`, ...data } as Season;

@@ -504,7 +504,7 @@ model UserAchievement {
 model Season {
   id       String   @id @default(uuid(7)) @db.Uuid
   title    String
-  startsAt DateTime
+  startsAt DateTime @unique
   endsAt   DateTime
 
   scores SeasonScore[]
@@ -532,6 +532,7 @@ model Notification {
   title     String
   text      String
   link      String?
+  dedupKey  String?          @unique
   createdAt DateTime         @default(now())
   readAt    DateTime?
 

@@ -308,7 +308,7 @@ export class LeaderboardService {
       kind: NotificationKind.overtaken,
       title: `#${callsign} поднялся на ${actorRank}-е место в бригаде`,
       text: `Вы на ${theirRank}-м месте, разница ${diff} ${pointsWord(diff)}.`,
-      link: `vsm:overtaken:${payload.runId}:${other.userId}`,
+      dedupKey: `overtaken:${payload.runId}:${other.userId}`,
     });
   }
 
@@ -483,7 +483,7 @@ export class LeaderboardService {
         kind: NotificationKind.challenge,
         title: `${season.title} завершён`,
         text: `Бригада «${place.name}» заняла ${rank}-е место.`,
-        link: `vsm:season-close:${season.id}:${member.id}`,
+        dedupKey: `season-close:${season.id}:${member.id}`,
       });
     }
   }

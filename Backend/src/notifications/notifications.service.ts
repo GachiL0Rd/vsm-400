@@ -18,6 +18,7 @@ import {
   type Notice,
   type NoticeDraft,
   type NoticePage,
+  type NoticeRow,
   notifyChannel,
   toNotice,
 } from './notice';
@@ -92,28 +93,9 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
     this.subscriber = null;
   }
 
-  /** Пишет уведомление. Повтор с тем же vsm:-маркером не создаёт вторую строку. */
+  /** Пишет уведомление. Повтор с тем же dedupKey не создаёт вторую строку. */
   async create(userId: string, draft: NoticeDraft): Promise<Notice> {
-    const saved = await this.prisma.$transaction(async (tx) => {
-      if (draft.link?.startsWith('vsm:')) {
-        const existing = await tx.notification.findFirst({
-          where: { userId, link: draft.link },
-        });
-        if (existing) {
-          return { row: existing, fresh: false as const };
-        }
-      }
-      const row = await tx.notification.create({
-        data: {
-          userId,
-          kind: draft.kind,
-          title: draft.title,
-          text: draft.text,
-          link: draft.link,
-        },
-      });
-      return { row, fresh: true as const };
-    });
+    const saved = await this.saveNotice(userId, draft);
     const notice = toNotice(saved.row);
     if (!saved.fresh) {
       return notice;
@@ -122,6 +104,44 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
     this.subjects.get(userId)?.next(notice);
     await this.publish(userId, notice);
     return notice;
+  }
+
+  private async saveNotice(
+    userId: string,
+    draft: NoticeDraft,
+  ): Promise<{ row: NoticeRow; fresh: boolean }> {
+    if (draft.dedupKey) {
+      const existing = await this.prisma.notification.findUnique({
+        where: { dedupKey: draft.dedupKey },
+      });
+      if (existing) {
+        return { row: existing, fresh: false };
+      }
+    }
+    try {
+      const row = await this.prisma.notification.create({
+        data: {
+          userId,
+          kind: draft.kind,
+          title: draft.title,
+          text: draft.text,
+          link: draft.link,
+          dedupKey: draft.dedupKey,
+        },
+      });
+      return { row, fresh: true };
+    } catch (error) {
+      if (!draft.dedupKey || !isUniqueViolation(error)) {
+        throw error;
+      }
+      const existing = await this.prisma.notification.findUnique({
+        where: { dedupKey: draft.dedupKey },
+      });
+      if (!existing) {
+        throw error;
+      }
+      return { row: existing, fresh: false };
+    }
   }
 
   async list(userId: string, limit: number, cursor?: string): Promise<NoticePage> {
@@ -251,4 +271,8 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
       this.logger.error(error instanceof Error ? error.message : String(error));
     }
   }
+}
+
+function isUniqueViolation(error: unknown): boolean {
+  return typeof error === 'object' && error !== null && 'code' in error && error.code === 'P2002';
 }

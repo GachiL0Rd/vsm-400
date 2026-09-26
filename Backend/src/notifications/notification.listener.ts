@@ -23,12 +23,6 @@ export class NotificationListener {
   @OnEvent(ACHIEVEMENT_GRANTED, { async: true })
   async onAchievement(payload: AchievementGrantedPayload): Promise<void> {
     const title = `Получен знак «${payload.title}»`;
-    const existing = await this.prisma.notification.findFirst({
-      where: { userId: payload.userId, kind: NotificationKind.achievement, title },
-    });
-    if (existing) {
-      return;
-    }
     const run = await this.prisma.run.findFirst({
       where: { userId: payload.userId },
       orderBy: { finishedAt: 'desc' },
@@ -42,7 +36,8 @@ export class NotificationListener {
       kind: NotificationKind.achievement,
       title,
       text,
-      link: run ? `/runs/${run.id}` : `vsm:achievement:${payload.userId}:${payload.code}`,
+      link: run ? `/runs/${run.id}` : undefined,
+      dedupKey: `achievement:${payload.userId}:${payload.code}`,
     });
   }
 
@@ -58,7 +53,7 @@ export class NotificationListener {
       kind: NotificationKind.promotion,
       title: 'Рекомендовано повышение',
       text: `С «${from}» на «${to}».`,
-      link: `vsm:promo:${payload.recommendationId}`,
+      dedupKey: `promotion:${payload.recommendationId}`,
     });
     if (!user?.brigadeId) {
       return;
@@ -76,7 +71,7 @@ export class NotificationListener {
       kind: NotificationKind.promotion,
       title: 'Рекомендовано повышение',
       text: `#${callsign}: с «${from}» на «${to}».`,
-      link: `vsm:promo:${payload.recommendationId}:chief`,
+      dedupKey: `promotion:${payload.recommendationId}:chief`,
     });
   }
 
@@ -88,7 +83,7 @@ export class NotificationListener {
       kind: NotificationKind.assignment,
       title: 'Назначен сценарий',
       text,
-      link: `vsm:assignment:${payload.assignmentId}`,
+      dedupKey: `assignment:${payload.assignmentId}`,
     });
   }
 }

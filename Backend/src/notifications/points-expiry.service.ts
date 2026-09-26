@@ -123,9 +123,10 @@ export class PointsExpiryService {
     if (!row.expiresAt) {
       return false;
     }
-    const marker = `vsm:ledger:${row.id}`;
-    const existing = await this.prisma.notification.findFirst({
-      where: { userId: row.userId, kind: NotificationKind.expiring, link: marker },
+    const dedupKey = `ledger:${row.id}`;
+    const existing = await this.prisma.notification.findUnique({
+      where: { dedupKey },
+      select: { id: true },
     });
     if (existing) {
       return false;
@@ -134,7 +135,7 @@ export class PointsExpiryService {
       kind: NotificationKind.expiring,
       title: expiryTitle(row.amount, row.expiresAt),
       text: EXPIRY_HINT,
-      link: marker,
+      dedupKey,
     });
     return true;
   }
