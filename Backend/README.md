@@ -26,6 +26,16 @@ npm run start:dev
 `npm run verify` гоняет Biome, типы, тесты и сборку. База для тестов не нужна:
 health e2e подменяет Prisma и Redis.
 
+Образ API — отдельный профиль, dev-базу он не заменяет:
+
+```powershell
+docker compose --profile app up --build -d
+```
+
+У сервиса `backend` в сети compose свои `DATABASE_URL` (`postgres`) и
+`REDIS_URL` (`valkey`). С хоста: `http://127.0.0.1:3000/api/health`.
+Остановка без удаления томов: `docker compose --profile app down`.
+
 `npm run prisma:seed` проверяет соединение и печатает число пользователей.
 Наполнение депо, бригад и рейсов (SPEC §11) ждёт движок `step()` — история
 должна считаться им, а не ручными вставками.
