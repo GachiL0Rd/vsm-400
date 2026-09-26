@@ -4,6 +4,7 @@ import type { Prisma } from '../generated/prisma/client';
 import { Competency, type Grade, type Role, RunOutcome } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { RulesService } from '../rules/rules.service';
+import { isUniqueViolation, uniqueFields } from '../users/unique-violation';
 import { UsersService } from '../users/users.service';
 import type { UpsertEmployee } from './dto';
 import { extHashOf, loginFromExtHash } from './ext-hash';
@@ -132,10 +133,10 @@ export class EmployeesService {
     hash: string,
     input: UpsertEmployee,
   ): Promise<UpsertResult | 'retry' | undefined> {
-    if (!isP2002(error)) {
+    if (!isUniqueViolation(error)) {
       throw error;
     }
-    const targets = uniqueTargets(error);
+    const targets = uniqueFields(error);
     if (targets.some((target) => target.toLowerCase().includes('callsign'))) {
       return 'retry';
     }
@@ -328,26 +329,4 @@ function isLoginTaken(error: unknown): boolean {
     'code' in response &&
     response.code === 'LOGIN_TAKEN'
   );
-}
-
-function isP2002(error: unknown): boolean {
-  return typeof error === 'object' && error !== null && 'code' in error && error.code === 'P2002';
-}
-
-function uniqueTargets(error: unknown): string[] {
-  if (typeof error !== 'object' || error === null || !('meta' in error)) {
-    return [];
-  }
-  const meta = error.meta;
-  if (typeof meta !== 'object' || meta === null || !('target' in meta)) {
-    return [];
-  }
-  const target = meta.target;
-  if (typeof target === 'string') {
-    return [target];
-  }
-  if (!Array.isArray(target)) {
-    return [];
-  }
-  return target.filter((item): item is string => typeof item === 'string');
 }
