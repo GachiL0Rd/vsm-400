@@ -151,6 +151,7 @@ button {
 
 .btn--ghost:active {
   border-bottom-width: 2px;
+  margin-top: 0;
 }
 
 .btn[aria-disabled="true"] {
@@ -158,6 +159,12 @@ button {
   background: var(--cloud);
   color: var(--iron);
   cursor: not-allowed;
+}
+
+/* pointer-events: none убрал бы cursor: not-allowed, поэтому гасим только сдвиг :active. */
+.btn[aria-disabled="true"]:active {
+  border-bottom-width: 3px;
+  margin-top: 0;
 }
 
 /* Пары «подпись — значение» в строку */
