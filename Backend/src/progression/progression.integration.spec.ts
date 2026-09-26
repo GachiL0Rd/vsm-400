@@ -337,6 +337,25 @@ describe('прогрессия в базе', () => {
     expect(score.value).toBeCloseTo(52.4);
   });
 
+  it('шкала вне 0..100 делает рейс подозрительным и пишет аудит', async () => {
+    const user = await createUser();
+    const session = await createSession(user.id, new Date());
+    const payload = completed(user.id, session.id, summary({ loyalty: 140, safety: 80 }));
+
+    await recorder.onRunCompleted(payload);
+
+    const run = await prisma.run.findUniqueOrThrow({ where: { sessionId: session.id } });
+    expect(run.suspicious).toBe(true);
+    expect(run.points).toBe(0);
+    expect(run.loyalty).toBe(100);
+    expect(await prisma.pointLedger.count({ where: { runId: run.id, reason: 'RUN' } })).toBe(0);
+    const audit = await prisma.auditLog.findFirst({
+      where: { action: 'run.summary.invariant', target: session.id },
+    });
+    expect(audit?.actorType).toBe('SYSTEM');
+    expect(audit?.meta).toMatchObject({ violations: ['loyalty'], loyalty: 140 });
+  });
+
   it('прерванный рейс получает failPoints, а не формулу шкалы', async () => {
     const user = await createUser();
     const session = await createSession(user.id, new Date());
