@@ -44,6 +44,8 @@ export class ClientUI {
   private readonly details = node('div', 'details');
   private readonly dialogue = node('div', 'dialogue');
   private readonly footer = node('div', 'footer-actions');
+  private readonly dashboard = node('details', 'dashboard');
+  private readonly dashboardSummary = node('summary', 'dashboard-summary', 'Задачи и действия');
   private readonly retry = button('Повторить подключение', () => this.connection.connect());
   private selection: Selection | null = null;
   private dismissedDialogue: string | null = null;
@@ -70,16 +72,28 @@ export class ClientUI {
     const header = node('div', 'panel-header');
     header.append(node('h1', '', 'ВСМ · Смена 04'), this.status);
     panel.append(header, this.clock, this.metrics, this.message);
+    this.dashboard.open = window.innerWidth >= 760;
+    let wasNarrow = window.innerWidth < 760;
+    window.addEventListener('resize', () => {
+      const narrow = window.innerWidth < 760;
+      if (narrow !== wasNarrow) this.dashboard.open = !narrow;
+      wasNarrow = narrow;
+    });
+    this.dashboard.append(this.dashboardSummary);
     const taskSection = node('section', 'panel-section');
     taskSection.append(node('h2', '', 'Задачи'), this.tasks);
-    panel.append(taskSection);
+    this.dashboard.append(taskSection);
     const signalSection = node('section', 'panel-section');
     signalSection.append(node('h2', '', 'Наблюдения'), this.cues);
-    panel.append(signalSection);
+    this.dashboard.append(signalSection);
     const itemSection = node('section', 'panel-section');
     itemSection.append(node('h2', '', 'Предмет'), this.item);
-    panel.append(itemSection);
-    panel.append(this.footer);
+    this.dashboard.append(itemSection, this.footer);
+    this.dashboard.addEventListener('click', (event) => {
+      if (window.innerWidth < 760 && event.target instanceof HTMLButtonElement)
+        this.dashboard.open = false;
+    });
+    panel.append(this.dashboard);
 
     const detailPanel = node('div', 'detail-panel');
     detailPanel.append(this.details, this.dialogue);
@@ -90,6 +104,7 @@ export class ClientUI {
 
   select(selection: Selection): void {
     this.selection = selection;
+    this.scene.highlight(selection);
     this.dismissedDialogue = null;
     this.renderDetails(this.connection.getState().snapshot);
   }
@@ -129,6 +144,7 @@ export class ClientUI {
       snapshot.revision < (this.last?.revision ?? 0)
     ) {
       this.selection = null;
+      this.scene.highlight(null);
       this.dismissedDialogue = null;
       this.lastPoi = null;
       this.lastNpcs = null;
@@ -143,6 +159,8 @@ export class ClientUI {
     this.lastSnapshotSerial = state.snapshotSerial;
     if (this.last?.simulationTime !== snapshot.simulationTime) this.receivedAt = Date.now();
     this.last = snapshot;
+    const activeTasks = snapshot.tasks.filter((task) => task.state === 'open').length;
+    this.dashboardSummary.textContent = `Задачи ${activeTasks} · Сигналы ${snapshot.cues.length} · Действия`;
     this.refreshClock();
     this.metrics.textContent =
       snapshot.metrics === null
@@ -328,6 +346,7 @@ export class ClientUI {
         : undefined;
     if (poi === undefined && npc === undefined) {
       this.selection = null;
+      this.scene.highlight(null);
       return;
     }
     const target: PoiView | NpcView = poi ?? (npc as NpcView);
@@ -345,6 +364,7 @@ export class ClientUI {
     this.details.append(
       button('Закрыть', () => {
         this.selection = null;
+        this.scene.highlight(null);
         this.renderDetails(snapshot);
       }),
     );
@@ -406,6 +426,7 @@ export class ClientUI {
   private renderDebrief(snapshot: ObservableSnapshot): void {
     if (snapshot.debrief === null) return;
     this.selection = null;
+    this.scene.highlight(null);
     this.details.replaceChildren();
     this.details.append(node('h2', '', snapshot.debrief.title));
     addLine(
