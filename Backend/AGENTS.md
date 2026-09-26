@@ -7,13 +7,15 @@
 репозитории ещё нет. `Game/`, `Frontend/`, `Server/` и `Client/` отсюда не
 импортируются.
 
-Фаза каркаса держит инфраструктуру и контракт движка. Доменные модули
-(`auth`, `sessions`, `progression` и остальные из SPEC §2) появляются вместе с
-рабочим кодом, не пустыми папками.
+Доменные модули лежат в `src/`: `auth`, `users`, `org`, `scenarios`,
+`sessions`, `progression`, `achievements`, `leaderboard`, `notifications`,
+`analytics`, `cabinet`, `assignments`, `integration`, `audit`. Пустых папок
+«на будущее» нет.
 
 `src/engine/` — чистый TypeScript. Разрешены только `zod` и `node:crypto`.
 Nest, Prisma, Redis, Fastify и файловый IO туда не входят: пакет потом уедет
-в GameServer. `step()` в этой фазе нет, есть схема графа и типы состояния.
+в GameServer. Ход сессии: `createState`, `step`, `view`, `summarize`,
+`validateScenario`, `generateShift`. Их зовёт `src/sessions`.
 
 ## Среда и команды
 
@@ -38,6 +40,8 @@ npm run prisma:migrate
 npm run start:dev
 npm run verify
 ```
+
+На macOS и Linux вместо `copy` — `cp .env.example .env`.
 
 `verify` = `check:biome` + `tsc --noEmit` + `vitest run` + `nest build`.
 Юнит-тесты и e2e health ходят в моки, Postgres для них не поднимается.
