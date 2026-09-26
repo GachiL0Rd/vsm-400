@@ -33,6 +33,21 @@ describe('loadConfig', () => {
     expect(() => loadConfig({ ...valid, SEED_ENC_KEY: 'abcd' })).toThrow(/SEED_ENC_KEY/);
   });
 
+  it('в production требует COOKIE_SECURE=true', () => {
+    expect(() => loadConfig({ ...valid, NODE_ENV: 'production', COOKIE_SECURE: 'false' })).toThrow(
+      /COOKIE_SECURE/,
+    );
+    expect(() => loadConfig({ ...valid, NODE_ENV: 'production', COOKIE_SECURE: '' })).toThrow(
+      /COOKIE_SECURE/,
+    );
+    expect(
+      loadConfig({ ...valid, NODE_ENV: 'production', COOKIE_SECURE: 'true' }).cookieSecure,
+    ).toBe(true);
+    expect(
+      loadConfig({ ...valid, NODE_ENV: 'development', COOKIE_SECURE: 'false' }).cookieSecure,
+    ).toBe(false);
+  });
+
   it('разбирает allowlist вебхуков и считает пустое значение открытым', () => {
     expect(loadConfig(valid).webhookAllowedHosts).toEqual([]);
     expect(

@@ -51,6 +51,15 @@ const EnvSchema = z
       ),
     ),
   })
+  .superRefine((env, ctx) => {
+    if (env.NODE_ENV === 'production' && env.COOKIE_SECURE !== true) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['COOKIE_SECURE'],
+        message: 'в production нужен true',
+      });
+    }
+  })
   .transform((env) => ({
     nodeEnv: env.NODE_ENV,
     port: env.PORT,
