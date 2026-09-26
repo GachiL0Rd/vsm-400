@@ -10,6 +10,7 @@ import { configureApp } from '../src/configure-app';
 import { Grade, Role } from '../src/generated/prisma/client';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { RedisService } from '../src/redis/redis.service';
+import { redisDbFor, testDatabaseUrl, testRedisUrl } from './databases';
 
 type CookieBag = Map<string, { value: string; attrs: Record<string, string | true> }>;
 
@@ -63,14 +64,8 @@ describe('auth e2e', () => {
   let passwords: PasswordService;
 
   beforeAll(async () => {
-    process.env.DATABASE_URL = [
-      'postgresql://',
-      'vsm',
-      ':',
-      'vsm',
-      '@127.0.0.1:5433/vsm_auth',
-    ].join('');
-    process.env.REDIS_URL = 'redis://127.0.0.1:6379/2';
+    process.env.DATABASE_URL = testDatabaseUrl('auth');
+    process.env.REDIS_URL = testRedisUrl('auth');
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
     const adapter = new FastifyAdapter({ bodyLimit: 1_048_576 });
     app = moduleRef.createNestApplication(adapter, { logger: false });
@@ -79,7 +74,7 @@ describe('auth e2e', () => {
     await app.getHttpAdapter().getInstance().ready();
     const config = app.get<AppConfig>(APP_CONFIG);
     expect(config.databaseUrl).toContain('/vsm_auth');
-    expect(config.redisUrl.endsWith('/2')).toBe(true);
+    expect(config.redisUrl.endsWith(`/${redisDbFor('auth')}`)).toBe(true);
     prisma = app.get(PrismaService);
     redis = app.get(RedisService);
     passwords = app.get(PasswordService);
