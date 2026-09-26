@@ -1,0 +1,67 @@
+# Правила очков, уровней и грейдов. Считает progression, этот файл только параметры.
+#
+# Успешный рейс (SPEC §5):
+#   points = round((loyalty + safety) / 2 * difficultyMult[difficulty]
+#     + speedBonusMax * доля_неиспользованного_таймера
+#     - timeoutPenalty * timeouts)
+# Провал попытки — фикс failPoints, формула не применяется.
+#
+# Уровни 1–6: шаги 200, 250, 300, 350, 400, 500 (сумма 2000).
+# Уровень 7 зафиксирован демо кабинета: 2340 очков → 2000..3000.
+# Дальше ширина 1000, 1200, 1400, … Очки выше levelTo 15-го уровня остаются на 15.
+
+scoring:
+  difficultyMult:
+    "1": 1.0
+    "2": 1.5
+    "3": 2.0
+  speedBonusMax: 30
+  timeoutPenalty: 20
+  failPoints: 10
+
+levels:
+  - { level: 1, from: 0, to: 200 }
+  - { level: 2, from: 200, to: 450 }
+  - { level: 3, from: 450, to: 750 }
+  - { level: 4, from: 750, to: 1100 }
+  - { level: 5, from: 1100, to: 1500 }
+  - { level: 6, from: 1500, to: 2000 }
+  - { level: 7, from: 2000, to: 3000 }
+  - { level: 8, from: 3000, to: 4200 }
+  - { level: 9, from: 4200, to: 5600 }
+  - { level: 10, from: 5600, to: 7200 }
+  - { level: 11, from: 7200, to: 9000 }
+  - { level: 12, from: 9000, to: 11000 }
+  - { level: 13, from: 11000, to: 13200 }
+  - { level: 14, from: 13200, to: 15600 }
+  - { level: 15, from: 15600, to: 18200 }
+
+pointsTtlDays: 30
+expiryWarnDays: 3
+ewmaAlpha: 0.3
+
+# Совпадает с Frontend: WEAK_SCORE / FAIL_SCORE.
+weakScore: 50
+failScore: 30
+
+# Поля перехода задаёт SPEC. Цифры SPEC не фиксирует.
+# Демо (уровень 7) ещё проводник: старший начинается с 8.
+grades:
+  - from: TRAINEE
+    to: CONDUCTOR
+    minLevel: 3
+    minCompetency: 40
+    requiredCategories: [safety, service]
+    noSafetyFailsInLastRuns: 5
+  - from: CONDUCTOR
+    to: CONDUCTOR_SENIOR
+    minLevel: 8
+    minCompetency: 60
+    requiredCategories: [safety, medical, service, conflict]
+    noSafetyFailsInLastRuns: 8
+  - from: CONDUCTOR_SENIOR
+    to: INSTRUCTOR
+    minLevel: 12
+    minCompetency: 75
+    requiredCategories: [medical, conflict, safety, technical, service, security]
+    noSafetyFailsInLastRuns: 12
