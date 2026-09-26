@@ -19,6 +19,8 @@ export type LeaderRow = {
 };
 
 export type Leaderboard = {
+  seasonId: string;
+  /** Название недели, например «Сезон 39». Query ?season принимает seasonId. */
   season: string;
   endsAt: string;
   total: number;

@@ -19,6 +19,7 @@ const user: AuthUser = {
 describe('HTTP рейтинга', () => {
   let app: NestFastifyApplication;
   const board = vi.fn(async () => ({
+    seasonId: '018f1a2b-3c4d-7e5f-8a9b-0c1d2e3f4a5b',
     season: 'Сезон 39',
     endsAt: '2026-09-27T20:59:59.999Z',
     total: 1,
@@ -72,10 +73,24 @@ describe('HTTP рейтинга', () => {
     });
     expect(response.statusCode).toBe(200);
     expect(response.json()).toMatchObject({
+      seasonId: '018f1a2b-3c4d-7e5f-8a9b-0c1d2e3f4a5b',
       season: 'Сезон 39',
       total: 1,
       rows: [{ me: true, move: 2 }],
     });
+  });
+
+  it('query season передаёт id сезона', async () => {
+    const seasonId = '018f1a2b-3c4d-7e5f-8a9b-0c1d2e3f4a5c';
+    const response = await app
+      .getHttpAdapter()
+      .getInstance()
+      .inject({
+        method: 'GET',
+        url: `/api/v1/leaderboards/depot?season=${seasonId}`,
+      });
+    expect(response.statusCode).toBe(200);
+    expect(board).toHaveBeenCalledWith(user, 'depot', seasonId);
   });
 
   it('без пользователя 401, кривой сезон 422', async () => {

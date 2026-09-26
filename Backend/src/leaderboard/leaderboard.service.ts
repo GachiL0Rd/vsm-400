@@ -2,6 +2,7 @@ import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 import { Cron } from '@nestjs/schedule';
 import type { AuthUser } from '../auth/auth-user';
+import { Clock } from '../common/clock';
 import { RUN_RECORDED, type RunRecordedPayload } from '../common/events';
 import { NotificationKind, type Season } from '../generated/prisma/client';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -57,6 +58,7 @@ export class LeaderboardService {
     @Inject(RedisService) private readonly redis: RedisService,
     @Inject(SeasonsService) private readonly seasons: SeasonsService,
     @Inject(NotificationsService) private readonly notifications: NotificationsService,
+    @Inject(Clock) private readonly clock: Clock,
   ) {}
 
   @OnEvent(RUN_RECORDED, { async: true })
@@ -81,7 +83,8 @@ export class LeaderboardService {
     timeZone: 'Europe/Moscow',
     waitForCompletion: true,
   })
-  async closeSeason(now = new Date()): Promise<void> {
+  async closeSeason(at?: Date): Promise<void> {
+    const now = at ?? this.clock.now();
     const current = seasonWindow(now);
     const previous = seasonWindow(new Date(current.startsAt.getTime() - 1));
     const season = await this.prisma.season.findFirst({ where: { startsAt: previous.startsAt } });
@@ -103,7 +106,8 @@ export class LeaderboardService {
     timeZone: 'Europe/Moscow',
     waitForCompletion: true,
   })
-  async snapshotRanks(now = new Date()): Promise<void> {
+  async snapshotRanks(at?: Date): Promise<void> {
+    const now = at ?? this.clock.now();
     const season = await this.seasons.current(now);
     const brigades = await this.prisma.brigade.findMany({ select: { id: true } });
     for (const brigade of brigades) {
@@ -121,6 +125,9 @@ export class LeaderboardService {
       throw notFound('Неизвестный рейтинг', 'LEADERBOARD_SCOPE');
     }
     const season = await this.resolveSeason(seasonId);
+    if (scope === 'brigade' && !user.brigadeId) {
+      return emptyBoard(season);
+    }
     const scopeId = this.scopeId(user, scope);
     const ranked = await this.ranked(season, scope, scopeId);
     const shifts = await this.moves(season.id, scope, scopeId, ranked);
@@ -137,6 +144,7 @@ export class LeaderboardService {
       rows.push(presentRow(row, user.id));
     }
     return {
+      seasonId: season.id,
       season: season.title,
       endsAt: season.endsAt.toISOString(),
       total: withMove.length,
@@ -144,9 +152,9 @@ export class LeaderboardService {
     };
   }
 
-  async brigadePlace(user: AuthUser): Promise<{ rank: number; total: number }> {
+  async brigadePlace(user: AuthUser): Promise<{ rank: number | null; total: number }> {
     if (!user.brigadeId) {
-      throw notFound('Пользователь не в бригаде', 'NO_BRIGADE');
+      return { rank: null, total: 0 };
     }
     const depotId = user.depotId ?? (await this.depotIdOf(user.brigadeId));
     if (!depotId) {
@@ -514,6 +522,16 @@ function byBrigadePoints(left: BrigadeTotal, right: BrigadeTotal): number {
     return -1;
   }
   return 1;
+}
+
+function emptyBoard(season: Season): Leaderboard {
+  return {
+    seasonId: season.id,
+    season: season.title,
+    endsAt: season.endsAt.toISOString(),
+    total: 0,
+    rows: [],
+  };
 }
 
 function notFound(message: string, code: string): NotFoundException {
