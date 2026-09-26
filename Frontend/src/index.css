@@ -27,26 +27,33 @@
 }
 
 :root {
-  /* Нейтральная шкала: основа интерфейса. */
+  /* Лист схемы: тёплый бумажный фон, панели и заливки станций — белые. */
+  --paper: #f4f1ea;
   --white: #ffffff;
-  --cloud: #e8e8e6;
-  --line: #dcdcd9;
-  --smoke: #a3a5a8;
-  --iron: #6b6e73;
-  /* Основной цвет текста и контуров — графит, как ливрея поездов ВСМ. */
-  --ink: #25282c;
-  --ink-08: rgb(37 40 44 / 8%);
+  --cloud: #e7e2d6;
+  --line: #d6d0c4;
+  --smoke: #5e5870;
+  --iron: #514c63;
+  /* Текст и контуры — тёмный индиго, не чистый чёрный. */
+  --ink: #1a1430;
+  --ink-08: rgb(26 20 48 / 8%);
 
-  /* Единственный акцент — сигнальный оранжевый. Только действие и «вы здесь». */
-  --signal: #ff6700;
-  --signal-hover: #ff7a1f;
-  --signal-press: #e65c00;
+  /* Единственный акцент действия и маркер «вы здесь». Не цвет раздела. */
+  --signal: #c24100;
+  --signal-hover: #a33800;
+  --signal-press: #7e2a00;
 
-  /* Статусы по логике светофора */
-  --ok: #1f7a34;
-  --warn: #7a5900;
-  --warn-line: #f0cf5a;
-  --stop: #c62828;
+  /* Светофор. Норма тихая. Отклонение — сплошная плашка, не линия раздела. */
+  --ok: #0d5c30;
+  --warn: #6e4a00;
+  --warn-line: #6e4a00;
+  --stop: #7c1228;
+
+  /* Код линии раздела: только линейка, обводка и кружок станции. */
+  --route-shift: #c8102e;
+  --route-rating: #0057a8;
+  --route-profile: #0f8a40;
+  --route-feed: #8a4b2f;
 
   --font: "Moscow Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
 
@@ -61,13 +68,14 @@
 }
 
 html {
+  background: var(--paper);
   -webkit-text-size-adjust: 100%;
 }
 
 body {
   margin: 0;
   min-width: 320px;
-  background: var(--white);
+  background: var(--paper);
   color: var(--ink);
   font-family: var(--font);
   font-size: 16px;
@@ -91,7 +99,7 @@ button {
 }
 
 :focus-visible {
-  outline: 3px solid var(--signal);
+  outline: 3px solid var(--ink);
   outline-offset: 2px;
 }
 
@@ -122,12 +130,14 @@ button {
   padding: 13px 24px;
   border: 0;
   border-bottom: 3px solid var(--signal-press);
+  border-radius: 0;
   background: var(--signal);
-  color: var(--ink);
+  color: var(--white);
   font-size: 17px;
   font-weight: 700;
   text-decoration: none;
   cursor: pointer;
+  appearance: none;
 }
 
 .btn:hover {
@@ -142,6 +152,7 @@ button {
 .btn--ghost {
   border: 2px solid var(--ink);
   background: var(--white);
+  color: var(--ink);
 }
 
 .btn--ghost:hover {
