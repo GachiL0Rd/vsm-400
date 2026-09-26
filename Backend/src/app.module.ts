@@ -14,6 +14,7 @@ import { OrgModule } from './org/org.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { RedisModule } from './redis/redis.module';
 import { RulesModule } from './rules/rules.module';
+import { ScenariosModule } from './scenarios/scenarios.module';
 import { UsersModule } from './users/users.module';
 
 @Module({
@@ -28,6 +29,7 @@ import { UsersModule } from './users/users.module';
     AuthModule,
     UsersModule,
     OrgModule,
+    ScenariosModule,
     NotificationsModule,
     LeaderboardModule,
     HealthModule,

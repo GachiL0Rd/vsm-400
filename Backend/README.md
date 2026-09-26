@@ -128,3 +128,16 @@ SameSite=Strict). Оба HttpOnly, флаг Secure берётся из `COOKIE_S
 - `GET /api/v1/notifications` — `{ unreadCount, items, nextCursor }`. Элемент: `{ id, kind, title, text, at, unread, link? }`.
 - `POST /api/v1/notifications/:id/read`, `POST /api/v1/notifications/read-all`.
 - `GET /api/v1/notifications/stream` — SSE, событие `new-notification`, heartbeat 25 с.
+
+### Сценарии
+
+`content/scenarios/*.yaml` при старте пишется в `Scenario` и `ScenarioVersion`.
+Контрольная сумма — sha256 канонического JSON. Новая версия появляется только
+если файл изменился. Сценарии с диска получают статус `PUBLISHED`.
+
+| Метод | Путь | Кто |
+| --- | --- | --- |
+| GET | `/api/v1/scenarios` | любой залогиненный, без графа |
+| GET | `/api/v1/scenarios/:id` | методист и администратор, с графом |
+| PUT | `/api/v1/admin/scenarios/:id` | методист и администратор, новая версия |
+| POST | `/api/v1/admin/scenarios/:id/status` | методист и администратор, тело `{status}` |
