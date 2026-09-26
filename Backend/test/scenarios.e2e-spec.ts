@@ -26,6 +26,9 @@ describe('сценарии', () => {
     delete process.env.DATABASE_URL;
     delete process.env.REDIS_URL;
     process.loadEnvFile('.env');
+    // Своя база: кабинет в том же прогоне пишет сценарии в vsm_cabinet.
+    const databaseUrl = process.env.DATABASE_URL ?? '';
+    process.env.DATABASE_URL = databaseUrl.replace(/\/vsm$/, '/vsm_scenarios');
 
     const moduleRef = await Test.createTestingModule({
       imports: [AppModule],

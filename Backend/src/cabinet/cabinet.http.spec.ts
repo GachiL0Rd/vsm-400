@@ -140,7 +140,8 @@ describe('кабинет, аналитика, назначения', () => {
   let mainCallsign = '';
 
   beforeAll(async () => {
-    process.env.DATABASE_URL = readEnv('DATABASE_URL');
+    // Своя база: параллельный sync сценариев в общую vsm ловит гонку по версии.
+    process.env.DATABASE_URL = readEnv('DATABASE_URL').replace(/\/vsm$/, '/vsm_cabinet');
     process.env.REDIS_URL = readEnv('REDIS_URL');
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
       .overrideProvider(AccessGuard)
@@ -698,6 +699,12 @@ describe('кабинет, аналитика, назначения', () => {
       });
       await prisma.userAchievement.deleteMany({ where: { userId: { in: userIds } } });
       await prisma.competencyScore.deleteMany({ where: { userId: { in: userIds } } });
+      await prisma.notification.deleteMany({ where: { userId: { in: userIds } } });
+      await prisma.seasonScore.deleteMany({ where: { userId: { in: userIds } } });
+      await prisma.promotionRecommendation.deleteMany({
+        where: { OR: [{ userId: { in: userIds } }, { decidedById: { in: userIds } }] },
+      });
+      await prisma.authSession.deleteMany({ where: { userId: { in: userIds } } });
       await prisma.user.deleteMany({ where: { id: { in: userIds } } });
     }
     if (depotId) {

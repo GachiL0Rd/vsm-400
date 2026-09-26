@@ -204,6 +204,10 @@ export class MemoryPrisma {
 
   readonly brigade = {
     findUnique: (args: Args) => {
+      const id = args.where?.id;
+      if (typeof id === 'string') {
+        return this.brigades.find((brigade) => brigade.id === id) ?? null;
+      }
       const key = args.where?.depotId_code;
       if (typeof key !== 'object' || key === null) {
         return null;
