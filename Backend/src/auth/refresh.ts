@@ -17,6 +17,7 @@ export type RefreshOutcome =
   | { kind: 'missing' }
   | { kind: 'invalid' }
   | { kind: 'reuse'; userId: string }
+  | { kind: 'password' }
   | { kind: 'ok'; refresh: string; user: SessionUser };
 
 export async function rotateRefresh(
@@ -37,6 +38,9 @@ export async function rotateRefresh(
   }
   if (session.revokedAt || session.expiresAt.getTime() <= Date.now() || session.user.disabledAt) {
     return { kind: 'invalid' };
+  }
+  if (session.user.mustChangePassword) {
+    return { kind: 'password' };
   }
   const refresh = randomToken();
   const next = await tx.authSession.create({

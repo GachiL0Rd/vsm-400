@@ -315,6 +315,11 @@ describe('auth e2e', () => {
     const cabinet = await inject('GET', '/api/v1/me', { cookie });
     expect(cabinet.statusCode).toBe(403);
     expect(problem(cabinet).code).toBe('PASSWORD_CHANGE_REQUIRED');
+    const refreshed = await inject('POST', '/api/v1/auth/refresh', { cookie });
+    expect(refreshed.statusCode).toBe(403);
+    expect(problem(refreshed).code).toBe('PASSWORD_CHANGE_REQUIRED');
+    const still = await inject('GET', '/api/v1/auth/session', { cookie });
+    expect(still.statusCode).toBe(200);
     const weak = await inject('POST', '/api/v1/auth/password', {
       cookie,
       payload: { current: password, next: 'short' },

@@ -1,4 +1,10 @@
-import { BadRequestException, Inject, Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Inject,
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { AuditService } from '../audit/audit.service';
 import { ActorType, type Grade, type Role } from '../generated/prisma/client';
@@ -72,6 +78,12 @@ export class AuthService {
         ip: meta.ip,
       });
       throw new UnauthorizedException({ message: 'Сессия отозвана', code: 'REFRESH_REUSE' });
+    }
+    if (outcome.kind === 'password') {
+      throw new ForbiddenException({
+        message: 'Сначала смените пароль',
+        code: 'PASSWORD_CHANGE_REQUIRED',
+      });
     }
     if (outcome.kind !== 'ok') {
       throw invalidRefresh();
