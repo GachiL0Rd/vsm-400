@@ -258,8 +258,13 @@ if [[ -n "${ADMIN_PASSWORD:-}" ]]; then
   [[ "$(jq -r '.user.mustChangePassword' "$admin_login")" == "true" ]] || die "admin без смены пароля" "$admin_login"
   admin_me="$WORK/admin-me.json"
   code="$(curl -sS --max-time 30 -o "$admin_me" -w '%{http_code}' -b "$ADMIN_JAR" -c "$ADMIN_JAR" "$BASE/api/v1/me")"
-  expect "$code" 200 "GET /me admin" "$admin_me"
-  step "login admin mustChangePassword=true"
+  expect "$code" 403 "GET /me admin при смене пароля" "$admin_me"
+  [[ "$(jq -r '.code' "$admin_me")" == "PASSWORD_CHANGE_REQUIRED" ]] || die "кабинет admin открыт" "$admin_me"
+  admin_session="$WORK/admin-session.json"
+  code="$(curl -sS --max-time 30 -o "$admin_session" -w '%{http_code}' -b "$ADMIN_JAR" -c "$ADMIN_JAR" "$BASE/api/v1/auth/session")"
+  expect "$code" 200 "GET /auth/session admin" "$admin_session"
+  [[ "$(jq -r '.role' "$admin_session")" == "ADMIN" ]] || die "session admin без роли" "$admin_session"
+  step "login admin: кабинет закрыт, session открыта"
 else
   echo "skip login admin (нет ADMIN_PASSWORD)"
 fi
