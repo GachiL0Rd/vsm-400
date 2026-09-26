@@ -12,6 +12,9 @@
 - `../docs/user/vsm_baseline_vertical_slice.md` — первый целевой срез;
 - `../docs/user/project_direction.md` — границы модулей и переносимой логики.
 
+В ветке `feature/mechanics-playground` первичная реализация ведётся по
+[`docs/agent/mechanics-playground-plan.md`](docs/agent/mechanics-playground-plan.md).
+
 Необязательные локальные инструменты и их параметры описаны в
 `docs/agent/tools.md`.
 
@@ -27,6 +30,18 @@
 - Phaser: **4.2.1**.
 - TypeScript: **5.9.3**.
 - Vite: **8.3.1**.
+
+## Phaser Skills и проверка API
+
+Работаем с Phaser 4. Перед изменениями используйте релевантный skill из
+официального набора `phaserjs/phaser/skills` по правилам в `../AGENTS.md`:
+`scenes` для lifecycle сцены, `loading-assets` для ассетов, `animations`
+для анимаций, `physics-arcade` для коллизий, `tilemaps` для Tiled,
+`input-keyboard-mouse-touch` для управления.
+
+Не используйте API, если не уверены, что он существует в установленном
+Phaser 4.2.1. Перед новым вызовом Phaser API объясните, почему он подходит,
+и проверьте его в типах/исходниках пакета или официальной документации.
 
 Из каталога `Game/`:
 

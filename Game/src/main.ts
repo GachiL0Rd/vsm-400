@@ -1,36 +1,25 @@
 import Phaser from 'phaser';
+import { GameScene } from './client/GameScene';
+import './style.css';
 
-class BootScene extends Phaser.Scene {
-  constructor() {
-    super('BootScene');
-  }
+const gameRoot = document.getElementById('game');
+const uiRoot = document.getElementById('ui');
+if (gameRoot === null || uiRoot === null) throw new Error('Game shell is missing.');
 
-  create(): void {
-    const label = this.add
-      .text(0, 0, 'Phaser ready', {
-        color: '#ffffff',
-        fontFamily: 'Arial, sans-serif',
-        fontSize: '24px',
-      })
-      .setOrigin(0.5);
+const configuredUrl =
+  document.querySelector<HTMLMetaElement>('meta[name="game-websocket"]')?.content ||
+  import.meta.env.VITE_GAME_WS_URL;
+const socketUrl =
+  configuredUrl ||
+  (import.meta.env.DEV
+    ? `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/game-ws`
+    : '');
 
-    const centerLabel = (size: { width: number; height: number }): void => {
-      label.setPosition(size.width / 2, size.height / 2);
-    };
-
-    centerLabel(this.scale.gameSize);
-    this.scale.on(Phaser.Scale.Events.RESIZE, centerLabel);
-  }
-}
-
-new Phaser.Game({
+export const game = new Phaser.Game({
   type: Phaser.AUTO,
-  parent: 'game',
-  width: window.innerWidth,
-  height: window.innerHeight,
-  backgroundColor: '#10151c',
-  scale: {
-    mode: Phaser.Scale.RESIZE,
-  },
-  scene: [BootScene],
+  parent: gameRoot,
+  backgroundColor: '#10232c',
+  scale: { mode: Phaser.Scale.RESIZE, width: window.innerWidth, height: window.innerHeight },
+  render: { pixelArt: false, antialias: true },
+  scene: [new GameScene(uiRoot, socketUrl)],
 });
