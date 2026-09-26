@@ -1,5 +1,6 @@
 import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { z } from 'zod';
+import { AchievementsService } from '../achievements/achievements.service';
 import type { Competency } from '../engine/schema';
 import type { Prisma } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -45,6 +46,7 @@ export class CabinetService {
   constructor(
     @Inject(PrismaService) private readonly prisma: PrismaService,
     @Inject(RulesService) private readonly rules: RulesService,
+    @Inject(AchievementsService) private readonly achievementList: AchievementsService,
   ) {}
 
   async profile(userId: string, now = new Date()): Promise<ProfileResponse> {
@@ -155,21 +157,7 @@ export class CabinetService {
 
   async achievements(userId: string): Promise<AchievementResponse[]> {
     await this.requireUser(userId);
-    const [catalog, mine] = await Promise.all([
-      this.prisma.achievement.findMany({ orderBy: { code: 'asc' } }),
-      this.prisma.userAchievement.findMany({ where: { userId } }),
-    ]);
-    const byCode = new Map(mine.map((row) => [row.code, row]));
-    const visible: AchievementResponse[] = [];
-    for (const item of catalog) {
-      const progress = byCode.get(item.code);
-      const earnedAt = progress?.earnedAt ?? null;
-      if (item.hidden && !earnedAt) {
-        continue;
-      }
-      visible.push(presentAchievement(item, progress));
-    }
-    return visible;
+    return this.achievementList.listForUser(userId);
   }
 
   async compare(userId: string, now = new Date()): Promise<CompareResponse> {
@@ -424,20 +412,4 @@ function groupLedger(rows: readonly (LedgerRow & { userId: string })[]): Map<str
     }
   }
   return grouped;
-}
-
-function presentAchievement(
-  item: { code: string; title: string; description: string; total: number | null },
-  progress: { progress: number; earnedAt: Date | null } | undefined,
-): AchievementResponse {
-  const view: AchievementResponse = {
-    code: item.code,
-    title: item.title,
-    description: item.description,
-    earnedAt: progress?.earnedAt ? progress.earnedAt.toISOString() : null,
-  };
-  if (item.total !== null) {
-    view.progress = { value: progress?.progress ?? 0, total: item.total };
-  }
-  return view;
 }

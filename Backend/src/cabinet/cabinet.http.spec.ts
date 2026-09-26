@@ -119,7 +119,6 @@ describe('кабинет, аналитика, назначения', () => {
   const seen: AssignmentCreatedPayload[] = [];
   const userIds: string[] = [];
   const scenarioIds: string[] = [];
-  const achievementCodes: string[] = [];
   let depotId = '';
   let brigadeA = '';
   let brigadeB = '';
@@ -568,36 +567,18 @@ describe('кабинет, аналитика, назначения', () => {
       },
     });
 
-    earnedCode = `earned-${tag}`;
-    openCode = `open-${tag}`;
-    hiddenCode = `hid-${tag}`;
-    achievementCodes.push(earnedCode, openCode, hiddenCode);
-    await prisma.achievement.create({
-      data: { code: earnedCode, title: 'До посадки', description: 'Найти до посадки', rule: {} },
+    earnedCode = 'handover';
+    openCode = 'detail';
+    hiddenCode = 'seal';
+    await prisma.userAchievement.upsert({
+      where: { userId_code: { userId: mainUser.id, code: earnedCode } },
+      create: { userId: mainUser.id, code: earnedCode, progress: 1, earnedAt: past },
+      update: { progress: 1, earnedAt: past },
     });
-    await prisma.achievement.create({
-      data: {
-        code: openCode,
-        title: 'Под лупой',
-        description: 'Пять находок',
-        rule: {},
-        total: 5,
-      },
-    });
-    await prisma.achievement.create({
-      data: {
-        code: hiddenCode,
-        title: 'Скрытый',
-        description: 'Не показывать',
-        rule: {},
-        hidden: true,
-      },
-    });
-    await prisma.userAchievement.create({
-      data: { userId: mainUser.id, code: earnedCode, progress: 1, earnedAt: past },
-    });
-    await prisma.userAchievement.create({
-      data: { userId: mainUser.id, code: openCode, progress: 2 },
+    await prisma.userAchievement.upsert({
+      where: { userId_code: { userId: mainUser.id, code: openCode } },
+      create: { userId: mainUser.id, code: openCode, progress: 2, earnedAt: null },
+      update: { progress: 2, earnedAt: null },
     });
 
     scenarioForDecisions = escId;
@@ -714,9 +695,6 @@ describe('кабинет, аналитика, назначения', () => {
     if (scenarioIds.length > 0) {
       await prisma.scenarioVersion.deleteMany({ where: { scenarioId: { in: scenarioIds } } });
       await prisma.scenario.deleteMany({ where: { id: { in: scenarioIds } } });
-    }
-    if (achievementCodes.length > 0) {
-      await prisma.achievement.deleteMany({ where: { code: { in: achievementCodes } } });
     }
   }
 });
