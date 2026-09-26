@@ -19,6 +19,7 @@ const claimsSchema = z.object({
   role: z.enum(['CONDUCTOR', 'CHIEF', 'METHODIST', 'ADMIN']),
   bid: z.string().nullable(),
   did: z.string().nullable(),
+  sid: z.uuid(),
 });
 
 type AccessRequest = {
@@ -44,6 +45,7 @@ export class AccessGuard implements CanActivate {
       return true;
     }
     const claims = await this.readClaims(request);
+    await this.assertSession(claims.sid, claims.sub);
     const row = await this.loadUser(claims.sub);
     request.user = {
       id: row.id,
@@ -94,6 +96,25 @@ export class AccessGuard implements CanActivate {
       });
     }
     return parsed.data;
+  }
+
+  private async assertSession(sid: string, userId: string): Promise<void> {
+    const session = await this.prisma.authSession.findUnique({
+      where: { id: sid },
+      select: { userId: true, revokedAt: true, replacedById: true, expiresAt: true },
+    });
+    if (
+      !session ||
+      session.userId !== userId ||
+      session.revokedAt ||
+      session.replacedById ||
+      session.expiresAt.getTime() <= Date.now()
+    ) {
+      throw new UnauthorizedException({
+        message: 'Сессия отозвана',
+        code: 'SESSION_REVOKED',
+      });
+    }
   }
 
   private async loadUser(id: string) {

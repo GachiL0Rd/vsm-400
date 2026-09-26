@@ -89,7 +89,7 @@ export class AuthService {
       throw invalidRefresh();
     }
     return {
-      access: await this.signAccess(outcome.user),
+      access: await this.signAccess(outcome.user, outcome.sessionId),
       refresh: outcome.refresh,
       user: toLoginUser(outcome.user),
     };
@@ -142,7 +142,7 @@ export class AuthService {
     }
     const passwordHash = await this.passwords.hash(next);
     const refresh = randomToken();
-    await this.prisma.$transaction(async (tx) => {
+    const sessionId = await this.prisma.$transaction(async (tx) => {
       await tx.user.update({
         where: { id: userId },
         data: { passwordHash, mustChangePassword: false },
@@ -151,7 +151,7 @@ export class AuthService {
         where: { userId, revokedAt: null },
         data: { revokedAt: new Date() },
       });
-      await tx.authSession.create({
+      const created = await tx.authSession.create({
         data: {
           userId,
           refreshHash: sha256(refresh),
@@ -159,7 +159,9 @@ export class AuthService {
           ip: meta.ip,
           expiresAt: new Date(Date.now() + REFRESH_TTL_SEC * 1000),
         },
+        select: { id: true },
       });
+      return created.id;
     });
     await this.audit.log({
       actorType: ActorType.USER,
@@ -170,7 +172,7 @@ export class AuthService {
     });
     const nextUser = { ...user, mustChangePassword: false };
     return {
-      access: await this.signAccess(nextUser),
+      access: await this.signAccess(nextUser, sessionId),
       refresh,
       user: toLoginUser(nextUser),
     };
@@ -178,7 +180,7 @@ export class AuthService {
 
   private async issue(user: SessionUser, meta: SessionMeta): Promise<IssuedSession> {
     const refresh = randomToken();
-    await this.prisma.authSession.create({
+    const session = await this.prisma.authSession.create({
       data: {
         userId: user.id,
         refreshHash: sha256(refresh),
@@ -186,20 +188,22 @@ export class AuthService {
         ip: meta.ip,
         expiresAt: refreshExpiry(),
       },
+      select: { id: true },
     });
     return {
-      access: await this.signAccess(user),
+      access: await this.signAccess(user, session.id),
       refresh,
       user: toLoginUser(user),
     };
   }
 
-  private signAccess(user: SessionUser): Promise<string> {
+  private signAccess(user: SessionUser, sessionId: string): Promise<string> {
     return this.jwt.signAsync({
       sub: user.id,
       role: user.role,
       bid: user.brigadeId,
       did: user.brigade?.depotId ?? null,
+      sid: sessionId,
     });
   }
 }

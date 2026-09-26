@@ -18,7 +18,7 @@ export type RefreshOutcome =
   | { kind: 'invalid' }
   | { kind: 'reuse'; userId: string }
   | { kind: 'password' }
-  | { kind: 'ok'; refresh: string; user: SessionUser };
+  | { kind: 'ok'; refresh: string; user: SessionUser; sessionId: string };
 
 export async function rotateRefresh(
   tx: Prisma.TransactionClient,
@@ -61,7 +61,7 @@ export async function rotateRefresh(
     await revokeLiveSessions(tx, session.userId);
     return { kind: 'reuse', userId: session.userId };
   }
-  return { kind: 'ok', refresh, user: session.user };
+  return { kind: 'ok', refresh, user: session.user, sessionId: next.id };
 }
 
 export async function revokeLiveSessions(

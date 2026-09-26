@@ -197,12 +197,14 @@ describe('auth e2e', () => {
       role: string;
       bid: string | null;
       did: string | null;
+      sid: string;
       exp: number;
       iat: number;
     };
     expect(payload).toMatchObject({ sub: user.id, role: Role.CONDUCTOR, bid: null, did: null });
     expect(payload.exp - payload.iat).toBe(900);
     const stored = await prisma.authSession.findFirstOrThrow({ where: { userId: user.id } });
+    expect(payload.sid).toBe(stored.id);
     expect(stored.refreshHash).toHaveLength(64);
     expect(stored.refreshHash).not.toBe(refresh?.value);
 
@@ -230,6 +232,15 @@ describe('auth e2e', () => {
     });
     expect(rotated.statusCode).toBe(200);
     const rotatedCookies = setCookies(rotated);
+    const stale = await inject('GET', '/api/v1/auth/session', {
+      authorization: `Bearer ${first.cookies.get('vsm_access')?.value ?? ''}`,
+    });
+    expect(stale.statusCode).toBe(401);
+    expect(problem(stale).code).toBe('SESSION_REVOKED');
+    const fresh = await inject('GET', '/api/v1/auth/session', {
+      authorization: `Bearer ${rotatedCookies.get('vsm_access')?.value ?? ''}`,
+    });
+    expect(fresh.statusCode).toBe(200);
     expect(rotatedCookies.get('vsm_refresh')?.value).not.toBe(
       first.cookies.get('vsm_refresh')?.value,
     );
@@ -271,6 +282,11 @@ describe('auth e2e', () => {
       cookie: `vsm_refresh=${session.cookies.get('vsm_refresh')?.value ?? ''}`,
     });
     expect(refresh.statusCode).toBe(401);
+    const access = await inject('GET', '/api/v1/auth/session', {
+      cookie: `vsm_access=${session.cookies.get('vsm_access')?.value ?? ''}`,
+    });
+    expect(access.statusCode).toBe(401);
+    expect(problem(access).code).toBe('SESSION_REVOKED');
   });
 
   it('без токена 401, чужая роль 403, публичный логин и health живы', async () => {
