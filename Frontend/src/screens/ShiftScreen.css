@@ -254,4 +254,8 @@
     width: 110px;
     font-size: 15px;
   }
+
+  .journal__points .visually-hidden {
+    display: none;
+  }
 }

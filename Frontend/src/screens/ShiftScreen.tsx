@@ -79,7 +79,7 @@ export function ShiftScreen() {
           </span>
         }
       >
-        <table className="journal">
+        <table className="journal" aria-labelledby="runs-title">
           <thead>
             <tr>
               <th scope="col">Дата</th>
@@ -124,7 +124,9 @@ function JournalRow({ run }: { run: Run }) {
       </td>
       <Score title="Безопасность" value={run.safety} />
       <Score title="Лояльность" value={run.loyalty} />
-      <td className="journal__num journal__points num">+{run.points}</td>
+      <td className="journal__num journal__points num">
+        <span className="visually-hidden">Баллы </span>+{run.points}
+      </td>
     </tr>
   );
 }

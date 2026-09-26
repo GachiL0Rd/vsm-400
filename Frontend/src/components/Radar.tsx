@@ -14,7 +14,10 @@ const polygon = (radii: number[]) => radii.map((r, i) => point(i, r).join(',')).
 
 export function Radar({ values }: { values: Competencies }) {
   const scores = COMPETENCIES.map((c) => values[c.id]);
-  const summary = COMPETENCIES.map((c) => `${c.title} ${values[c.id]}`).join(', ');
+  const summary = COMPETENCIES.map((c) => {
+    const value = values[c.id];
+    return value < WEAK_SCORE ? `${c.title} ${value}, проседает` : `${c.title} ${value}`;
+  }).join(', ');
 
   return (
     <svg

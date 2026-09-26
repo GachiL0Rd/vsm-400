@@ -227,6 +227,7 @@ function InsigniaBlock() {
               <b className="insignia__title">{a.title}</b>
               <span className="insignia__text">{a.description}</span>
               {a.earnedAt && <span className="label">Получен {formatDate(a.earnedAt)}</span>}
+              {!a.earnedAt && <span className="visually-hidden">Не получен.</span>}
               {!a.earnedAt && a.progress && (
                 <div className="insignia__progress">
                   <Meter
