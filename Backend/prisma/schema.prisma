@@ -1,0 +1,577 @@
+// Модель SPEC §4. uuid(7) генерирует Prisma (в SQL колонка uuid без DEFAULT).
+// onDelete не задан: у Prisma обязательные связи Restrict, необязательные SetNull.
+// CHECK на difficulty 1..3 в Prisma Migrate нет — граница в схеме сценария.
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  CONDUCTOR
+  CHIEF
+  METHODIST
+  ADMIN
+
+  @@map("role")
+}
+
+enum Grade {
+  TRAINEE
+  CONDUCTOR
+  CONDUCTOR_SENIOR
+  INSTRUCTOR
+
+  @@map("grade")
+}
+
+enum CarClass {
+  ECONOMY
+  FAMILY
+  BUSINESS
+  FIRST
+
+  @@map("car_class")
+}
+
+enum Competency {
+  safety
+  procedure
+  detection
+  reaction
+  service
+  escalation
+
+  @@map("competency")
+}
+
+enum Stage {
+  acceptance
+  boarding
+  enroute
+  stop
+  handover
+
+  @@map("stage")
+}
+
+enum RunOutcome {
+  completed
+  incident
+  terminated
+
+  @@map("run_outcome")
+}
+
+enum Verdict {
+  best
+  ok
+  worse
+  missed
+
+  @@map("verdict")
+}
+
+enum ScenarioStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+
+  @@map("scenario_status")
+}
+
+enum ShiftStatus {
+  PLANNED
+  STARTED
+  DONE
+  CANCELLED
+
+  @@map("shift_status")
+}
+
+enum GameSessionStatus {
+  PENDING
+  ACTIVE
+  COMPLETED
+  ABORTED
+  EXPIRED
+
+  @@map("game_session_status")
+}
+
+enum Transport {
+  REST
+  WS
+
+  @@map("transport")
+}
+
+enum WebhookDeliveryStatus {
+  PENDING
+  SENT
+  FAILED
+
+  @@map("webhook_delivery_status")
+}
+
+enum LedgerReason {
+  RUN
+  ACHIEVEMENT
+  CHALLENGE
+  EXPIRE
+  ADJUST
+
+  @@map("ledger_reason")
+}
+
+enum NotificationKind {
+  expiring
+  scenario
+  challenge
+  overtaken
+  advice
+  achievement
+  promotion
+  assignment
+
+  @@map("notification_kind")
+}
+
+enum PromotionStatus {
+  PENDING
+  APPROVED
+  REJECTED
+
+  @@map("promotion_status")
+}
+
+enum ActorType {
+  USER
+  API_CLIENT
+  SYSTEM
+  GAME_SERVER
+
+  @@map("actor_type")
+}
+
+model Depot {
+  id   String @id @default(uuid(7)) @db.Uuid
+  code String @unique
+  name String
+  city String
+
+  brigades Brigade[]
+
+  @@map("depot")
+}
+
+model Brigade {
+  id      String @id @default(uuid(7)) @db.Uuid
+  code    String
+  depotId String @db.Uuid
+  name    String
+
+  depot Depot  @relation(fields: [depotId], references: [id])
+  users User[]
+
+  @@unique([depotId, code])
+  @@index([depotId])
+  @@map("brigade")
+}
+
+model User {
+  id                 String    @id @default(uuid(7)) @db.Uuid
+  login              String    @unique
+  passwordHash       String
+  role               Role
+  callsign           String    @unique @db.VarChar(4)
+  extHash            String?   @unique
+  position           String
+  grade              Grade
+  brigadeId          String?   @db.Uuid
+  mustChangePassword Boolean   @default(false)
+  disabledAt         DateTime?
+  createdAt          DateTime  @default(now())
+  lastRunAt          DateTime?
+  streakDays         Int       @default(0)
+
+  brigade                   Brigade?                  @relation(fields: [brigadeId], references: [id])
+  authSessions              AuthSession[]
+  assignedShifts            ShiftAssignment[]         @relation("AssignedShifts")
+  createdAssignments        ShiftAssignment[]         @relation("CreatedAssignments")
+  gameSessions              GameSession[]
+  runs                      Run[]
+  competencyScores          CompetencyScore[]
+  pointLedger               PointLedger[]
+  achievements              UserAchievement[]
+  seasonScores              SeasonScore[]
+  notifications             Notification[]
+  promotionRecommendations  PromotionRecommendation[] @relation("PromotionSubject")
+  decidedPromotions         PromotionRecommendation[] @relation("PromotionDecider")
+  scenarioVersions          ScenarioVersion[]
+
+  @@index([brigadeId])
+  @@map("user")
+}
+
+model AuthSession {
+  id           String    @id @default(uuid(7)) @db.Uuid
+  userId       String    @db.Uuid
+  refreshHash  String    @unique
+  userAgent    String?
+  ip           String?
+  createdAt    DateTime  @default(now())
+  expiresAt    DateTime
+  revokedAt    DateTime?
+  replacedById String?   @db.Uuid
+
+  user         User          @relation(fields: [userId], references: [id])
+  replacedBy   AuthSession?  @relation("RefreshRotation", fields: [replacedById], references: [id])
+  replacements AuthSession[] @relation("RefreshRotation")
+
+  @@index([userId])
+  @@index([replacedById])
+  @@map("auth_session")
+}
+
+model ApiClient {
+  id        String    @id @default(uuid(7)) @db.Uuid
+  name      String
+  keyHash   String    @unique
+  scopes    String[]
+  createdAt DateTime  @default(now())
+  revokedAt DateTime?
+
+  webhooks WebhookSubscription[]
+
+  @@map("api_client")
+}
+
+model WebhookSubscription {
+  id          String   @id @default(uuid(7)) @db.Uuid
+  apiClientId String   @db.Uuid
+  url         String
+  events      String[]
+  secret      String
+  active      Boolean  @default(true)
+
+  apiClient  ApiClient         @relation(fields: [apiClientId], references: [id])
+  deliveries WebhookDelivery[]
+
+  @@index([apiClientId])
+  @@map("webhook_subscription")
+}
+
+model WebhookDelivery {
+  id             String                @id @default(uuid(7)) @db.Uuid
+  subscriptionId String                @db.Uuid
+  event          String
+  payload        Json                  @db.JsonB
+  status         WebhookDeliveryStatus @default(PENDING)
+  attempts       Int                   @default(0)
+  nextAttemptAt  DateTime
+  lastError      String?
+  createdAt      DateTime              @default(now())
+
+  subscription WebhookSubscription @relation(fields: [subscriptionId], references: [id])
+
+  @@index([subscriptionId])
+  @@index([status, nextAttemptAt])
+  @@map("webhook_delivery")
+}
+
+model Scenario {
+  id             String         @id
+  title          String
+  category       String
+  carClasses     CarClass[]
+  difficulty     Int
+  competencies   Competency[]
+  status         ScenarioStatus @default(DRAFT)
+  currentVersion Int            @default(0)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  versions ScenarioVersion[]
+
+  @@map("scenario")
+}
+
+model ScenarioVersion {
+  scenarioId  String
+  version     Int
+  graph       Json     @db.JsonB
+  checksum    String
+  createdAt   DateTime @default(now())
+  createdById String?  @db.Uuid
+
+  scenario  Scenario @relation(fields: [scenarioId], references: [id])
+  createdBy User?    @relation(fields: [createdById], references: [id])
+
+  @@id([scenarioId, version])
+  @@index([createdById])
+  @@map("scenario_version")
+}
+
+model ShiftAssignment {
+  id           String       @id @default(uuid(7)) @db.Uuid
+  userId       String       @db.Uuid
+  assignedById String?      @db.Uuid
+  train        String
+  fromStation  String
+  toStation    String
+  stops        String[]
+  car          Int
+  carClass     CarClass
+  departureAt  DateTime
+  focus        Competency[]
+  scenarioIds  String[]
+  status       ShiftStatus  @default(PLANNED)
+  createdAt    DateTime     @default(now())
+
+  user       User          @relation("AssignedShifts", fields: [userId], references: [id])
+  assignedBy User?         @relation("CreatedAssignments", fields: [assignedById], references: [id])
+  sessions   GameSession[]
+
+  @@index([userId, status])
+  @@index([assignedById])
+  @@map("shift_assignment")
+}
+
+model GameSession {
+  id             String            @id @default(uuid(7)) @db.Uuid
+  userId         String            @db.Uuid
+  shiftId        String?           @db.Uuid
+  status         GameSessionStatus @default(PENDING)
+  transport      Transport
+  plan           Json              @db.JsonB
+  seedCommit     String
+  seedEnc        String
+  state          Json              @db.JsonB
+  seq            Int               @default(0)
+  nodeDeadlineAt DateTime?
+  startedAt      DateTime?
+  finishedAt     DateTime?
+  expiresAt      DateTime
+  flags          String[]
+  createdAt      DateTime          @default(now())
+
+  user   User             @relation(fields: [userId], references: [id])
+  shift  ShiftAssignment? @relation(fields: [shiftId], references: [id])
+  events GameEvent[]
+  run    Run?
+
+  @@index([userId, status])
+  @@index([shiftId])
+  @@index([expiresAt])
+  @@map("game_session")
+}
+
+model GameEvent {
+  id        BigInt   @id @default(autoincrement())
+  sessionId String   @db.Uuid
+  seq       Int
+  type      String
+  payload   Json     @db.JsonB
+  serverAt  DateTime @default(now())
+  clientAt  DateTime?
+
+  session GameSession @relation(fields: [sessionId], references: [id])
+
+  @@unique([sessionId, seq])
+  @@map("game_event")
+}
+
+model Run {
+  id              String     @id @default(uuid(7)) @db.Uuid
+  userId          String     @db.Uuid
+  sessionId       String     @unique @db.Uuid
+  train           String
+  route           String
+  car             Int
+  carClass        CarClass
+  outcome         RunOutcome
+  outcomeNote     String
+  loyalty         Int
+  safety          Int
+  politeness      Int
+  points          Int
+  playSeconds     Int
+  competencyDelta Json       @db.JsonB
+  facts           Json       @db.JsonB
+  suspicious      Boolean    @default(false)
+  finishedAt      DateTime
+
+  user      User          @relation(fields: [userId], references: [id])
+  session   GameSession   @relation(fields: [sessionId], references: [id])
+  decisions RunDecision[]
+  ledger    PointLedger[]
+
+  @@index([userId, finishedAt])
+  @@map("run")
+}
+
+model RunDecision {
+  id           String  @id @default(uuid(7)) @db.Uuid
+  runId        String  @db.Uuid
+  idx          Int
+  gameTime     String
+  stage        Stage
+  scenarioId   String
+  nodeId       String
+  choiceId     String
+  situation    String
+  action       String
+  verdict      Verdict
+  loyaltyDelta Int
+  safetyDelta  Int
+  reactionMs   Int?
+  consequence  String?
+  lucky        Boolean @default(false)
+  better       String?
+  basis        String?
+  deviation    Boolean @default(false)
+
+  run Run @relation(fields: [runId], references: [id])
+
+  @@unique([runId, idx])
+  @@map("run_decision")
+}
+
+model CompetencyScore {
+  userId     String     @db.Uuid
+  competency Competency
+  value      Float
+  updatedAt  DateTime   @updatedAt
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@id([userId, competency])
+  @@map("competency_score")
+}
+
+model PointLedger {
+  id        String       @id @default(uuid(7)) @db.Uuid
+  userId    String       @db.Uuid
+  amount    Int
+  reason    LedgerReason
+  runId     String?      @db.Uuid
+  createdAt DateTime     @default(now())
+  expiresAt DateTime?
+  expiredAt DateTime?
+
+  user User @relation(fields: [userId], references: [id])
+  run  Run? @relation(fields: [runId], references: [id])
+
+  @@index([userId, createdAt])
+  @@index([runId])
+  @@index([expiresAt])
+  @@map("point_ledger")
+}
+
+model Achievement {
+  code        String  @id
+  title       String
+  description String
+  rule        Json    @db.JsonB
+  total       Int?
+  hidden      Boolean @default(false)
+
+  users UserAchievement[]
+
+  @@map("achievement")
+}
+
+model UserAchievement {
+  userId   String    @db.Uuid
+  code     String
+  progress Int       @default(0)
+  earnedAt DateTime?
+
+  user        User        @relation(fields: [userId], references: [id])
+  achievement Achievement @relation(fields: [code], references: [code])
+
+  @@id([userId, code])
+  @@index([code])
+  @@map("user_achievement")
+}
+
+model Season {
+  id       String   @id @default(uuid(7)) @db.Uuid
+  title    String
+  startsAt DateTime
+  endsAt   DateTime
+
+  scores SeasonScore[]
+
+  @@map("season")
+}
+
+model SeasonScore {
+  seasonId String @db.Uuid
+  userId   String @db.Uuid
+  points   Int    @default(0)
+
+  season Season @relation(fields: [seasonId], references: [id])
+  user   User   @relation(fields: [userId], references: [id])
+
+  @@id([seasonId, userId])
+  @@index([userId])
+  @@map("season_score")
+}
+
+model Notification {
+  id        String           @id @default(uuid(7)) @db.Uuid
+  userId    String           @db.Uuid
+  kind      NotificationKind
+  title     String
+  text      String
+  link      String?
+  createdAt DateTime         @default(now())
+  readAt    DateTime?
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId, createdAt])
+  @@index([userId, readAt])
+  @@map("notification")
+}
+
+model PromotionRecommendation {
+  id          String          @id @default(uuid(7)) @db.Uuid
+  userId      String          @db.Uuid
+  fromGrade   Grade
+  toGrade     Grade
+  reasons     Json            @db.JsonB
+  status      PromotionStatus @default(PENDING)
+  createdAt   DateTime        @default(now())
+  decidedById String?         @db.Uuid
+  decidedAt   DateTime?
+
+  user      User  @relation("PromotionSubject", fields: [userId], references: [id])
+  decidedBy User? @relation("PromotionDecider", fields: [decidedById], references: [id])
+
+  @@index([userId, status])
+  @@index([decidedById])
+  @@map("promotion_recommendation")
+}
+
+model AuditLog {
+  id        BigInt    @id @default(autoincrement())
+  actorType ActorType
+  actorId   String?
+  action    String
+  target    String?
+  meta      Json?     @db.JsonB
+  ip        String?
+  at        DateTime  @default(now())
+
+  @@index([at])
+  @@index([actorType, actorId])
+  @@map("audit_log")
+}

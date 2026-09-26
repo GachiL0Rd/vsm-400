@@ -1,0 +1,41 @@
+# Локальные Postgres и Valkey. Пароль vsm — только для этой машины, не для prod.
+name: vsm-backend
+
+services:
+  postgres:
+    image: postgres:18
+    container_name: vsm-backend-postgres
+    environment:
+      POSTGRES_USER: vsm
+      POSTGRES_PASSWORD: vsm
+      POSTGRES_DB: vsm
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vsm -d vsm"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+    restart: unless-stopped
+
+  valkey:
+    image: valkey/valkey:9
+    container_name: vsm-backend-valkey
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - valkey:/data
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+    restart: unless-stopped
+
+volumes:
+  postgres:
+  valkey:
