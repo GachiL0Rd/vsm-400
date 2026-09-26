@@ -8,6 +8,7 @@ import {
 import { Reflector } from '@nestjs/core';
 import type { JwtService } from '@nestjs/jwt';
 import { describe, expect, it, vi } from 'vitest';
+import { SystemClock } from '../common/clock';
 import type { AppConfig } from '../config/env';
 import { Role } from '../generated/prisma/client';
 import type { PrismaService } from '../prisma/prisma.service';
@@ -77,6 +78,7 @@ describe('AccessGuard', () => {
     reflector,
     { verifyAsync } as unknown as JwtService,
     { user: { findUnique }, authSession: { findUnique: findSession } } as unknown as PrismaService,
+    new SystemClock(),
   );
 
   it('пропускает @Public без токена и не смотрит на URL', async () => {

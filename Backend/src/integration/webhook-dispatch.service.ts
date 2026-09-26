@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 import { Cron, CronExpression } from '@nestjs/schedule';
+import { Clock } from '../common/clock';
 import {
   ACHIEVEMENT_GRANTED,
   type AchievementGrantedPayload,
@@ -60,6 +61,7 @@ export class WebhookDispatchService {
     @Inject(APP_CONFIG) private readonly config: AppConfig,
     @Inject(WEBHOOK_RESOLVE) private readonly resolve: WebhookResolve,
     @Inject(WEBHOOK_POST) private readonly post: WebhookPost,
+    @Inject(Clock) private readonly clock: Clock,
   ) {}
 
   /**
@@ -128,7 +130,7 @@ export class WebhookDispatchService {
 
   @Cron(CronExpression.EVERY_MINUTE, { name: 'integration-webhooks' })
   async dispatchDue(): Promise<void> {
-    await this.dispatch(new Date());
+    await this.dispatch(this.clock.now());
   }
 
   /** Флаг: минутный cron не должен догонять сам себя, пока fetch сидит в таймауте. */
@@ -185,7 +187,7 @@ export class WebhookDispatchService {
       },
       select: { id: true },
     });
-    const occurredAt = new Date().toISOString();
+    const occurredAt = this.clock.now().toISOString();
     for (const subscription of subscriptions) {
       await this.enqueueOne(subscription.id, event, data, occurredAt, duplicate);
     }
@@ -211,7 +213,7 @@ export class WebhookDispatchService {
         id,
         event,
         payload: { id, event, occurredAt, data },
-        nextAttemptAt: new Date(),
+        nextAttemptAt: this.clock.now(),
         subscription: { connect: { id: subscriptionId } },
       },
     });

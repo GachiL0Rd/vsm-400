@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { SystemClock } from '../common/clock';
 import type { PrismaService } from '../prisma/prisma.service';
 import { AuditService, PRIVACY_RETENTION_MS } from './audit.service';
 
@@ -7,10 +8,13 @@ describe('срок хранения', () => {
     const sessionUpdate = vi.fn(async () => ({ count: 1 }));
     const sessionDelete = vi.fn(async () => ({ count: 2 }));
     const auditUpdate = vi.fn(async () => ({ count: 3 }));
-    const service = new AuditService({
-      authSession: { updateMany: sessionUpdate, deleteMany: sessionDelete },
-      auditLog: { updateMany: auditUpdate },
-    } as unknown as PrismaService);
+    const service = new AuditService(
+      {
+        authSession: { updateMany: sessionUpdate, deleteMany: sessionDelete },
+        auditLog: { updateMany: auditUpdate },
+      } as unknown as PrismaService,
+      new SystemClock(),
+    );
     const now = new Date('2026-09-27T00:00:00.000Z');
     await service.retainPrivacy(now);
     const cutoff = new Date(now.getTime() - PRIVACY_RETENTION_MS);

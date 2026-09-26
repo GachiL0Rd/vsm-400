@@ -19,10 +19,12 @@ describe('rotateRefresh', () => {
         delete: vi.fn(),
       },
     };
-    const outcome = await rotateRefresh(tx as unknown as Prisma.TransactionClient, 'raw-token', {
-      ip: null,
-      userAgent: null,
-    });
+    const outcome = await rotateRefresh(
+      tx as unknown as Prisma.TransactionClient,
+      'raw-token',
+      { ip: null, userAgent: null },
+      new Date('2026-09-27T12:00:00.000Z'),
+    );
     expect(outcome).toEqual({ kind: 'password' });
     expect(create).not.toHaveBeenCalled();
   });

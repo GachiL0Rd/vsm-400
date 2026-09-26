@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { AuditService } from '../audit/audit.service';
+import { Clock } from '../common/clock';
 import { ActorType, type Grade, type Role } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { PasswordService } from './password.service';
@@ -37,14 +38,16 @@ export class AuthService {
     @Inject(JwtService) private readonly jwt: JwtService,
     @Inject(PasswordService) private readonly passwords: PasswordService,
     @Inject(AuditService) private readonly audit: AuditService,
+    @Inject(Clock) private readonly clock: Clock,
   ) {}
 
   async login(
     login: string,
     password: string,
     meta: SessionMeta,
-    now = new Date(),
+    now?: Date,
   ): Promise<IssuedSession> {
+    const at = now ?? this.clock.now();
     const user = await this.prisma.user.findUnique({ where: { login }, ...withDepot });
     const valid = await this.passwords.verify(user?.passwordHash ?? null, password);
     if (!user || !valid || user.disabledAt) {
@@ -57,7 +60,7 @@ export class AuthService {
       });
       throw invalidCredentials();
     }
-    const issued = await this.issue(user, meta, now);
+    const issued = await this.issue(user, meta, at);
     await this.audit.log({
       actorType: ActorType.USER,
       actorId: user.id,
@@ -68,15 +71,12 @@ export class AuthService {
     return issued;
   }
 
-  async refresh(
-    raw: string | undefined,
-    meta: SessionMeta,
-    now = new Date(),
-  ): Promise<IssuedSession> {
+  async refresh(raw: string | undefined, meta: SessionMeta, now?: Date): Promise<IssuedSession> {
+    const at = now ?? this.clock.now();
     if (!raw) {
       throw invalidRefresh();
     }
-    const outcome = await this.prisma.$transaction((tx) => rotateRefresh(tx, raw, meta, now));
+    const outcome = await this.prisma.$transaction((tx) => rotateRefresh(tx, raw, meta, at));
     if (outcome.kind === 'reuse') {
       await this.audit.log({
         actorType: ActorType.USER,
@@ -103,7 +103,8 @@ export class AuthService {
     };
   }
 
-  async logout(raw: string | undefined, meta: SessionMeta, now = new Date()): Promise<void> {
+  async logout(raw: string | undefined, meta: SessionMeta, now?: Date): Promise<void> {
+    const at = now ?? this.clock.now();
     if (!raw) {
       return;
     }
@@ -116,7 +117,7 @@ export class AuthService {
     if (!session.revokedAt) {
       await this.prisma.authSession.update({
         where: { id: session.id },
-        data: { revokedAt: now },
+        data: { revokedAt: at },
       });
     }
     await this.audit.log({
@@ -133,8 +134,9 @@ export class AuthService {
     current: string,
     next: string,
     meta: SessionMeta,
-    now = new Date(),
+    now?: Date,
   ): Promise<IssuedSession> {
+    const at = now ?? this.clock.now();
     if (next.length < 10) {
       throw new BadRequestException({
         message: 'Пароль короче 10 символов',
@@ -158,7 +160,7 @@ export class AuthService {
       });
       await tx.authSession.updateMany({
         where: { userId, revokedAt: null },
-        data: { revokedAt: now },
+        data: { revokedAt: at },
       });
       const created = await tx.authSession.create({
         data: {
@@ -166,7 +168,7 @@ export class AuthService {
           refreshHash: sha256(refresh),
           userAgent: meta.userAgent,
           ip: meta.ip,
-          expiresAt: refreshExpiry(now),
+          expiresAt: refreshExpiry(at),
         },
         select: { id: true },
       });
@@ -187,11 +189,7 @@ export class AuthService {
     };
   }
 
-  private async issue(
-    user: SessionUser,
-    meta: SessionMeta,
-    now = new Date(),
-  ): Promise<IssuedSession> {
+  private async issue(user: SessionUser, meta: SessionMeta, now: Date): Promise<IssuedSession> {
     const refresh = randomToken();
     const session = await this.prisma.authSession.create({
       data: {

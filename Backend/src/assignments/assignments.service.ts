@@ -19,6 +19,7 @@ import {
   stationGenitive,
   upcomingShiftDate,
 } from '../cabinet/forecast';
+import { Clock } from '../common/clock';
 import { ASSIGNMENT_CREATED } from '../common/events';
 import type { Competency } from '../engine/schema';
 import { Role } from '../generated/prisma/client';
@@ -37,14 +38,16 @@ export class AssignmentsService {
   constructor(
     @Inject(PrismaService) private readonly prisma: PrismaService,
     @Inject(EventEmitter2) private readonly events: EventEmitter2,
+    @Inject(Clock) private readonly clock: Clock,
   ) {}
 
-  async create(actor: AuthUser, body: CreateAssignmentsBody, now = new Date()) {
+  async create(actor: AuthUser, body: CreateAssignmentsBody, now?: Date) {
+    const at = now ?? this.clock.now();
     await this.requireScenarios(body.scenarioIds);
     const members = await this.requireMembers(body.userIds);
     this.assertChiefBrigade(actor, members);
     const departureAt = body.departureAt ? new Date(body.departureAt) : null;
-    const date = departureAt ? moscowDate(departureAt) : upcomingShiftDate(actor.id, now);
+    const date = departureAt ? moscowDate(departureAt) : upcomingShiftDate(actor.id, at);
     const route = forecastRoute(actor.id, date);
     const when = departureAt ?? moscowDateTime(date, route.departure);
     const created = await this.prisma.$transaction((tx) =>

@@ -33,7 +33,8 @@ docker compose --profile app up --build -d
 ```
 
 У сервиса `backend` в сети compose свои `DATABASE_URL` (`postgres`) и
-`REDIS_URL` (`valkey`). С хоста: `http://127.0.0.1:3000/api/health`.
+`REDIS_URL` (`valkey`), `NODE_ENV=production` и `COOKIE_SECURE=true`.
+С хоста: `http://127.0.0.1:3000/api/health`.
 Остановка без удаления томов: `docker compose --profile app down`.
 
 `npm run prisma:seed` наполняет депо, бригады и историю рейсов. Повтор без
@@ -56,7 +57,7 @@ docker compose --profile app up --build -d
 | Переменная | Смысл |
 | --- | --- |
 | `NODE_ENV` | `development`, `test` или `production`. По умолчанию `development` |
-| `PORT` | HTTP-порт. По умолчанию `3000` |
+| `PORT` | HTTP-порт, целое 1..65535. По умолчанию `3000` |
 | `DATABASE_URL` | Строка Postgres (`postgres://` или `postgresql://`) |
 | `REDIS_URL` | Redis или Valkey (`redis://` или `rediss://`) |
 | `JWT_ACCESS_SECRET` | Секрет access-JWT, минимум 32 символа |
@@ -64,9 +65,12 @@ docker compose --profile app up --build -d
 | `GAME_SERVER_TOKEN` | Секрет заголовка `X-Service-Token`, минимум 16 символов |
 | `SEED_ENC_KEY` | 32 байта hex (64 символа), ключ AES-256-GCM для seed сессии |
 | `EXT_ID_PEPPER` | Перец HMAC табельного номера, минимум 16 символов. ФИО не хранится |
-| `CORS_ORIGINS` | Список origin через запятую |
+| `CORS_ORIGINS` | Список origin через запятую, хотя бы один |
 | `PUBLIC_GAME_WS_URL` | `ws://` или `wss://`, адрес GameServer для клиента |
-| `COOKIE_SECURE` | `true` или `false`. В prod — `true` |
+| `COOKIE_SECURE` | `true` или `false`. По умолчанию `false`. В `production` только `true`, иначе старт падает |
+| `TRUST_PROXY` | Целое 0..32. По умолчанию `0`: не верить `X-Forwarded-For`. Иначе число прокси перед приложением |
+| `WEBHOOK_ALLOWED_HOSTS` | Hostname через запятую. Пусто — пустой список, фильтр хоста не включается. Непустое значение — только эти хосты. URL сводится к hostname |
+| `BOOTSTRAP_ADMIN_PASSWORD` | Не поле zod-объекта, проверяет `loadConfig`. Пусто — случайный пароль. Иначе минимум 10 символов. В `production` любое значение роняет старт |
 
 Локальные Postgres и Valkey поднимает `docker-compose.yml`. На хост
 публикуются `127.0.0.1:${POSTGRES_PORT:-5432}` и
@@ -87,7 +91,7 @@ docker compose --profile app up --build -d
 | `npm run format` | Записать формат Biome |
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm test` | Vitest, включая e2e |
-| `npm run test:e2e` | Только `test/` |
+| `npm run test:e2e` | Проект `db`: кабинет, прогрессия, auth, сценарии, сессии |
 | `npm run prisma:generate` | Клиент в `src/generated/` |
 | `npm run prisma:migrate` | `migrate dev` |
 | `npm run prisma:deploy` | `migrate deploy` |
@@ -104,8 +108,10 @@ docker compose --profile app up --build -d
 SameSite=Lax) и `vsm_refresh` (32 байта, 7 суток, Path=/api/v1/auth,
 SameSite=Strict). Оба HttpOnly, флаг Secure берётся из `COOKIE_SECURE`.
 Неверный логин и неверный пароль отвечают одинаково: 401 `INVALID_CREDENTIALS`.
-На логин — 5 попыток в минуту на пару IP и логин. Счётчик лежит в Redis
-(`auth:throttle:*`, база из `REDIS_URL`).
+На логин — 20 попыток за 60 с на IP (IPv6 до /64) и 5 за 60 с на логин
+после trim и обрезки до 64 символов. `POST /api/v1/auth/password` — 5 за 60 с
+на пользователя. Число хопов `X-Forwarded-For` задаёт `TRUST_PROXY`. Счётчик
+лежит в Redis (`auth:throttle:*`, база из `REDIS_URL`).
 
 `POST /api/v1/auth/refresh` вращает refresh. Повтор уже заменённого токена
 отзывает все сессии пользователя и пишет аудит. `POST /api/v1/auth/logout`
@@ -114,16 +120,18 @@ SameSite=Strict). Оба HttpOnly, флаг Secure берётся из `COOKIE_S
 и отзывает остальные сессии. `GET /api/v1/auth/session` возвращает текущего
 пользователя.
 
-Пока `mustChangePassword=true`, доступны только пути `/auth/` и `/me`
-(403 `PASSWORD_CHANGE_REQUIRED`).
+Пока `mustChangePassword=true`, открыты только `POST /api/v1/auth/password`,
+`POST /api/v1/auth/logout` и `GET /api/v1/auth/session`
+(403 `PASSWORD_CHANGE_REQUIRED`). Refresh при этом флаге не ротирует сессию
+и не выдаёт access.
 
 Если в базе нет ни одного `ADMIN`, старт создаёт логин `admin`
 (`mustChangePassword=true`) и один раз печатает логин, пароль и
 `http://localhost:PORT/api/docs`. Пароль — `crypto.randomBytes(18)` в base64url,
-либо строка из `BOOTSTRAP_ADMIN_PASSWORD`. Этой переменной нет в zod-схеме
-`src/config`: схема чужая, bootstrap читает `process.env` напрямую.
-При `NODE_ENV=test` bootstrap не запускается, чтобы health-тесты с моком Prisma
-не падали.
+либо строка из `BOOTSTRAP_ADMIN_PASSWORD`. `loadConfig` роняет процесс, если
+значение короче 10 символов или задано при `NODE_ENV=production`. Пустое
+значение оставляет случайный пароль. При `NODE_ENV=test` bootstrap не
+запускается, чтобы health-тесты с моком Prisma не падали.
 
 Админ: `POST/GET /api/v1/admin/users`, `PATCH /api/v1/admin/users/:id`,
 `POST /api/v1/admin/users/:id/reset-password`, `GET /api/v1/admin/audit`.

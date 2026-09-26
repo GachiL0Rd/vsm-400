@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
 import { RoutesSchema } from '../engine/routes';
+import { contentFile } from '../rules/content-file';
 import { applyScores, brigadeRank, weakestCompetencies } from './competencies';
 import {
   addCalendarDays,
@@ -15,7 +16,7 @@ import {
 } from './forecast';
 
 function routesBook() {
-  return RoutesSchema.parse(parse(readFileSync('content/routes.yaml', 'utf8')));
+  return RoutesSchema.parse(parse(readFileSync(contentFile('routes.yaml'), 'utf8')));
 }
 
 describe('прогноз смены', () => {

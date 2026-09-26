@@ -1,8 +1,8 @@
 import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { parsePlainYaml } from '../../test/fixtures/plain-yaml';
 import { routeName } from '../../test/fixtures/route-name';
+import { contentFile } from '../rules/content-file';
 import { type CatalogEntry, generateShift } from './generator';
 import { createRng } from './rng';
 import { type Routes, RoutesSchema } from './routes';
@@ -29,7 +29,7 @@ function entry(
 }
 
 function loadRoutes(): Routes {
-  const text = readFileSync(join(process.cwd(), 'content/routes.yaml'), 'utf8');
+  const text = readFileSync(contentFile('routes.yaml'), 'utf8');
   return RoutesSchema.parse(parsePlainYaml(text));
 }
 

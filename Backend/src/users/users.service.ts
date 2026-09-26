@@ -3,6 +3,7 @@ import { ConflictException, Inject, Injectable, NotFoundException } from '@nestj
 import { AuditService } from '../audit/audit.service';
 import { PasswordService } from '../auth/password.service';
 import { isUuid } from '../auth/uuid';
+import { Clock } from '../common/clock';
 import { ActorType, type Grade, type Prisma, type Role } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { allocateCallsign } from './callsign';
@@ -54,6 +55,7 @@ export class UsersService {
     @Inject(PrismaService) private readonly prisma: PrismaService,
     @Inject(PasswordService) private readonly passwords: PasswordService,
     @Inject(AuditService) private readonly audit: AuditService,
+    @Inject(Clock) private readonly clock: Clock,
   ) {}
 
   async generateCallsign(): Promise<string> {
@@ -119,7 +121,8 @@ export class UsersService {
   ): Promise<UserProfile> {
     const current = await this.findActiveRecord(id);
     await this.assertBrigade(input.brigadeId);
-    const data = patchData(current.brigadeId, input);
+    const now = this.clock.now();
+    const data = patchData(current.brigadeId, input, now);
     const updated = await this.prisma.user.update({
       where: { id },
       data,
@@ -128,7 +131,7 @@ export class UsersService {
     if (input.disabled === true) {
       await this.prisma.authSession.updateMany({
         where: { userId: id, revokedAt: null },
-        data: { revokedAt: new Date() },
+        data: { revokedAt: now },
       });
     }
     await this.audit.log({
@@ -150,6 +153,7 @@ export class UsersService {
     await this.findActiveRecord(id);
     const password = randomBytes(18).toString('base64url');
     const passwordHash = await this.passwords.hash(password);
+    const now = this.clock.now();
     await this.prisma.$transaction([
       this.prisma.user.update({
         where: { id },
@@ -157,7 +161,7 @@ export class UsersService {
       }),
       this.prisma.authSession.updateMany({
         where: { userId: id, revokedAt: null },
-        data: { revokedAt: new Date() },
+        data: { revokedAt: now },
       }),
     ]);
     await this.audit.log({
@@ -260,6 +264,7 @@ function toProfile(row: ProfileRow): UserProfile {
 function patchData(
   currentBrigadeId: string | null,
   input: { role?: Role; brigadeId?: string | null; disabled?: boolean },
+  now: Date,
 ): Prisma.UserUpdateInput {
   const data: Prisma.UserUpdateInput = {};
   if (input.role) {
@@ -271,7 +276,7 @@ function patchData(
     data.brigade = { disconnect: true };
   }
   if (input.disabled === true) {
-    data.disabledAt = new Date();
+    data.disabledAt = now;
   } else if (input.disabled === false) {
     data.disabledAt = null;
   }

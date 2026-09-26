@@ -1,11 +1,11 @@
 import { readFileSync } from 'node:fs';
-import path from 'node:path';
 import { parse } from 'yaml';
 import type { AchievementEntry } from '../../src/achievements/achievement.schema';
 import { loadAchievements } from '../../src/achievements/load-achievements';
 import type { CatalogEntry } from '../../src/engine/generator';
 import { type Routes, RoutesSchema } from '../../src/engine/routes';
 import type { ScenarioGraph } from '../../src/engine/schema';
+import { contentFile } from '../../src/rules/content-file';
 import type { ScoringParams } from '../../src/rules/rules.schema';
 import { loadScenarioGraphs } from '../../src/scenarios/load-content';
 
@@ -18,7 +18,7 @@ export type PlayContext = {
 };
 
 export function loadRoutes(): Routes {
-  const file = path.join(process.cwd(), 'content', 'routes.yaml');
+  const file = contentFile('routes.yaml');
   let raw: unknown;
   try {
     raw = parse(readFileSync(file, 'utf8'));

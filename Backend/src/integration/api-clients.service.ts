@@ -1,4 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
+import { Clock } from '../common/clock';
 import { PrismaService } from '../prisma/prisma.service';
 import { formatApiKey, generateApiSecret, hashApiSecret } from './api-key';
 import type { CreateApiClientDto } from './dto';
@@ -15,7 +16,10 @@ const clientSelect = {
 
 @Injectable()
 export class ApiClientsService {
-  constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
+  constructor(
+    @Inject(PrismaService) private readonly prisma: PrismaService,
+    @Inject(Clock) private readonly clock: Clock,
+  ) {}
 
   async create(input: CreateApiClientDto): Promise<{
     id: string;
@@ -55,7 +59,7 @@ export class ApiClientsService {
     if (existing.revokedAt) {
       return { id: existing.id, revokedAt: existing.revokedAt };
     }
-    const revokedAt = new Date();
+    const revokedAt = this.clock.now();
     await this.prisma.apiClient.update({
       where: { id },
       data: { revokedAt },

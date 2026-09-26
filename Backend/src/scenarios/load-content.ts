@@ -1,19 +1,13 @@
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { parse } from 'yaml';
 import type { ZodError } from 'zod';
 import { type ScenarioGraph, ScenarioGraphSchema } from '../engine/schema';
+import { contentFile } from '../rules/content-file';
 
-/**
- * Сборка кладёт js в dist/scenarios, исходник — в src/scenarios.
- * Оба пути на два уровня выше упираются в Backend/content.
- */
+/** Каталог `content/scenarios` рядом со сборкой или от cwd процесса. */
 export function scenariosDir(): string {
-  const besideBuild = path.join(__dirname, '..', '..', 'content', 'scenarios');
-  if (existsSync(besideBuild)) {
-    return besideBuild;
-  }
-  return path.join(process.cwd(), 'content', 'scenarios');
+  return contentFile('scenarios');
 }
 
 export function loadScenarioFile(filePath: string): ScenarioGraph {

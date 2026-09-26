@@ -9,6 +9,7 @@ import {
 import { Reflector } from '@nestjs/core';
 import { JwtService } from '@nestjs/jwt';
 import { z } from 'zod';
+import { Clock } from '../common/clock';
 import { PrismaService } from '../prisma/prisma.service';
 import { roleSchema } from '../users/enums';
 import type { AuthUser } from './auth-user';
@@ -37,6 +38,7 @@ export class AccessGuard implements CanActivate {
     @Inject(Reflector) private readonly reflector: Reflector,
     @Inject(JwtService) private readonly jwt: JwtService,
     @Inject(PrismaService) private readonly prisma: PrismaService,
+    @Inject(Clock) private readonly clock: Clock,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -109,7 +111,7 @@ export class AccessGuard implements CanActivate {
       session.userId !== userId ||
       session.revokedAt ||
       session.replacedById ||
-      session.expiresAt.getTime() <= Date.now()
+      session.expiresAt.getTime() <= this.clock.now().getTime()
     ) {
       throw new UnauthorizedException({
         message: 'Сессия отозвана',

@@ -1,5 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
+import { Clock } from '../common/clock';
 import type { ActorType, Prisma } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -17,7 +18,10 @@ export type AuditEntry = {
 
 @Injectable()
 export class AuditService {
-  constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
+  constructor(
+    @Inject(PrismaService) private readonly prisma: PrismaService,
+    @Inject(Clock) private readonly clock: Clock,
+  ) {}
 
   async log(entry: AuditEntry): Promise<void> {
     await this.prisma.auditLog.create({
@@ -33,8 +37,9 @@ export class AuditService {
   }
 
   @Cron(CronExpression.EVERY_DAY_AT_3AM, { name: 'privacy-retention' })
-  async retainPrivacy(now = new Date()): Promise<void> {
-    const cutoff = new Date(now.getTime() - PRIVACY_RETENTION_MS);
+  async retainPrivacy(now?: Date): Promise<void> {
+    const at = now ?? this.clock.now();
+    const cutoff = new Date(at.getTime() - PRIVACY_RETENTION_MS);
     await this.prisma.authSession.updateMany({
       where: {
         createdAt: { lt: cutoff },
@@ -43,7 +48,7 @@ export class AuditService {
       data: { ip: null, userAgent: null },
     });
     await this.prisma.authSession.deleteMany({
-      where: { expiresAt: { lt: now } },
+      where: { expiresAt: { lt: at } },
     });
     await this.prisma.auditLog.updateMany({
       where: {

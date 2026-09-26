@@ -105,10 +105,30 @@ npm run openapi:export
 
 `GET /api/v1/notifications` — `{ unreadCount, items, nextCursor }`, не `Notice[]`. Бейдж — `unreadCount`, список — `items`.
 
-`kind` шире `NoticeKind`: к шести видам фронта добавлены `promotion` и `assignment`. Неизвестный `kind` нельзя брать из словаря без проверки: обращение к иконке падает. Схлопывать эти два вида в `advice` на бэкенде нельзя.
+`kind` — enum `NotificationKind`: `expiring`, `scenario`, `challenge`, `overtaken`, `advice`, `achievement`, `promotion`, `assignment`. Фронтовый словарь из шести видов не покрывает `promotion` и `assignment`. Неизвестный `kind` нельзя брать из словаря без проверки: обращение к иконке падает. Схлопывать эти два вида в `advice` на бэкенде нельзя.
+
+Кто пишет ленту:
+
+- `expiring` — баллы сгорают в ближайшие `expiryWarnDays`.
+- `scenario` — публикация версии. Получают проводники, у которых рейс или назначение того же класса вагона. Ключ дедупа включает версию. Без своего класса вагона уведомления нет.
+- `advice` — понедельник 09:00 МСК. Компетенция ниже `weakScore` и ниже среднего по депо. В тексте название сценария для тренировки, если он есть.
+- `challenge` — понедельник 00:00 МСК, тема депо (самая слабая средняя компетенция): «Неделя … — бригады депо соревнуются до воскресенья». Тема лежит в Redis и в аудите `challenge.theme`. Рейс с этой компетенцией пишет `PointLedger` с причиной `CHALLENGE` на `challengePoints` из `content/rules.yaml`. Тот же `kind` пишет закрытие сезона: место бригады.
+- `overtaken` — соседа обогнали в бригаде.
+- `achievement` — полученный знак.
+- `promotion` — рекомендация к повышению, себе и начальнику бригады.
+- `assignment` — назначение смены. В тексте названия сценариев; если названия нет, остаётся id.
 
 ### Рейтинг
 
-`GET /api/v1/leaderboards/{scope}` — `Leaderboard`. `season` в теле — подпись («Сезон 39»), не uuid. Query `season` ждёт uuid. Подпись обратно в query слать нельзя: будет 422. Поля `seasonId` в теле нет. `endsAt` — ISO.
+`GET /api/v1/leaderboards/{scope}` — `Leaderboard`. В теле есть `seasonId` (uuid сезона) и `season` (подпись, «Сезон 39»). Query `season` ждёт этот uuid. Подпись обратно в query слать нельзя: будет 422. `endsAt` — ISO. Scope `brigade` без бригады у пользователя — пустой `rows`, не ошибка.
 
-`GET /api/v1/leaderboards/brigades` без бригады у пользователя — 404 `NO_BRIGADE`, не `{ rank: null }`.
+`GET /api/v1/leaderboards/brigades` без бригады у пользователя — `{ rank: null, total: 0 }`. Бригада без депо — 404 `NO_DEPOT`. Бригада не попала в список депо — 404 `NO_BRIGADE`.
+
+## Окружение, которого нет в OpenAPI
+
+Имена и пределы — `src/config/env.ts`. Пустое или короткое значение роняет процесс до `listen` текстом `Некорректное окружение`.
+
+- `COOKIE_SECURE` — `true` или `false`, по умолчанию `false`. Флаг Secure у `vsm_access`, `vsm_refresh` и `vsm_game`. В `production` старт требует `true`.
+- `TRUST_PROXY` — целое 0..32, по умолчанию `0`. Это число прокси перед приложением. `0` не доверяет `X-Forwarded-For`: лимит входа считает адрес сокета. IPv6 режется до /64.
+- `WEBHOOK_ALLOWED_HOSTS` — hostname через запятую. Пусто — список пуст, и фильтр хоста не включается. Непустой список оставляет только эти хосты и не открывает частные адреса. На создании подписки и на каждой отправке URL разбирается заново: схема, DNS A/AAAA, отсечение loopback, link-local, unique-local, RFC1918, CGNAT `100.64/10`, `0.0.0.0/8`, multicast и имён metadata. В `production` схема только `https`. Сокет идёт на уже проверенный адрес, тело ответа не читается.
+- `BOOTSTRAP_ADMIN_PASSWORD` — не поле zod-объекта. `loadConfig` читает его отдельно. Пусто — случайный пароль первого `admin`. Иначе минимум 10 символов. В `production` любое непустое значение роняет старт.

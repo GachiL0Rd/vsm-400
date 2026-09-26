@@ -1,9 +1,9 @@
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync } from 'node:fs';
-import path from 'node:path';
+import { readFileSync } from 'node:fs';
 import { parse } from 'yaml';
 import { type Routes, RoutesSchema } from '../engine/routes';
 import type { CarClass, Competency } from '../engine/schema';
+import { contentFile } from '../rules/content-file';
 
 const MOSCOW = 'Europe/Moscow';
 
@@ -51,8 +51,7 @@ export function shiftRoutes(): Routes {
   if (cachedRoutes) {
     return cachedRoutes;
   }
-  const beside = path.join(__dirname, '..', '..', 'content', 'routes.yaml');
-  const filePath = existsSync(beside) ? beside : path.join(process.cwd(), 'content', 'routes.yaml');
+  const filePath = contentFile('routes.yaml');
   cachedRoutes = RoutesSchema.parse(parse(readFileSync(filePath, 'utf8')));
   return cachedRoutes;
 }

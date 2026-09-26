@@ -1,6 +1,7 @@
 import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { z } from 'zod';
 import { AchievementsService } from '../achievements/achievements.service';
+import { Clock } from '../common/clock';
 import type { Competency } from '../engine/schema';
 import type { Prisma } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -53,9 +54,11 @@ export class CabinetService {
     @Inject(PrismaService) private readonly prisma: PrismaService,
     @Inject(RulesService) private readonly rules: RulesService,
     @Inject(AchievementsService) private readonly achievementList: AchievementsService,
+    @Inject(Clock) private readonly clock: Clock,
   ) {}
 
-  async profile(userId: string, now = new Date()): Promise<ProfileResponse> {
+  async profile(userId: string, now?: Date): Promise<ProfileResponse> {
+    const at = now ?? this.clock.now();
     const user = await this.requireUser(userId);
     const [ledger, scoreRows, recent] = await Promise.all([
       this.ledger(userId),
@@ -73,11 +76,11 @@ export class CabinetService {
       brigade: user.brigade?.code ?? '',
       depot: user.brigade?.depot.name ?? '',
       level: band.level,
-      points: activePoints(ledger, now),
+      points: activePoints(ledger, at),
       levelFrom: band.levelFrom,
       levelTo: band.levelTo,
       streakDays: user.streakDays,
-      expiring: nearestExpiry(ledger, now),
+      expiring: nearestExpiry(ledger, at),
       competencies: scores,
       trend,
       weakNote: buildWeakNotes({
@@ -103,12 +106,13 @@ export class CabinetService {
     return summarizeStats(runs, await this.tagAll(decisions));
   }
 
-  async nextShift(userId: string, now = new Date()): Promise<NextShiftResponse> {
+  async nextShift(userId: string, now?: Date): Promise<NextShiftResponse> {
+    const at = now ?? this.clock.now();
     await this.requireUser(userId);
-    const planned = await this.nearestPlanned(userId, now);
+    const planned = await this.nearestPlanned(userId, at);
     if (!planned) {
       const scores = applyScores(await this.scoreRows(userId));
-      return forecastShift(userId, upcomingShiftDate(userId, now), weakestCompetencies(scores, 2));
+      return forecastShift(userId, upcomingShiftDate(userId, at), weakestCompetencies(scores, 2));
     }
     return {
       train: planned.train,
@@ -167,9 +171,10 @@ export class CabinetService {
     return this.achievementList.listForUser(userId);
   }
 
-  async compare(userId: string, now = new Date()): Promise<CompareResponse> {
+  async compare(userId: string, now?: Date): Promise<CompareResponse> {
+    const at = now ?? this.clock.now();
     const user = await this.requireUser(userId);
-    const since = new Date(now.getTime() - COMPARE_DAYS * DAY_MS);
+    const since = new Date(at.getTime() - COMPARE_DAYS * DAY_MS);
     const mine = await this.ownSlice(userId, since);
     if (!user.brigade) {
       return {
@@ -179,7 +184,7 @@ export class CabinetService {
         depot: null,
       };
     }
-    return this.compareGroups(userId, user.brigade, mine, since, now);
+    return this.compareGroups(userId, user.brigade, mine, since, at);
   }
 
   private async compareGroups(

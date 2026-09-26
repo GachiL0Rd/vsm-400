@@ -1,4 +1,5 @@
 import { ConflictException, Inject, Injectable } from '@nestjs/common';
+import { Clock } from '../common/clock';
 import { APP_CONFIG, type AppConfig } from '../config/env';
 import type { Prisma } from '../generated/prisma/client';
 import { Competency, type Grade, type Role, RunOutcome } from '../generated/prisma/client';
@@ -41,6 +42,7 @@ export class EmployeesService {
     @Inject(APP_CONFIG) private readonly config: AppConfig,
     @Inject(RulesService) private readonly rules: RulesService,
     @Inject(UsersService) private readonly users: UsersService,
+    @Inject(Clock) private readonly clock: Clock,
   ) {}
 
   async upsert(extId: string, input: UpsertEmployee): Promise<UpsertResult> {
@@ -159,7 +161,7 @@ export class EmployeesService {
   }
 
   private async pointsOf(userId: string): Promise<number> {
-    const now = new Date();
+    const now = this.clock.now();
     // Живые очки: строка не погашена и срок ещё не вышел. Иначе cron опоздает и баллы зависнут.
     const sum = await this.prisma.pointLedger.aggregate({
       where: {

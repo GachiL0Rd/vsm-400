@@ -24,7 +24,7 @@ export async function rotateRefresh(
   tx: Prisma.TransactionClient,
   raw: string,
   meta: SessionMeta,
-  now = new Date(),
+  now: Date,
 ): Promise<RefreshOutcome> {
   const session = await tx.authSession.findUnique({
     where: { refreshHash: sha256(raw) },
@@ -72,7 +72,7 @@ export async function rotateRefresh(
 export async function revokeLiveSessions(
   tx: Prisma.TransactionClient,
   userId: string,
-  now = new Date(),
+  now: Date,
 ): Promise<void> {
   await tx.authSession.updateMany({
     where: { userId, revokedAt: null },
@@ -80,6 +80,6 @@ export async function revokeLiveSessions(
   });
 }
 
-export function refreshExpiry(now = new Date()): Date {
+export function refreshExpiry(now: Date): Date {
   return new Date(now.getTime() + REFRESH_TTL_SEC * 1000);
 }

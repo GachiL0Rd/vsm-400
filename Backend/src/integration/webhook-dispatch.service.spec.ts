@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
+import { SystemClock } from '../common/clock';
 import type { AppConfig } from '../config/env';
 import { WebhookDeliveryStatus } from '../generated/prisma/client';
 import type { PrismaService } from '../prisma/prisma.service';
@@ -50,7 +51,13 @@ function serviceFor(
   return {
     update,
     post,
-    service: new WebhookDispatchService(prisma as unknown as PrismaService, config, resolve, post),
+    service: new WebhookDispatchService(
+      prisma as unknown as PrismaService,
+      config,
+      resolve,
+      post,
+      new SystemClock(),
+    ),
   };
 }
 
