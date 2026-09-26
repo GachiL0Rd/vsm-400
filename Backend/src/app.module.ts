@@ -6,6 +6,8 @@ import { ZodValidationPipe } from 'nestjs-zod';
 import { ProblemFilter } from './common/problem.filter';
 import { ConfigModule } from './config/config.module';
 import { HealthModule } from './health/health.module';
+import { LeaderboardModule } from './leaderboard/leaderboard.module';
+import { NotificationsModule } from './notifications/notifications.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { RedisModule } from './redis/redis.module';
 import { RulesModule } from './rules/rules.module';
@@ -18,6 +20,8 @@ import { RulesModule } from './rules/rules.module';
     PrismaModule,
     RedisModule,
     RulesModule,
+    NotificationsModule,
+    LeaderboardModule,
     HealthModule,
   ],
   providers: [
