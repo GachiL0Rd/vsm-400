@@ -13,14 +13,17 @@
 .screen__head {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 16px;
 }
 
 .screen__title {
-  font-size: 32px;
+  font-size: 40px;
   font-weight: 800;
-  line-height: 1.1;
-  letter-spacing: -0.01em;
+  line-height: 1.05;
+  letter-spacing: -0.04em;
+  text-wrap: balance;
+  padding-bottom: 12px;
+  border-bottom: 4px solid var(--ink);
 }
 
 .screen__title:focus {
@@ -28,7 +31,10 @@
 }
 
 .screen__sub {
+  max-width: 36em;
   color: var(--iron);
+  font-size: 16px;
+  line-height: 1.4;
 }
 
 .screen__action {
@@ -42,7 +48,19 @@
     padding: 48px 48px 64px;
   }
 
+  .screen {
+    gap: 48px;
+  }
+
   .screen__title {
-    font-size: 44px;
+    font-size: 64px;
+    padding-bottom: 16px;
+  }
+}
+
+@media (min-width: 1100px) {
+  .app__main {
+    /* Запас слева, в который на смене выступает время отправления. */
+    padding-left: calc(48px + var(--hang));
   }
 }

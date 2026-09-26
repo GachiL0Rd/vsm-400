@@ -1,24 +1,28 @@
 .segmented {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  max-width: 480px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  width: min(100%, 480px);
   margin: 0;
   padding: 0;
-  border: 2px solid var(--ink);
+  border: 1px solid var(--ink);
+  border-radius: 0;
+  min-inline-size: 0;
 }
 
 .segmented__item {
-  padding: 10px 0;
+  min-height: 48px;
+  padding: 8px;
   border: 0;
+  border-radius: 0;
   background: var(--white);
   color: var(--ink);
   font-size: 15px;
-  font-weight: 700;
+  font-weight: 500;
   cursor: pointer;
 }
 
 .segmented__item + .segmented__item {
-  border-left: 2px solid var(--ink);
+  border-left: 1px solid var(--ink);
 }
 
 .segmented__item:hover {
@@ -27,8 +31,10 @@
 
 .segmented__item--on,
 .segmented__item--on:hover {
-  background: var(--ink);
+  background: var(--signal);
   color: var(--white);
+  font-weight: 700;
+  text-decoration: none;
 }
 
 .rating__me {
@@ -43,31 +49,32 @@
 .board {
   display: flex;
   flex-direction: column;
-  max-width: var(--measure);
+  width: 100%;
   margin: 0;
   padding: 0;
-  border-top: 2px solid var(--ink);
   list-style: none;
 }
 
 .board__row {
   position: relative;
   display: grid;
-  grid-template-columns: 36px 36px 1fr auto;
+  grid-template-columns: 40px 32px minmax(0, 1fr) auto;
   gap: 12px;
   align-items: center;
-  padding: 10px 12px 10px 8px;
+  padding: 12px 0;
   border-bottom: 1px solid var(--line);
 }
 
 /* Разрыв между топом и своей позицией */
 .board__row--gap {
-  margin-top: 12px;
-  border-top: 1px dashed var(--smoke);
+  margin-top: 24px;
+  border-top: 1px solid var(--ink);
 }
 
 .board__rank {
+  font-size: 18px;
   font-weight: 800;
+  letter-spacing: -0.03em;
   text-align: center;
 }
 
@@ -85,10 +92,12 @@
 
 .board__points {
   font-weight: 700;
+  white-space: nowrap;
 }
 
-/* «Вы здесь» — тот же оранжевый маркер, что в навигации */
+/* «Вы здесь» — кобальтовая линейка, тот же приём, что у активного раздела. */
 .board__row--me {
+  padding-left: 12px;
   font-weight: 800;
 }
 
@@ -101,5 +110,5 @@
 }
 
 .rating__brigade {
-  max-width: var(--measure);
+  width: 100%;
 }

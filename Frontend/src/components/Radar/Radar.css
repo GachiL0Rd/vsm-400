@@ -4,3 +4,7 @@
   max-width: 420px;
   margin: 0 auto;
 }
+
+.radar text {
+  font-family: var(--font);
+}

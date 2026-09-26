@@ -31,7 +31,7 @@ export function Radar({ values }: { values: Competencies }) {
           key={k}
           points={polygon(scores.map(() => R * k))}
           fill="none"
-          stroke="var(--cloud)"
+          stroke="var(--line)"
           strokeWidth="1.5"
         />
       ))}

@@ -1,6 +1,7 @@
 .track {
-  height: 8px;
-  background: var(--cloud);
+  height: 4px;
+  background: var(--line);
+  border-radius: 0;
   overflow: hidden;
 }
 

@@ -22,14 +22,16 @@
 }
 
 .nav__item {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 2px;
-  padding: 10px 0;
+  padding: 8px 0;
   color: var(--iron);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 500;
+  line-height: 1.2;
   text-decoration: none;
 }
 
@@ -37,9 +39,20 @@
   color: var(--ink);
 }
 
-.nav__item--active {
-  color: var(--ink);
-  font-weight: 800;
+.nav__item--active,
+.nav__item--active:hover {
+  color: var(--signal);
+  font-weight: 700;
+}
+
+.nav__item--active::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 12px;
+  right: 12px;
+  height: 3px;
+  background: var(--signal);
 }
 
 /* Кольцо внутрь: бренд и пункты прижаты к краю окна, внешний offset обрезается. */
@@ -54,14 +67,15 @@
 
 .nav__count {
   position: absolute;
-  top: -6px;
-  right: -12px;
-  min-width: 18px;
+  top: -4px;
+  right: -6px;
+  min-width: 16px;
+  height: 16px;
   padding: 0 4px;
   background: var(--signal);
-  color: var(--ink);
+  color: var(--white);
   font-size: 11px;
-  font-weight: 800;
+  font-weight: 700;
   line-height: 16px;
   text-align: center;
 }
@@ -83,12 +97,17 @@
 
   .nav__brand {
     display: block;
-    padding: 0 24px;
+    padding: 8px 24px;
     color: var(--ink);
-    font-size: 26px;
+    font-size: 28px;
     font-weight: 800;
-    letter-spacing: -0.02em;
+    line-height: 1.1;
+    letter-spacing: -0.04em;
     text-decoration: none;
+  }
+
+  .nav__brand:hover {
+    text-decoration: underline;
   }
 
   .nav__list {
@@ -98,9 +117,18 @@
 
   .nav__item {
     flex-direction: row;
-    gap: 14px;
+    gap: 16px;
     padding: 12px 24px;
     font-size: 16px;
+  }
+
+  .nav__item--active::before {
+    top: 0;
+    bottom: 0;
+    left: 0;
+    right: auto;
+    width: 3px;
+    height: auto;
   }
 
   .nav__me {
@@ -121,6 +149,8 @@
   .nav__level {
     display: block;
     color: var(--iron);
-    font-size: 13px;
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: 0.04em;
   }
 }

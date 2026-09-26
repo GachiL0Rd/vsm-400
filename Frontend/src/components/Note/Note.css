@@ -1,17 +1,17 @@
 .note {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
   line-height: 1.45;
 }
 
-/* Без заголовка: короткая цветная метка сверху */
+/* Без заголовка: короткая черта, не плашка. */
 .note--bar::before {
   content: "";
-  width: 30px;
-  height: 4px;
-  margin-bottom: 10px;
-  background: var(--note-color, var(--line));
+  width: 32px;
+  height: 3px;
+  margin-bottom: 8px;
+  background: var(--note-color, var(--ink));
 }
 
 .note--ok {
@@ -19,13 +19,29 @@
 }
 
 .note--warn {
-  --note-color: var(--warn-line);
+  --note-color: var(--warn);
+  padding: 16px 24px;
+  background: var(--warn);
+  color: var(--white);
+}
+
+.note--warn.note--bar::before {
+  content: none;
+}
+
+.note--warn .label {
+  color: var(--white);
 }
 
 .note__title {
   color: var(--ink);
+  font-weight: 700;
 }
 
 .note--ok .note__title {
   color: var(--note-color);
+}
+
+.note--warn .note__title {
+  color: var(--white);
 }
