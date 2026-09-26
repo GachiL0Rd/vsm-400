@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { SystemClock } from '../common/clock';
 import { Grade, NotificationKind, Role } from '../generated/prisma/client';
 import type { PrismaService } from '../prisma/prisma.service';
 import type { RedisService } from '../redis/redis.service';
@@ -19,6 +20,7 @@ type Note = {
 
 function harness() {
   const notes: Note[] = [];
+  const userQueries: unknown[] = [];
   let seq = 0;
   const users = [
     {
@@ -81,6 +83,25 @@ function harness() {
             (!where.role || user.role === where.role) &&
             (where.disabledAt !== null || user.disabledAt === null),
         ) ?? null,
+      findMany: async ({ where }: { where: unknown }) => {
+        userQueries.push(where);
+        return users.filter((user) => user.role === Role.CONDUCTOR && user.disabledAt === null);
+      },
+    },
+    scenario: {
+      findMany: async ({ where }: { where: { id: { in: string[] } } }) =>
+        where.id.in
+          .filter((id) => id === 'med-chest-pain')
+          .map((id) => ({ id, title: 'Пассажиру плохо' })),
+      findUnique: async ({ where }: { where: { id: string } }) =>
+        where.id === 'ride-unwell'
+          ? {
+              id: 'ride-unwell',
+              title: 'Пассажиру плохо',
+              carClasses: ['BUSINESS'],
+              status: 'PUBLISHED',
+            }
+          : null,
     },
   };
   const prisma = {
@@ -90,9 +111,10 @@ function harness() {
   const notifications = new NotificationsService(
     prisma as unknown as PrismaService,
     { publish: vi.fn(async () => 1) } as unknown as RedisService,
+    new SystemClock(),
   );
   const listener = new NotificationListener(prisma as unknown as PrismaService, notifications);
-  return { notes, listener };
+  return { notes, listener, userQueries };
 }
 
 describe('слушатели уведомлений', () => {
@@ -140,7 +162,30 @@ describe('слушатели уведомлений', () => {
     expect(notes[0]).toMatchObject({
       kind: NotificationKind.assignment,
       title: 'Назначен сценарий',
-      text: 'med-chest-pain',
+      text: 'Пассажиру плохо',
+    });
+  });
+
+  it('публикация сценария уходит проводнику с тем же классом вагона один раз', async () => {
+    const { listener, notes, userQueries } = harness();
+    const payload = { scenarioId: 'ride-unwell', version: 2 };
+    await listener.onScenarioPublished(payload);
+    await listener.onScenarioPublished(payload);
+    expect(notes).toHaveLength(1);
+    expect(notes[0]).toMatchObject({
+      userId: 'conductor',
+      kind: NotificationKind.scenario,
+      title: 'Новый сценарий «Пассажиру плохо»',
+      text: 'Пассажиру плохо',
+      dedupKey: 'scenario:ride-unwell:v2:conductor',
+    });
+    expect(userQueries[0]).toEqual({
+      role: Role.CONDUCTOR,
+      disabledAt: null,
+      OR: [
+        { runs: { some: { carClass: { in: ['BUSINESS'] } } } },
+        { assignedShifts: { some: { carClass: { in: ['BUSINESS'] } } } },
+      ],
     });
   });
 });
