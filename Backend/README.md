@@ -76,3 +76,13 @@ health e2e подменяет Prisma и Redis.
 | `npm run prisma:deploy` | `migrate deploy` |
 | `npm run prisma:seed` | Проверка соединения |
 | `npm run verify` | Biome, типы, тесты, сборка |
+
+## API
+
+### Рейтинг и уведомления
+
+- `GET /api/v1/leaderboards/:scope` — `brigade`, `depot` или `company`. Query `season` — id, иначе текущая неделя МСК. Ответ `{ season, endsAt, total, rows: [{ rank, callsign, points, move, me? }] }`: бригада целиком, депо и компания — топ-5 и своя строка.
+- `GET /api/v1/leaderboards/brigades` — место бригады среди бригад депо, `{ rank, total }`.
+- `GET /api/v1/notifications` — `{ unreadCount, items, nextCursor }`. Элемент: `{ id, kind, title, text, at, unread, link? }`.
+- `POST /api/v1/notifications/:id/read`, `POST /api/v1/notifications/read-all`.
+- `GET /api/v1/notifications/stream` — SSE, событие `new-notification`, heartbeat 25 с.
