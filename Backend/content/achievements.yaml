@@ -1,6 +1,6 @@
 # Знаки кабинета. Тексты десяти первых совпадают с Frontend demo.ts.
 # Интерпретатор: condition — рейс совпал, count — число решений, streak — streakDays.
-# Половины таймера в RunDecision нет: ориентир 15 с из примера сценария, порог 7500 мс.
+# withinHalfTimer — реакция не дольше половины timerSec узла.
 # «full» в choiceId — команда игры inspect full, детальный осмотр.
 # «уши» — формулировка ситуации из демо («закладывает уши»).
 
@@ -65,7 +65,7 @@ achievements:
       where:
         categories: [safety, medical, security]
         verdict: best
-        maxReactionMs: 7500
+        withinHalfTimer: true
 
   - code: streak
     title: Неделя в строю
@@ -86,7 +86,7 @@ achievements:
       where:
         situationIncludes: уши
         verdict: best
-        maxReactionMs: 7500
+        withinHalfTimer: true
 
   - code: detail
     title: Под лупой
@@ -169,7 +169,7 @@ achievements:
       where:
         category: conflict
         verdict: best
-        maxReactionMs: 7500
+        withinHalfTimer: true
 
   - code: prevented
     title: Не дошло

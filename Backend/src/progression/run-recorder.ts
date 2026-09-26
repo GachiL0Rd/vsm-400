@@ -113,6 +113,7 @@ function mapDecision(entry: JournalEntry) {
     loyaltyDelta: asInt(entry.loyaltyDelta),
     safetyDelta: asInt(entry.safetyDelta),
     reactionMs: entry.reactionMs === null ? null : asInt(entry.reactionMs),
+    timerSec: entry.timerSec === null ? null : asInt(entry.timerSec),
     consequence: entry.consequence,
     lucky: entry.lucky,
     better: entry.better,

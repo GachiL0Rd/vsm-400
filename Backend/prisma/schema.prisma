@@ -431,6 +431,7 @@ model RunDecision {
   loyaltyDelta Int
   safetyDelta  Int
   reactionMs   Int?
+  timerSec     Int?
   consequence  String?
   lucky        Boolean @default(false)
   better       String?

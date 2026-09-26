@@ -15,6 +15,8 @@ const WhereSchema = z
     outcome: EndOutcomeSchema.optional(),
     maxReactionMs: z.number().int().nonnegative().optional(),
     minReactionMs: z.number().int().nonnegative().optional(),
+    /** Реакция не дольше половины timerSec узла. */
+    withinHalfTimer: z.literal(true).optional(),
     lucky: z.boolean().optional(),
     deviation: z.boolean().optional(),
     choiceIncludes: z.string().min(1).optional(),
@@ -46,6 +48,7 @@ const DECISION_KEYS = [
   'categories',
   'maxReactionMs',
   'minReactionMs',
+  'withinHalfTimer',
   'lucky',
   'deviation',
   'choiceIncludes',

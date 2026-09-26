@@ -12,6 +12,8 @@ export type DecisionView = {
   situation: string;
   verdict: Verdict;
   reactionMs: number | null;
+  /** Секунды таймера узла. null — таймера не было. */
+  timerSec: number | null;
   safetyDelta: number;
   loyaltyDelta: number;
   lucky: boolean;
@@ -70,7 +72,17 @@ function matchesReaction(decision: DecisionView, where: Where): boolean {
       return false;
     }
   }
+  if (where.withinHalfTimer === true && !fitsHalfTimer(decision)) {
+    return false;
+  }
   return true;
+}
+
+function fitsHalfTimer(decision: DecisionView): boolean {
+  if (decision.reactionMs === null || decision.timerSec === null || decision.timerSec <= 0) {
+    return false;
+  }
+  return decision.reactionMs * 2 <= decision.timerSec * 1000;
 }
 
 function matchesFlags(decision: DecisionView, where: Where): boolean {

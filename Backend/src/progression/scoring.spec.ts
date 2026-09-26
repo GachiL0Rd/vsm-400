@@ -1,13 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { JournalEntry, RunSummary } from '../engine/types';
 import type { ScoringParams } from '../rules/rules.schema';
-import {
-  COMPETENCY_TARGET_K,
-  computePoints,
-  ewmaCompetency,
-  NEUTRAL_COMPETENCY,
-  REFERENCE_TIMER_MS,
-} from './scoring';
+import { COMPETENCY_TARGET_K, computePoints, ewmaCompetency, NEUTRAL_COMPETENCY } from './scoring';
 
 const rules: ScoringParams = {
   difficultyMult: { 1: 1, 2: 1.5, 3: 2 },
@@ -16,7 +10,7 @@ const rules: ScoringParams = {
   failPoints: 10,
 };
 
-function decision(reactionMs: number | null): JournalEntry {
+function decision(reactionMs: number | null, timerSec: number | null = 15): JournalEntry {
   return {
     idx: 0,
     gameTime: '09:00',
@@ -30,7 +24,7 @@ function decision(reactionMs: number | null): JournalEntry {
     loyaltyDelta: 0,
     safetyDelta: 0,
     reactionMs,
-    timerSec: 15,
+    timerSec,
     consequence: null,
     lucky: false,
     better: null,
@@ -97,21 +91,41 @@ describe('computePoints', () => {
       points: 30,
     },
     {
-      name: 'половина ориентира 15 с — половина бонуса',
+      name: 'половина timerSec — половина бонуса',
       input: summary({
         loyalty: 0,
         safety: 0,
-        decisions: [decision(REFERENCE_TIMER_MS / 2)],
+        decisions: [decision(7_500)],
       }),
       difficulty: 1,
       points: 15,
     },
     {
-      name: 'реакция ровно в длину таймера — бонус 0',
+      name: 'реакция ровно в длину таймера узла — бонус 0',
       input: summary({
         loyalty: 0,
         safety: 0,
-        decisions: [decision(REFERENCE_TIMER_MS)],
+        decisions: [decision(15_000)],
+      }),
+      difficulty: 1,
+      points: 0,
+    },
+    {
+      name: 'таймер узла 10 с, не константа 15 с: половина даёт 15 очков',
+      input: summary({
+        loyalty: 0,
+        safety: 0,
+        decisions: [decision(5_000, 10)],
+      }),
+      difficulty: 1,
+      points: 15,
+    },
+    {
+      name: 'реакция длиннее таймера узла не берёт бонус от 15 с',
+      input: summary({
+        loyalty: 0,
+        safety: 0,
+        decisions: [decision(12_000, 10)],
       }),
       difficulty: 1,
       points: 0,

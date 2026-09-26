@@ -34,6 +34,7 @@ type StoredDecision = {
   situation: string;
   verdict: DecisionView['verdict'];
   reactionMs: number | null;
+  timerSec: number | null;
   safetyDelta: number;
   loyaltyDelta: number;
   lucky: boolean;
@@ -67,6 +68,7 @@ export function toRunView(run: StoredRun, categories: ReadonlyMap<string, string
       situation: decision.situation,
       verdict: decision.verdict,
       reactionMs: decision.reactionMs,
+      timerSec: decision.timerSec,
       safetyDelta: decision.safetyDelta,
       loyaltyDelta: decision.loyaltyDelta,
       lucky: decision.lucky,

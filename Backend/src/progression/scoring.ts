@@ -2,12 +2,6 @@ import type { RunSummary } from '../engine/types';
 import type { ScoringParams } from '../rules/rules.schema';
 
 /**
- * В журнале нет длины таймера узла, только reactionMs.
- * 15 с — timer из примера сценария в SPEC §5. От него же половина для «Холодной головы».
- */
-export const REFERENCE_TIMER_MS = 15_000;
-
-/**
  * rules.yaml и RulesService не задают k.
  * Дельты навыков в сценарии обычно 1–3: k=8 даёт цель 58–74
  * и упирается в 100 только на длинной серии. Центр 50 — нейтраль шкалы.
@@ -32,17 +26,18 @@ export function ewmaCompetency(previous: number, delta: number, alpha: number): 
 }
 
 /**
- * Доля неиспользованного таймера.
- * Успевшее решение: clamp(1 − reactionMs / 15с, 0, 1). Timeout: 0.
+ * Доля неиспользованного таймера узла.
+ * Успевшее решение: clamp(1 − reactionMs / (timerSec·1000), 0, 1).
+ * Нет timerSec — ход в долю скорости не входит. Timeout: 0.
  * Нет ни реакции, ни timeout — бонус за скорость не начисляется.
  */
 export function unusedTimerShare(summary: RunSummary): number {
   const parts: number[] = [];
   for (const decision of summary.decisions) {
-    if (decision.reactionMs === null) {
+    if (decision.reactionMs === null || decision.timerSec === null || decision.timerSec <= 0) {
       continue;
     }
-    const left = 1 - decision.reactionMs / REFERENCE_TIMER_MS;
+    const left = 1 - decision.reactionMs / (decision.timerSec * 1000);
     parts.push(clamp(left, 0, 1));
   }
   const timeouts = Number.isFinite(summary.timeouts) ? Math.max(0, summary.timeouts) : 0;

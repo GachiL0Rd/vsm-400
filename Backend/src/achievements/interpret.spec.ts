@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { REFERENCE_TIMER_MS } from '../progression/scoring';
 import type { AchievementRule } from './achievement.schema';
 import { type DecisionView, evaluateRule, type RunView } from './interpret';
 import { loadAchievements } from './load-achievements';
 
-const HALF = REFERENCE_TIMER_MS / 2;
+const TIMER_SEC = 15;
+const HALF = (TIMER_SEC * 1000) / 2;
 
 function decision(partial: Partial<DecisionView> = {}): DecisionView {
   return {
@@ -16,6 +16,7 @@ function decision(partial: Partial<DecisionView> = {}): DecisionView {
     situation: 'Ситуация',
     verdict: 'ok',
     reactionMs: 1000,
+    timerSec: TIMER_SEC,
     safetyDelta: 0,
     loyaltyDelta: 0,
     lucky: false,
@@ -344,7 +345,7 @@ describe('achievements.yaml', () => {
     const cold = file.achievements.find((entry) => entry.code === 'cold-head');
     expect(cold?.rule.type).toBe('count');
     if (cold?.rule.type === 'count') {
-      expect(cold.rule.where.maxReactionMs).toBe(HALF);
+      expect(cold.rule.where.withinHalfTimer).toBe(true);
       expect(cold.rule.total).toBe(5);
     }
     expect(file.achievements.find((entry) => entry.code === 'streak')?.rule).toMatchObject({
@@ -352,6 +353,27 @@ describe('achievements.yaml', () => {
       total: 7,
     });
     expect(file.achievements.find((entry) => entry.code === 'seal')?.hidden).toBe(true);
+  });
+
+  it('Холодная голова сравнивает реакцию с половиной timerSec узла', () => {
+    const cold = file.achievements.find((entry) => entry.code === 'cold-head');
+    if (cold?.rule.type !== 'count') {
+      throw new Error('cold-head');
+    }
+    const fast = times(5, () =>
+      decision({ category: 'safety', verdict: 'best', reactionMs: 4_000, timerSec: 10 }),
+    );
+    const slow = times(5, () =>
+      decision({ category: 'safety', verdict: 'best', reactionMs: 6_000, timerSec: 10 }),
+    );
+    expect(evaluateRule(cold.rule, [run({ decisions: fast })], 0)).toEqual({
+      progress: 5,
+      earned: true,
+    });
+    expect(evaluateRule(cold.rule, [run({ decisions: slow })], 0)).toEqual({
+      progress: 0,
+      earned: false,
+    });
   });
 
   it('у каждого кода есть проход и отказ', () => {
