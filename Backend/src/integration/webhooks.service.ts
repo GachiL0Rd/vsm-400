@@ -5,23 +5,35 @@ import { PrismaService } from '../prisma/prisma.service';
 import type { CreateWebhook } from './dto';
 import { parseUuid } from './dto';
 import { httpError } from './http-error';
+import {
+  screenWebhookUrl,
+  WEBHOOK_RESOLVE,
+  type WebhookResolve,
+  webhookUrlDetail,
+} from './webhook-url';
 
 @Injectable()
 export class WebhooksService {
   constructor(
     @Inject(PrismaService) private readonly prisma: PrismaService,
     @Inject(APP_CONFIG) private readonly config: AppConfig,
+    @Inject(WEBHOOK_RESOLVE) private readonly resolve: WebhookResolve,
   ) {}
 
   async create(apiClientId: string, input: CreateWebhook) {
-    if (this.config.nodeEnv === 'production' && input.url.startsWith('http://')) {
-      throw httpError(422, 'В production нужен https', 'WEBHOOK_URL');
+    const screened = await screenWebhookUrl(
+      input.url,
+      { nodeEnv: this.config.nodeEnv, allowedHosts: this.config.webhookAllowedHosts },
+      this.resolve,
+    );
+    if (!screened.ok) {
+      throw httpError(422, webhookUrlDetail(screened.reason), 'WEBHOOK_URL');
     }
     // Секрет храним: без него не подписать исходящий POST. Клиенту отдаём один раз.
     const secret = randomBytes(32).toString('hex');
     const row = await this.prisma.webhookSubscription.create({
       data: {
-        url: input.url,
+        url: screened.url.href,
         events: [...input.events],
         secret,
         apiClient: { connect: { id: apiClientId } },

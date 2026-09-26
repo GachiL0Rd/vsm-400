@@ -41,6 +41,15 @@ const EnvSchema = z
       .refine((value) => value.length > 0, { message: 'нужен хотя бы один origin' }),
     PUBLIC_GAME_WS_URL: z.string().regex(/^wss?:\/\/\S+$/, 'ожидается ws:// или wss://'),
     COOKIE_SECURE: cookieSecureSchema,
+    WEBHOOK_ALLOWED_HOSTS: z.preprocess(
+      (value: unknown) => (value === undefined || value === '' ? '' : value),
+      z.string().transform((value) =>
+        value
+          .split(',')
+          .map((item) => normalizeWebhookHost(item))
+          .filter((item) => item.length > 0),
+      ),
+    ),
   })
   .transform((env) => ({
     nodeEnv: env.NODE_ENV,
@@ -55,7 +64,31 @@ const EnvSchema = z
     corsOrigins: env.CORS_ORIGINS,
     publicGameWsUrl: env.PUBLIC_GAME_WS_URL,
     cookieSecure: env.COOKIE_SECURE,
+    webhookAllowedHosts: env.WEBHOOK_ALLOWED_HOSTS,
   }));
+
+function normalizeWebhookHost(value: string): string {
+  const trimmed = value.trim().toLowerCase();
+  if (trimmed.length === 0) {
+    return '';
+  }
+  if (trimmed.includes('://')) {
+    try {
+      return bareHost(new URL(trimmed).hostname);
+    } catch {
+      return '';
+    }
+  }
+  return bareHost(trimmed);
+}
+
+function bareHost(hostname: string): string {
+  const stripped = hostname.replace(/\.$/, '');
+  if (stripped.startsWith('[') && stripped.endsWith(']')) {
+    return stripped.slice(1, -1);
+  }
+  return stripped;
+}
 
 export type AppConfig = z.output<typeof EnvSchema>;
 

@@ -32,4 +32,12 @@ describe('loadConfig', () => {
   it('не принимает короткий ключ AES', () => {
     expect(() => loadConfig({ ...valid, SEED_ENC_KEY: 'abcd' })).toThrow(/SEED_ENC_KEY/);
   });
+
+  it('разбирает allowlist вебхуков и считает пустое значение открытым', () => {
+    expect(loadConfig(valid).webhookAllowedHosts).toEqual([]);
+    expect(
+      loadConfig({ ...valid, WEBHOOK_ALLOWED_HOSTS: ' LMS.Example. , https://hooks.test/path ' })
+        .webhookAllowedHosts,
+    ).toEqual(['lms.example', 'hooks.test']);
+  });
 });

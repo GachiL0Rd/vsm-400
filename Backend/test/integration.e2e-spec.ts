@@ -12,7 +12,9 @@ import { IS_PUBLIC_KEY } from '../src/auth/public.decorator';
 import { configureApp } from '../src/configure-app';
 import { extHashOf, loginFromExtHash } from '../src/integration/ext-hash';
 import { WebhookDispatchService } from '../src/integration/webhook-dispatch.service';
+import type { WebhookPostInput } from '../src/integration/webhook-post';
 import { VSM_SIGNATURE, VSM_TIMESTAMP, verifyWebhook } from '../src/integration/webhook-signature';
+import { WEBHOOK_POST } from '../src/integration/webhook-url';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { RedisService } from '../src/redis/redis.service';
 import { ScenariosService } from '../src/scenarios/scenarios.service';
@@ -78,6 +80,7 @@ async function call(
 
 describe('API интеграции HR', { concurrent: false }, () => {
   const memory = new MemoryPrisma();
+  const webhookCalls: WebhookPostInput[] = [];
   let app: NestFastifyApplication;
   let key = '';
 
@@ -96,6 +99,11 @@ describe('API интеграции HR', { concurrent: false }, () => {
       .useClass(AdminAccessGuard)
       .overrideProvider(ScenariosService)
       .useValue({ onApplicationBootstrap: () => undefined })
+      .overrideProvider(WEBHOOK_POST)
+      .useValue(async (input: WebhookPostInput) => {
+        webhookCalls.push(input);
+        return { status: 200 };
+      })
       .compile();
     app = moduleRef.createNestApplication(new FastifyAdapter({ bodyLimit: 1_048_576 }), {
       logger: false,
@@ -444,23 +452,20 @@ describe('API интеграции HR', { concurrent: false }, () => {
     expect(memory.deliveries).toHaveLength(1);
     expect(JSON.stringify(memory.deliveries[0]?.payload)).not.toContain(extId);
 
-    let signature = '';
-    let timestamp = '';
-    let body = '';
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async (_url: string, init: RequestInit) => {
-        body = String(init.body);
-        const headers = init.headers as Record<string, string>;
-        signature = headers[VSM_SIGNATURE] ?? '';
-        timestamp = headers[VSM_TIMESTAMP] ?? '';
-        return new Response('ok', { status: 200 });
-      }),
-    );
+    webhookCalls.length = 0;
     await app.get(WebhookDispatchService).dispatch(new Date());
-    vi.unstubAllGlobals();
-    expect(verifyWebhook(hook.secret, timestamp, body, signature)).toBe(true);
-    expect(JSON.parse(body)).toMatchObject({
+    const sent = webhookCalls[0];
+    expect(sent).toBeDefined();
+    expect(
+      verifyWebhook(
+        hook.secret,
+        sent?.headers[VSM_TIMESTAMP] ?? '',
+        sent?.body ?? '',
+        sent?.headers[VSM_SIGNATURE] ?? '',
+      ),
+    ).toBe(true);
+    expect(sent?.addresses[0]?.address).toBe('203.0.113.10');
+    expect(JSON.parse(sent?.body ?? '{}')).toMatchObject({
       event: 'run.recorded',
       data: { userId, callsign: memory.users[0]?.callsign, points: 12 },
     });
