@@ -10,20 +10,26 @@ import {
   RUN_RECORDED,
   type RunRecordedPayload,
 } from '../common/events';
+import { APP_CONFIG, type AppConfig } from '../config/env';
 import type { Prisma } from '../generated/prisma/client';
 import { WebhookDeliveryStatus } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import type { WebhookEvent } from './api-scopes';
-import { isHttpUrl } from './dto';
 import { nextDeliveryState } from './webhook-backoff';
+import type { WebhookPost } from './webhook-post';
 import {
   signWebhook,
   VSM_DELIVERY,
   VSM_EVENT,
   VSM_SIGNATURE,
   VSM_TIMESTAMP,
-  WEBHOOK_TIMEOUT_MS,
 } from './webhook-signature';
+import {
+  screenWebhookUrl,
+  WEBHOOK_POST,
+  WEBHOOK_RESOLVE,
+  type WebhookResolve,
+} from './webhook-url';
 
 type HookData = Record<string, string | number | boolean | null>;
 
@@ -49,7 +55,12 @@ export class WebhookDispatchService {
   private readonly logger = new Logger(WebhookDispatchService.name);
   private running = false;
 
-  constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
+  constructor(
+    @Inject(PrismaService) private readonly prisma: PrismaService,
+    @Inject(APP_CONFIG) private readonly config: AppConfig,
+    @Inject(WEBHOOK_RESOLVE) private readonly resolve: WebhookResolve,
+    @Inject(WEBHOOK_POST) private readonly post: WebhookPost,
+  ) {}
 
   /**
    * run.recorded, не сырой run.completed: к этому моменту очки уже в леджере,
@@ -223,12 +234,21 @@ export class WebhookDispatchService {
       await this.failPermanent(id, row.attempts, blocked);
       return;
     }
+    const screened = await screenWebhookUrl(
+      row.subscription.url,
+      { nodeEnv: this.config.nodeEnv, allowedHosts: this.config.webhookAllowedHosts },
+      this.resolve,
+    );
+    if (!screened.ok) {
+      await this.failPermanent(id, row.attempts, screened.reason);
+      return;
+    }
     const body = stringifyWebhookBody(row.payload);
     if (!body) {
       await this.failPermanent(id, row.attempts, 'payload');
       return;
     }
-    await this.send(row, body, now);
+    await this.send(row, body, now, screened.addresses);
   }
 
   private async load(id: string): Promise<LoadedDelivery | null> {
@@ -247,13 +267,18 @@ export class WebhookDispatchService {
     });
   }
 
-  private async send(row: LoadedDelivery, body: string, now: Date): Promise<void> {
+  private async send(
+    row: LoadedDelivery,
+    body: string,
+    now: Date,
+    addresses: readonly { address: string; family: 4 | 6 }[],
+  ): Promise<void> {
     const timestamp = String(Math.floor(now.getTime() / 1000));
     const signature = signWebhook(row.subscription.secret, timestamp, body);
     try {
-      const response = await fetch(row.subscription.url, {
-        method: 'POST',
-        redirect: 'error',
+      const response = await this.post({
+        url: row.subscription.url,
+        body,
         headers: {
           'content-type': 'application/json',
           'user-agent': 'vsm-webhooks',
@@ -262,15 +287,12 @@ export class WebhookDispatchService {
           [VSM_SIGNATURE]: signature,
           [VSM_TIMESTAMP]: timestamp,
         },
-        body,
-        signal: AbortSignal.timeout(WEBHOOK_TIMEOUT_MS),
+        addresses,
       });
-      if (!response.ok) {
-        await response.body?.cancel().catch(() => undefined);
+      if (response.status < 200 || response.status >= 300) {
         await this.failTransient(row.id, row.attempts, now, `HTTP ${response.status}`);
         return;
       }
-      await response.arrayBuffer();
       await this.markSent(row.id, row.attempts);
     } catch (error) {
       await this.failTransient(row.id, row.attempts, now, networkReason(error));
@@ -324,9 +346,6 @@ function blockReason(subscription: LoadedDelivery['subscription']): string | nul
   }
   if (subscription.apiClient.revokedAt) {
     return 'revoked';
-  }
-  if (!isHttpUrl(subscription.url)) {
-    return 'url';
   }
   return null;
 }

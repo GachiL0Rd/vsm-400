@@ -8,12 +8,23 @@ import { allocateCallsign } from '../users/callsign';
 import { isUniqueViolation } from '../users/unique-violation';
 import { PasswordService } from './password.service';
 
-export function bootstrapPassword(env: NodeJS.ProcessEnv = process.env): string {
+const BOOTSTRAP_PASSWORD_MIN = 10;
+
+export function bootstrapPassword(
+  env: NodeJS.ProcessEnv = process.env,
+  nodeEnv: AppConfig['nodeEnv'] = 'development',
+): string {
   const configured = env.BOOTSTRAP_ADMIN_PASSWORD?.trim();
-  if (configured) {
-    return configured;
+  if (!configured) {
+    return randomBytes(18).toString('base64url');
   }
-  return randomBytes(18).toString('base64url');
+  if (nodeEnv === 'production') {
+    throw new Error('BOOTSTRAP_ADMIN_PASSWORD запрещён в production');
+  }
+  if (configured.length < BOOTSTRAP_PASSWORD_MIN) {
+    throw new Error('BOOTSTRAP_ADMIN_PASSWORD короче 10 символов');
+  }
+  return configured;
 }
 
 @Injectable()
@@ -41,7 +52,7 @@ export class BootstrapService implements OnApplicationBootstrap {
     if (existing) {
       return null;
     }
-    const password = bootstrapPassword();
+    const password = bootstrapPassword(process.env, this.config.nodeEnv);
     const passwordHash = await this.passwords.hash(password);
     const callsign = await allocateCallsign((candidate) => this.callsignTaken(candidate));
     const created = await this.insertAdmin(passwordHash, callsign);

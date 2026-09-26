@@ -13,14 +13,14 @@ export class OrgController {
 
   @Get('depots')
   @ApiOperation({ summary: 'Депо' })
-  depots() {
-    return this.org.listDepots();
+  depots(@CurrentUser() user: AuthUser) {
+    return this.org.listDepots(user);
   }
 
   @Get('depots/:id/brigades')
   @ApiOperation({ summary: 'Бригады депо' })
-  brigades(@Param('id') id: string) {
-    return this.org.listBrigades(id);
+  brigades(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    return this.org.listBrigades(id, user);
   }
 
   @Get('brigades/:id')

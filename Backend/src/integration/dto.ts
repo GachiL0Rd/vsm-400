@@ -5,7 +5,8 @@ import { isUuid } from './api-key';
 import { API_SCOPES, WEBHOOK_EVENTS } from './api-scopes';
 import { httpError } from './http-error';
 
-const RoleSchema = z.enum([Role.CONDUCTOR, Role.CHIEF, Role.METHODIST, Role.ADMIN]);
+/** Кадровый ключ заводит проводника и начальника поезда. ADMIN и METHODIST — только сессия админа. */
+const HrRoleSchema = z.enum([Role.CONDUCTOR, Role.CHIEF]);
 const GradeSchema = z.enum([
   Grade.TRAINEE,
   Grade.CONDUCTOR,
@@ -38,7 +39,7 @@ export class CreateApiClientDto extends createZodDto(CreateApiClientSchema) {}
 
 /** strictObject: ФИО и любые лишние поля отклоняются, в базу они не попадут. */
 export const UpsertEmployeeSchema = z.strictObject({
-  role: RoleSchema,
+  role: HrRoleSchema,
   brigadeCode: z.string().trim().min(1).max(32),
   depotCode: z.string().trim().min(1).max(32),
   position: z.string().trim().min(1).max(120),

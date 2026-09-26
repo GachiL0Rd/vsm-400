@@ -10,18 +10,21 @@ import { Reflector } from '@nestjs/core';
 import { JwtService } from '@nestjs/jwt';
 import { z } from 'zod';
 import { PrismaService } from '../prisma/prisma.service';
+import { roleSchema } from '../users/enums';
 import type { AuthUser } from './auth-user';
 import { IS_PUBLIC_KEY } from './public.decorator';
 import { passwordChangeAllows, readAccessToken } from './request';
 
 const claimsSchema = z.object({
   sub: z.string().min(1),
-  role: z.enum(['CONDUCTOR', 'CHIEF', 'METHODIST', 'ADMIN']),
+  role: roleSchema,
   bid: z.string().nullable(),
   did: z.string().nullable(),
+  sid: z.uuid(),
 });
 
 type AccessRequest = {
+  method?: string;
   url?: string;
   headers?: Record<string, string | string[] | undefined>;
   cookies?: Record<string, string | undefined>;
@@ -43,6 +46,7 @@ export class AccessGuard implements CanActivate {
       return true;
     }
     const claims = await this.readClaims(request);
+    await this.assertSession(claims.sid, claims.sub);
     const row = await this.loadUser(claims.sub);
     request.user = {
       id: row.id,
@@ -50,7 +54,7 @@ export class AccessGuard implements CanActivate {
       brigadeId: row.brigadeId,
       depotId: row.brigade?.depotId ?? null,
     };
-    if (row.mustChangePassword && !passwordChangeAllows(url)) {
+    if (row.mustChangePassword && !passwordChangeAllows(request.method ?? '', url)) {
       throw new ForbiddenException({
         message: 'Сначала смените пароль',
         code: 'PASSWORD_CHANGE_REQUIRED',
@@ -93,6 +97,25 @@ export class AccessGuard implements CanActivate {
       });
     }
     return parsed.data;
+  }
+
+  private async assertSession(sid: string, userId: string): Promise<void> {
+    const session = await this.prisma.authSession.findUnique({
+      where: { id: sid },
+      select: { userId: true, revokedAt: true, replacedById: true, expiresAt: true },
+    });
+    if (
+      !session ||
+      session.userId !== userId ||
+      session.revokedAt ||
+      session.replacedById ||
+      session.expiresAt.getTime() <= Date.now()
+    ) {
+      throw new UnauthorizedException({
+        message: 'Сессия отозвана',
+        code: 'SESSION_REVOKED',
+      });
+    }
   }
 
   private async loadUser(id: string) {

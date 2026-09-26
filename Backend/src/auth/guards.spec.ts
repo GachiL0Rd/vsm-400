@@ -19,6 +19,7 @@ import { RolesGuard } from './roles.guard';
 import { ServiceTokenGuard } from './service-token.guard';
 
 const userId = '018f1a2b-3c4d-7e5f-8a9b-0c1d2e3f4a5b';
+const sessionId = '018f1a2b-3c4d-7e5f-8a9b-0c1d2e3f4a5c';
 
 @Controller()
 class Probe {
@@ -50,17 +51,32 @@ function context(request: Record<string, unknown>, handler: () => void): Executi
 }
 
 function claims() {
-  return { sub: userId, role: Role.CONDUCTOR, bid: null, did: null };
+  return { sub: userId, role: Role.CONDUCTOR, bid: null, did: null, sid: sessionId };
+}
+
+function liveSession(): {
+  userId: string;
+  revokedAt: Date | null;
+  replacedById: string | null;
+  expiresAt: Date;
+} {
+  return {
+    userId,
+    revokedAt: null,
+    replacedById: null,
+    expiresAt: new Date(Date.now() + 60_000),
+  };
 }
 
 describe('AccessGuard', () => {
   const reflector = new Reflector();
   const verifyAsync = vi.fn();
   const findUnique = vi.fn();
+  const findSession = vi.fn(async () => liveSession());
   const guard = new AccessGuard(
     reflector,
     { verifyAsync } as unknown as JwtService,
-    { user: { findUnique } } as unknown as PrismaService,
+    { user: { findUnique }, authSession: { findUnique: findSession } } as unknown as PrismaService,
   );
 
   it('пропускает @Public без токена и не смотрит на URL', async () => {
@@ -106,7 +122,26 @@ describe('AccessGuard', () => {
     });
   });
 
-  it('mustChangePassword закрывает всё кроме /auth и /me', async () => {
+  it('гасит access отозванной или заменённой сессии и токен без sid', async () => {
+    const headers = { authorization: 'Bearer t' };
+    const closed = Probe.prototype.closed;
+    verifyAsync.mockResolvedValueOnce(claims());
+    findSession.mockResolvedValueOnce({ ...liveSession(), revokedAt: new Date() });
+    await expect(
+      guard.canActivate(context({ method: 'GET', url: '/api/v1/auth/session', headers }, closed)),
+    ).rejects.toMatchObject({ response: { code: 'SESSION_REVOKED' } });
+    verifyAsync.mockResolvedValueOnce(claims());
+    findSession.mockResolvedValueOnce({ ...liveSession(), replacedById: sessionId });
+    await expect(
+      guard.canActivate(context({ method: 'GET', url: '/api/v1/auth/session', headers }, closed)),
+    ).rejects.toMatchObject({ response: { code: 'SESSION_REVOKED' } });
+    verifyAsync.mockResolvedValueOnce({ sub: userId, role: Role.CONDUCTOR, bid: null, did: null });
+    await expect(
+      guard.canActivate(context({ method: 'GET', url: '/api/v1/auth/session', headers }, closed)),
+    ).rejects.toMatchObject({ response: { code: 'INVALID_TOKEN' } });
+  });
+
+  it('mustChangePassword пускает только смену пароля, выход и сессию', async () => {
     findUnique.mockResolvedValue({
       id: userId,
       role: Role.ADMIN,
@@ -116,11 +151,9 @@ describe('AccessGuard', () => {
       brigade: null,
     });
     verifyAsync.mockResolvedValue(claims());
+    const headers = { authorization: 'Bearer t' };
     const blocked = guard.canActivate(
-      context(
-        { url: '/api/v1/org/depots', headers: { authorization: 'Bearer t' } },
-        Probe.prototype.closed,
-      ),
+      context({ method: 'GET', url: '/api/v1/org/depots', headers }, Probe.prototype.closed),
     );
     await expect(blocked).rejects.toBeInstanceOf(ForbiddenException);
     await expect(blocked).rejects.toMatchObject({
@@ -128,20 +161,24 @@ describe('AccessGuard', () => {
     });
     await expect(
       guard.canActivate(
-        context(
-          { url: '/api/v1/auth/password', headers: { authorization: 'Bearer t' } },
-          Probe.prototype.closed,
-        ),
+        context({ method: 'GET', url: '/api/v1/me/stats', headers }, Probe.prototype.closed),
+      ),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(
+      guard.canActivate(
+        context({ method: 'POST', url: '/api/v1/auth/password', headers }, Probe.prototype.closed),
       ),
     ).resolves.toBe(true);
     await expect(
       guard.canActivate(
-        context(
-          { url: '/api/v1/me/stats', headers: { authorization: 'Bearer t' } },
-          Probe.prototype.closed,
-        ),
+        context({ method: 'GET', url: '/api/v1/auth/session', headers }, Probe.prototype.closed),
       ),
     ).resolves.toBe(true);
+    await expect(
+      guard.canActivate(
+        context({ method: 'POST', url: '/api/v1/auth/session', headers }, Probe.prototype.closed),
+      ),
+    ).rejects.toBeInstanceOf(ForbiddenException);
   });
 });
 

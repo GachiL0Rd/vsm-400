@@ -12,7 +12,9 @@ import { IS_PUBLIC_KEY } from '../src/auth/public.decorator';
 import { configureApp } from '../src/configure-app';
 import { extHashOf, loginFromExtHash } from '../src/integration/ext-hash';
 import { WebhookDispatchService } from '../src/integration/webhook-dispatch.service';
+import type { WebhookPostInput } from '../src/integration/webhook-post';
 import { VSM_SIGNATURE, VSM_TIMESTAMP, verifyWebhook } from '../src/integration/webhook-signature';
+import { WEBHOOK_POST } from '../src/integration/webhook-url';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { RedisService } from '../src/redis/redis.service';
 import { ScenariosService } from '../src/scenarios/scenarios.service';
@@ -78,6 +80,7 @@ async function call(
 
 describe('API интеграции HR', { concurrent: false }, () => {
   const memory = new MemoryPrisma();
+  const webhookCalls: WebhookPostInput[] = [];
   let app: NestFastifyApplication;
   let key = '';
 
@@ -96,6 +99,11 @@ describe('API интеграции HR', { concurrent: false }, () => {
       .useClass(AdminAccessGuard)
       .overrideProvider(ScenariosService)
       .useValue({ onApplicationBootstrap: () => undefined })
+      .overrideProvider(WEBHOOK_POST)
+      .useValue(async (input: WebhookPostInput) => {
+        webhookCalls.push(input);
+        return { status: 200 };
+      })
       .compile();
     app = moduleRef.createNestApplication(new FastifyAdapter({ bodyLimit: 1_048_576 }), {
       logger: false,
@@ -194,7 +202,7 @@ describe('API интеграции HR', { concurrent: false }, () => {
       'PUT',
       url,
       {
-        role: 'CHIEF',
+        role: 'CONDUCTOR',
         brigadeCode: '12',
         depotCode: 'MSK',
         position: 'Бригадир',
@@ -216,7 +224,7 @@ describe('API интеграции HR', { concurrent: false }, () => {
     expect(memory.users).toHaveLength(1);
     expect(memory.users[0]?.passwordHash).toBe(stored?.passwordHash);
     expect(memory.users[0]?.position).toBe('Бригадир');
-    expect(memory.users[0]?.role).toBe('CHIEF');
+    expect(memory.users[0]?.role).toBe('CONDUCTOR');
   });
 
   it('не принимает ФИО и неизвестное депо', async () => {
@@ -306,6 +314,107 @@ describe('API интеграции HR', { concurrent: false }, () => {
     expect(unknown.json()).toMatchObject({ status: 404, code: 'EMPLOYEE_NOT_FOUND' });
   });
 
+  it('не создаёт ADMIN/METHODIST и не повышает проводника', async () => {
+    const adminRole = await call(
+      app,
+      'PUT',
+      '/api/integration/v1/employees/tab-admin-try',
+      {
+        role: 'ADMIN',
+        brigadeCode: '12',
+        depotCode: 'MSK',
+        position: 'Проводник',
+        grade: 'TRAINEE',
+      },
+      key,
+    );
+    expect(adminRole.statusCode).toBe(422);
+    expect(adminRole.json()).toMatchObject({ code: 'VALIDATION' });
+    const methodistRole = await call(
+      app,
+      'PUT',
+      '/api/integration/v1/employees/tab-methodist-try',
+      {
+        role: 'METHODIST',
+        brigadeCode: '12',
+        depotCode: 'MSK',
+        position: 'Проводник',
+        grade: 'TRAINEE',
+      },
+      key,
+    );
+    expect(methodistRole.statusCode).toBe(422);
+
+    const hired = await call(
+      app,
+      'PUT',
+      '/api/integration/v1/employees/tab-chief-new',
+      {
+        role: 'CHIEF',
+        brigadeCode: '12',
+        depotCode: 'MSK',
+        position: 'Начальник поезда',
+        grade: 'CONDUCTOR',
+      },
+      key,
+    );
+    expect(hired.statusCode).toBe(200);
+    expect((hired.json() as { created: boolean }).created).toBe(true);
+
+    const raised = await call(
+      app,
+      'PUT',
+      `/api/integration/v1/employees/${extId}`,
+      {
+        role: 'CHIEF',
+        brigadeCode: '12',
+        depotCode: 'MSK',
+        position: 'Проводник',
+        grade: 'CONDUCTOR',
+      },
+      key,
+    );
+    expect(raised.statusCode).toBe(403);
+    expect(raised.json()).toMatchObject({ code: 'ROLE_ESCALATION' });
+    expect(memory.users.find((user) => user.extHash === extHashOf(extId, pepper))?.role).toBe(
+      'CONDUCTOR',
+    );
+
+    const methodistExt = 'tab-methodist-kept';
+    const methodistHash = extHashOf(methodistExt, pepper);
+    memory.users.push({
+      id: randomUUID(),
+      login: loginFromExtHash(methodistHash),
+      passwordHash: 'hash',
+      role: 'METHODIST',
+      callsign: 'MM01',
+      extHash: methodistHash,
+      position: 'Методист',
+      grade: 'INSTRUCTOR',
+      brigadeId: memory.brigades[0]?.id ?? null,
+      mustChangePassword: false,
+      disabledAt: null,
+      createdAt: new Date(),
+      lastRunAt: null,
+      streakDays: 0,
+    });
+    const touched = await call(
+      app,
+      'PUT',
+      `/api/integration/v1/employees/${methodistExt}`,
+      {
+        role: 'CONDUCTOR',
+        brigadeCode: '12',
+        depotCode: 'MSK',
+        position: 'Проводник',
+        grade: 'TRAINEE',
+      },
+      key,
+    );
+    expect(touched.statusCode).toBe(403);
+    expect(memory.users.find((user) => user.extHash === methodistHash)?.role).toBe('METHODIST');
+  });
+
   it('подписывает вебхук один раз и не дублирует доставку', async () => {
     const issued = await call(app, 'POST', '/api/v1/admin/api-clients', {
       name: 'Вебхуки',
@@ -343,23 +452,20 @@ describe('API интеграции HR', { concurrent: false }, () => {
     expect(memory.deliveries).toHaveLength(1);
     expect(JSON.stringify(memory.deliveries[0]?.payload)).not.toContain(extId);
 
-    let signature = '';
-    let timestamp = '';
-    let body = '';
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async (_url: string, init: RequestInit) => {
-        body = String(init.body);
-        const headers = init.headers as Record<string, string>;
-        signature = headers[VSM_SIGNATURE] ?? '';
-        timestamp = headers[VSM_TIMESTAMP] ?? '';
-        return new Response('ok', { status: 200 });
-      }),
-    );
+    webhookCalls.length = 0;
     await app.get(WebhookDispatchService).dispatch(new Date());
-    vi.unstubAllGlobals();
-    expect(verifyWebhook(hook.secret, timestamp, body, signature)).toBe(true);
-    expect(JSON.parse(body)).toMatchObject({
+    const sent = webhookCalls[0];
+    expect(sent).toBeDefined();
+    expect(
+      verifyWebhook(
+        hook.secret,
+        sent?.headers[VSM_TIMESTAMP] ?? '',
+        sent?.body ?? '',
+        sent?.headers[VSM_SIGNATURE] ?? '',
+      ),
+    ).toBe(true);
+    expect(sent?.addresses[0]?.address).toBe('203.0.113.10');
+    expect(JSON.parse(sent?.body ?? '{}')).toMatchObject({
       event: 'run.recorded',
       data: { userId, callsign: memory.users[0]?.callsign, points: 12 },
     });

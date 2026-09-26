@@ -11,6 +11,11 @@ const nodeEnvSchema = z.preprocess(
   z.enum(['development', 'test', 'production']),
 );
 
+const trustProxySchema = z.preprocess(
+  (value: unknown) => (value === undefined || value === '' ? 0 : value),
+  z.coerce.number().int().min(0).max(32),
+);
+
 const cookieSecureSchema = z.preprocess(
   (value: unknown) => (value === undefined || value === '' ? 'false' : value),
   z.enum(['true', 'false']).transform((value) => value === 'true'),
@@ -41,6 +46,25 @@ const EnvSchema = z
       .refine((value) => value.length > 0, { message: 'нужен хотя бы один origin' }),
     PUBLIC_GAME_WS_URL: z.string().regex(/^wss?:\/\/\S+$/, 'ожидается ws:// или wss://'),
     COOKIE_SECURE: cookieSecureSchema,
+    TRUST_PROXY: trustProxySchema,
+    WEBHOOK_ALLOWED_HOSTS: z.preprocess(
+      (value: unknown) => (value === undefined || value === '' ? '' : value),
+      z.string().transform((value) =>
+        value
+          .split(',')
+          .map((item) => normalizeWebhookHost(item))
+          .filter((item) => item.length > 0),
+      ),
+    ),
+  })
+  .superRefine((env, ctx) => {
+    if (env.NODE_ENV === 'production' && env.COOKIE_SECURE !== true) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['COOKIE_SECURE'],
+        message: 'в production нужен true',
+      });
+    }
   })
   .transform((env) => ({
     nodeEnv: env.NODE_ENV,
@@ -55,7 +79,32 @@ const EnvSchema = z
     corsOrigins: env.CORS_ORIGINS,
     publicGameWsUrl: env.PUBLIC_GAME_WS_URL,
     cookieSecure: env.COOKIE_SECURE,
+    trustProxy: env.TRUST_PROXY,
+    webhookAllowedHosts: env.WEBHOOK_ALLOWED_HOSTS,
   }));
+
+function normalizeWebhookHost(value: string): string {
+  const trimmed = value.trim().toLowerCase();
+  if (trimmed.length === 0) {
+    return '';
+  }
+  if (trimmed.includes('://')) {
+    try {
+      return bareHost(new URL(trimmed).hostname);
+    } catch {
+      return '';
+    }
+  }
+  return bareHost(trimmed);
+}
+
+function bareHost(hostname: string): string {
+  const stripped = hostname.replace(/\.$/, '');
+  if (stripped.startsWith('[') && stripped.endsWith(']')) {
+    return stripped.slice(1, -1);
+  }
+  return stripped;
+}
 
 export type AppConfig = z.output<typeof EnvSchema>;
 
@@ -76,6 +125,11 @@ function formatEnvError(error: z.ZodError): string {
   return `Некорректное окружение:\n${lines.join('\n')}`;
 }
 
+/** 0 — не верить X-Forwarded-For. Иначе число прокси перед приложением. */
+export function fastifyTrustProxy(hops: number): number | false {
+  return hops > 0 ? hops : false;
+}
+
 /**
  * Падает с понятным текстом, если env не совпал со схемой.
  * Явный source нужен тестам: .env с диска при этом не читается.
@@ -88,5 +142,19 @@ export function loadConfig(source?: NodeJS.ProcessEnv): AppConfig {
   if (!parsed.success) {
     throw new EnvConfigError(formatEnvError(parsed.error));
   }
+  assertBootstrapPassword(source ?? process.env, parsed.data.nodeEnv);
   return parsed.data;
+}
+
+function assertBootstrapPassword(source: NodeJS.ProcessEnv, nodeEnv: AppConfig['nodeEnv']): void {
+  const raw = source.BOOTSTRAP_ADMIN_PASSWORD;
+  if (typeof raw !== 'string' || raw.trim() === '') {
+    return;
+  }
+  if (nodeEnv === 'production') {
+    throw new EnvConfigError('BOOTSTRAP_ADMIN_PASSWORD запрещён в production');
+  }
+  if (raw.trim().length < 10) {
+    throw new EnvConfigError('BOOTSTRAP_ADMIN_PASSWORD короче 10 символов');
+  }
 }

@@ -16,6 +16,15 @@ describe('bootstrapPassword', () => {
     }
   });
 
+  it('короче 10 символов и значение в production не принимает', () => {
+    expect(() => bootstrapPassword({ BOOTSTRAP_ADMIN_PASSWORD: 'short' }, 'development')).toThrow(
+      /10/,
+    );
+    expect(() =>
+      bootstrapPassword({ BOOTSTRAP_ADMIN_PASSWORD: 'long-enough-password' }, 'production'),
+    ).toThrow(/production/);
+  });
+
   it('берёт env, иначе случайную строку длиннее 10', () => {
     process.env.BOOTSTRAP_ADMIN_PASSWORD = '  ci-admin-password  ';
     expect(bootstrapPassword()).toBe('ci-admin-password');

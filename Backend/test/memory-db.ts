@@ -175,6 +175,7 @@ export class MemoryPrisma {
     findUnique: (args: Args) => this.findUser(args),
     create: (args: Args) => this.createUser(args),
     update: (args: Args) => this.updateUser(args),
+    updateMany: (args: Args) => this.updateUsers(args),
   };
 
   readonly depot = {
@@ -330,7 +331,29 @@ export class MemoryPrisma {
     if (!user) {
       throw new Error('user missing');
     }
-    const data = args.data ?? {};
+    this.patchUser(user, args.data ?? {});
+    return pick(user, args.select);
+  }
+
+  private updateUsers(args: Args): { count: number } {
+    const where = args.where ?? {};
+    const id = typeof where.id === 'string' ? where.id : undefined;
+    const role = typeof where.role === 'string' ? where.role : undefined;
+    let count = 0;
+    for (const user of this.users) {
+      if (id !== undefined && user.id !== id) {
+        continue;
+      }
+      if (role !== undefined && user.role !== role) {
+        continue;
+      }
+      this.patchUser(user, args.data ?? {});
+      count += 1;
+    }
+    return { count };
+  }
+
+  private patchUser(user: MemoryUser, data: Record<string, unknown>): void {
     if (typeof data.role === 'string') {
       user.role = data.role;
     }
@@ -340,11 +363,11 @@ export class MemoryPrisma {
     if (typeof data.grade === 'string') {
       user.grade = data.grade;
     }
-    const brigadeId = connectId(data.brigade);
+    const brigadeId =
+      connectId(data.brigade) ?? (typeof data.brigadeId === 'string' ? data.brigadeId : undefined);
     if (brigadeId) {
       user.brigadeId = brigadeId;
     }
-    return pick(user, args.select);
   }
 
   private createClient(args: Args): MemoryClient {

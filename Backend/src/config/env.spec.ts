@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { loadConfig } from './env';
+import { fastifyTrustProxy, loadConfig } from './env';
 
 const valid = {
   NODE_ENV: 'test',
@@ -31,5 +31,56 @@ describe('loadConfig', () => {
 
   it('не принимает короткий ключ AES', () => {
     expect(() => loadConfig({ ...valid, SEED_ENC_KEY: 'abcd' })).toThrow(/SEED_ENC_KEY/);
+  });
+
+  it('не принимает BOOTSTRAP_ADMIN_PASSWORD короче 10 и в production', () => {
+    expect(() => loadConfig({ ...valid, BOOTSTRAP_ADMIN_PASSWORD: 'short' })).toThrow(/10/);
+    expect(() =>
+      loadConfig({
+        ...valid,
+        NODE_ENV: 'production',
+        COOKIE_SECURE: 'true',
+        BOOTSTRAP_ADMIN_PASSWORD: 'long-enough-password',
+      }),
+    ).toThrow(/production/);
+    expect(
+      loadConfig({
+        ...valid,
+        NODE_ENV: 'production',
+        COOKIE_SECURE: 'true',
+        BOOTSTRAP_ADMIN_PASSWORD: '   ',
+      }).nodeEnv,
+    ).toBe('production');
+  });
+
+  it('берёт число хопов прокси и не доверяет заголовок при нуле', () => {
+    expect(loadConfig(valid).trustProxy).toBe(0);
+    expect(fastifyTrustProxy(0)).toBe(false);
+    expect(loadConfig({ ...valid, TRUST_PROXY: '2' }).trustProxy).toBe(2);
+    expect(fastifyTrustProxy(2)).toBe(2);
+    expect(() => loadConfig({ ...valid, TRUST_PROXY: '-1' })).toThrow(/TRUST_PROXY/);
+  });
+
+  it('в production требует COOKIE_SECURE=true', () => {
+    expect(() => loadConfig({ ...valid, NODE_ENV: 'production', COOKIE_SECURE: 'false' })).toThrow(
+      /COOKIE_SECURE/,
+    );
+    expect(() => loadConfig({ ...valid, NODE_ENV: 'production', COOKIE_SECURE: '' })).toThrow(
+      /COOKIE_SECURE/,
+    );
+    expect(
+      loadConfig({ ...valid, NODE_ENV: 'production', COOKIE_SECURE: 'true' }).cookieSecure,
+    ).toBe(true);
+    expect(
+      loadConfig({ ...valid, NODE_ENV: 'development', COOKIE_SECURE: 'false' }).cookieSecure,
+    ).toBe(false);
+  });
+
+  it('разбирает allowlist вебхуков и считает пустое значение открытым', () => {
+    expect(loadConfig(valid).webhookAllowedHosts).toEqual([]);
+    expect(
+      loadConfig({ ...valid, WEBHOOK_ALLOWED_HOSTS: ' LMS.Example. , https://hooks.test/path ' })
+        .webhookAllowedHosts,
+    ).toEqual(['lms.example', 'hooks.test']);
   });
 });
