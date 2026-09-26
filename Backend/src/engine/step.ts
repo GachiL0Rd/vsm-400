@@ -16,7 +16,7 @@ import { addSkills, copySkills } from './skills';
 import { politenessOf } from './summarize';
 import type { EngineState, JournalEntry, ShiftPlan, StepInput } from './types';
 import { resolveText } from './view';
-import { countIncidents } from './walk';
+import { countIncidents, hasAllFlags } from './walk';
 
 export const TIMEOUT_ACTION = 'Нет решения — время вышло';
 
@@ -92,10 +92,26 @@ export function step(
 ): { state: EngineState; entry: JournalEntry } {
   const node = openNode(state, scenario);
   const action = resolveAction(node, input, state.flags);
+  const played = applyResolved(state, scenario, node, action, input, ctx);
+  if (gateTripped(scenario, played.state)) {
+    played.state.outcome = 'terminated';
+    return played;
+  }
+  move(played.state, scenario, action.next, ctx);
+  return played;
+}
+
+function applyResolved(
+  state: EngineState,
+  scenario: ScenarioGraph,
+  node: DecisionNode,
+  action: RawAction,
+  input: StepInput,
+  ctx: StepContext,
+): { state: EngineState; entry: JournalEntry } {
   const extra = extraDeltas(action.effectsIf, state);
   const loyaltyDelta = action.loyalty + extra.loyalty;
   const safetyDelta = action.safety + extra.safety;
-  const situation = resolveText(node, state);
   const draft = structuredClone(state);
   draft.loyalty = clampScale(draft.loyalty + loyaltyDelta);
   draft.safety = clampScale(draft.safety + safetyDelta);
@@ -109,7 +125,7 @@ export function step(
     draft,
     scenario,
     action,
-    situation,
+    resolveText(node, state),
     loyaltyDelta,
     safetyDelta,
     ctx.elapsedMs,
@@ -117,12 +133,8 @@ export function step(
   );
   draft.journal.push(entry);
   draft.seq = entry.idx + 1;
+  // Живая сессия читает шкалу до финала. Итог summarize считает заново по журналу.
   draft.politeness = politenessOf(draft.loyalty, draft.journal, knownScenarios(scenario, ctx));
-  if (gateTripped(scenario, draft)) {
-    draft.outcome = 'terminated';
-    return { state: draft, entry };
-  }
-  move(draft, scenario, action.next, ctx);
   return { state: draft, entry };
 }
 
@@ -340,13 +352,4 @@ function addFlags(flags: string[], set: readonly string[]): void {
       flags.push(flag);
     }
   }
-}
-
-function hasAllFlags(flags: readonly string[], required: readonly string[]): boolean {
-  for (const flag of required) {
-    if (!flags.includes(flag)) {
-      return false;
-    }
-  }
-  return true;
 }
