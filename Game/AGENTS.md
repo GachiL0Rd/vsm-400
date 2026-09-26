@@ -31,6 +31,18 @@
 - TypeScript: **5.9.3**.
 - Vite: **8.3.1**.
 
+## Phaser Skills и проверка API
+
+Работаем с Phaser 4. Перед изменениями используйте релевантный skill из
+официального набора `phaserjs/phaser/skills` по правилам в `../AGENTS.md`:
+`scenes` для lifecycle сцены, `loading-assets` для ассетов, `animations`
+для анимаций, `physics-arcade` для коллизий, `tilemaps` для Tiled,
+`input-keyboard-mouse-touch` для управления.
+
+Не используйте API, если не уверены, что он существует в установленном
+Phaser 4.2.1. Перед новым вызовом Phaser API объясните, почему он подходит,
+и проверьте его в типах/исходниках пакета или официальной документации.
+
 Из каталога `Game/`:
 
 ```powershell
