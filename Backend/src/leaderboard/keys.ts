@@ -36,3 +36,11 @@ export function snapKey(key: string): string {
 export function appliedRunKey(runId: string): string {
   return `lb:applied:${runId}`;
 }
+
+export function challengeThemeKey(seasonId: string, depotId: string): string {
+  return `challenge:theme:${seasonId}:${depotId}`;
+}
+
+export function challengeAwardKey(runId: string): string {
+  return `challenge:award:${runId}`;
+}
