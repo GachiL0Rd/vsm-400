@@ -1,8 +1,6 @@
 import { createZodDto } from 'nestjs-zod';
 import { z } from 'zod';
-
-const roleSchema = z.enum(['CONDUCTOR', 'CHIEF', 'METHODIST', 'ADMIN']);
-const gradeSchema = z.enum(['TRAINEE', 'CONDUCTOR', 'CONDUCTOR_SENIOR', 'INSTRUCTOR']);
+import { gradeSchema, roleSchema } from './enums';
 
 const createUserSchema = z.object({
   login: z.string().trim().min(1).max(64),

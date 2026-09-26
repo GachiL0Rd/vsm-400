@@ -1,5 +1,6 @@
 import { createZodDto } from 'nestjs-zod';
 import { z } from 'zod';
+import { gradeSchema, roleSchema } from '../users/enums';
 
 const loginSchema = z.object({
   login: z.string().trim().min(1).max(64),
@@ -15,8 +16,8 @@ const loginUserSchema = z.object({
   id: z.uuid(),
   login: z.string(),
   callsign: z.string(),
-  role: z.enum(['CONDUCTOR', 'CHIEF', 'METHODIST', 'ADMIN']),
-  grade: z.enum(['TRAINEE', 'CONDUCTOR', 'CONDUCTOR_SENIOR', 'INSTRUCTOR']),
+  role: roleSchema,
+  grade: gradeSchema,
   mustChangePassword: z.boolean(),
 });
 
@@ -26,7 +27,7 @@ export class LoginResponseDto extends createZodDto(z.object({ user: loginUserSch
 export class SessionResponseDto extends createZodDto(
   z.object({
     id: z.uuid(),
-    role: z.enum(['CONDUCTOR', 'CHIEF', 'METHODIST', 'ADMIN']),
+    role: roleSchema,
     brigadeId: z.uuid().nullable(),
     depotId: z.uuid().nullable(),
   }),

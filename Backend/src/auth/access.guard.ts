@@ -10,13 +10,14 @@ import { Reflector } from '@nestjs/core';
 import { JwtService } from '@nestjs/jwt';
 import { z } from 'zod';
 import { PrismaService } from '../prisma/prisma.service';
+import { roleSchema } from '../users/enums';
 import type { AuthUser } from './auth-user';
 import { IS_PUBLIC_KEY } from './public.decorator';
 import { passwordChangeAllows, readAccessToken } from './request';
 
 const claimsSchema = z.object({
   sub: z.string().min(1),
-  role: z.enum(['CONDUCTOR', 'CHIEF', 'METHODIST', 'ADMIN']),
+  role: roleSchema,
   bid: z.string().nullable(),
   did: z.string().nullable(),
   sid: z.uuid(),
