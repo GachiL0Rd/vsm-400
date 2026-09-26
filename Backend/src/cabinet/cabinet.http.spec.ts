@@ -4,7 +4,9 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import { Test } from '@nestjs/testing';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { HeaderAccessGuard } from '../../test/header-access.guard';
 import { AppModule } from '../app.module';
+import { AccessGuard } from '../auth/access.guard';
 import type { AuthUser } from '../auth/auth-user';
 import { ASSIGNMENT_CREATED, type AssignmentCreatedPayload } from '../common/events';
 import { configureApp } from '../configure-app';
@@ -140,10 +142,12 @@ describe('кабинет, аналитика, назначения', () => {
   beforeAll(async () => {
     process.env.DATABASE_URL = readEnv('DATABASE_URL');
     process.env.REDIS_URL = readEnv('REDIS_URL');
-    const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
+    const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
+      .overrideProvider(AccessGuard)
+      .useClass(HeaderAccessGuard)
+      .compile();
     app = moduleRef.createNestApplication(adapter(), { logger: false });
     appRef = app;
-    installUser(app);
     await configureApp(app);
     await app.init();
     await app.getHttpAdapter().getInstance().ready();
@@ -297,7 +301,7 @@ describe('кабинет, аналитика, назначения', () => {
   it('без пользователя 401', async () => {
     const response = await call('GET', '/api/v1/me');
     expect(response.statusCode).toBe(401);
-    expect(response.json()).toMatchObject({ code: 'UNAUTHORIZED' });
+    expect(response.json()).toMatchObject({ code: 'UNAUTHENTICATED' });
   });
 
   it('начальник назначает свою бригаду, чужую — 403', async () => {
@@ -727,19 +731,6 @@ const GRAPH = {
 
 function adapter(): FastifyAdapter {
   return new FastifyAdapter({ bodyLimit: 1_048_576 });
-}
-
-function installUser(app: NestFastifyApplication): void {
-  app
-    .getHttpAdapter()
-    .getInstance()
-    .addHook('onRequest', async (request) => {
-      const header = request.headers['x-test-user'];
-      if (typeof header !== 'string') {
-        return;
-      }
-      (request as { user?: Actor }).user = JSON.parse(header) as Actor;
-    });
 }
 
 function call(method: string, url: string, user?: Actor, body?: unknown) {

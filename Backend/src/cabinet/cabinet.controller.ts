@@ -1,9 +1,8 @@
-import { Controller, Get, Inject, Param, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Inject, Param, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiCookieAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { ZodResponse, ZodValidationPipe } from 'nestjs-zod';
 import type { AuthUser } from '../auth/auth-user';
 import { CurrentUser } from '../auth/current-user.decorator';
-import { AccessGuard } from './access.guard';
 import { CabinetService } from './cabinet.service';
 import {
   AchievementDto,
@@ -19,7 +18,6 @@ import {
 @ApiTags('cabinet')
 @ApiCookieAuth('vsm_access')
 @ApiBearerAuth('bearer')
-@UseGuards(AccessGuard)
 @Controller('me')
 export class CabinetController {
   constructor(@Inject(CabinetService) private readonly cabinet: CabinetService) {}

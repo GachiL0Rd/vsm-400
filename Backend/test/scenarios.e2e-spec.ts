@@ -1,42 +1,20 @@
-import {
-  type CallHandler,
-  type ExecutionContext,
-  Injectable,
-  type NestInterceptor,
-} from '@nestjs/common';
-import { APP_INTERCEPTOR } from '@nestjs/core';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import { Test } from '@nestjs/testing';
 import type { LightMyRequestResponse } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { AppModule } from '../src/app.module';
-import type { AuthUser } from '../src/auth/auth-user';
+import { AccessGuard } from '../src/auth/access.guard';
 import { configureApp } from '../src/configure-app';
 import type { ScenarioGraph } from '../src/engine/schema';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { ScenariosService } from '../src/scenarios/scenarios.service';
+import { HeaderAccessGuard } from './header-access.guard';
 
 function createFastifyAdapter(): FastifyAdapter {
   return new FastifyAdapter({ bodyLimit: 1_048_576 });
 }
 
 const actor: { id: string } = { id: '' };
-
-@Injectable()
-class TestUserInterceptor implements NestInterceptor {
-  intercept(context: ExecutionContext, next: CallHandler) {
-    const request = context.switchToHttp().getRequest<{
-      headers: Record<string, string | string[] | undefined>;
-      user?: AuthUser;
-    }>();
-    const header = request.headers['x-test-role'];
-    const role = Array.isArray(header) ? header[0] : header;
-    if (role === 'CONDUCTOR' || role === 'CHIEF' || role === 'METHODIST' || role === 'ADMIN') {
-      request.user = { id: actor.id, role, brigadeId: null, depotId: null };
-    }
-    return next.handle();
-  }
-}
 
 describe('сценарии', () => {
   let app: NestFastifyApplication;
@@ -51,8 +29,10 @@ describe('сценарии', () => {
 
     const moduleRef = await Test.createTestingModule({
       imports: [AppModule],
-      providers: [{ provide: APP_INTERCEPTOR, useClass: TestUserInterceptor }],
-    }).compile();
+    })
+      .overrideProvider(AccessGuard)
+      .useClass(HeaderAccessGuard)
+      .compile();
 
     app = moduleRef.createNestApplication(createFastifyAdapter(), { logger: false });
     await configureApp(app);
@@ -91,7 +71,7 @@ describe('сценарии', () => {
       .inject({
         method,
         url,
-        headers: role ? { 'x-test-role': role } : {},
+        headers: role ? { 'x-test-role': role, 'x-test-actor': actor.id } : {},
         payload: payload as never,
       });
   }

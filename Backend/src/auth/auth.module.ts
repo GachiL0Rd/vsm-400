@@ -45,8 +45,11 @@ import { ServiceTokenGuard } from './service-token.guard';
     BootstrapService,
     ServiceTokenGuard,
     ThrottlerGuard,
-    { provide: APP_GUARD, useClass: AccessGuard },
-    { provide: APP_GUARD, useClass: RolesGuard },
+    AccessGuard,
+    RolesGuard,
+    // useExisting, чтобы e2e мог подменить класс через overrideProvider.
+    { provide: APP_GUARD, useExisting: AccessGuard },
+    { provide: APP_GUARD, useExisting: RolesGuard },
   ],
   exports: [ServiceTokenGuard, PasswordService, JwtModule],
 })

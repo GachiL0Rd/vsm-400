@@ -1,16 +1,44 @@
 import { randomUUID } from 'node:crypto';
+import { type CanActivate, type ExecutionContext, Inject, Injectable } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 import { FastifyAdapter } from '@nestjs/platform-fastify';
 import { Test } from '@nestjs/testing';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { AppModule } from '../src/app.module';
+import { AccessGuard } from '../src/auth/access.guard';
+import type { AuthUser } from '../src/auth/auth-user';
+import { IS_PUBLIC_KEY } from '../src/auth/public.decorator';
 import { configureApp } from '../src/configure-app';
 import { extHashOf, loginFromExtHash } from '../src/integration/ext-hash';
 import { WebhookDispatchService } from '../src/integration/webhook-dispatch.service';
 import { VSM_SIGNATURE, VSM_TIMESTAMP, verifyWebhook } from '../src/integration/webhook-signature';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { RedisService } from '../src/redis/redis.service';
+import { ScenariosService } from '../src/scenarios/scenarios.service';
 import { MemoryPrisma } from './memory-db';
+
+const admin: AuthUser = {
+  id: '018f1a2b-3c4d-7e5f-8a9b-0c1d2e3f4a5b',
+  role: 'ADMIN',
+  brigadeId: null,
+  depotId: null,
+};
+
+@Injectable()
+class AdminAccessGuard implements CanActivate {
+  constructor(@Inject(Reflector) private readonly reflector: Reflector) {}
+
+  canActivate(context: ExecutionContext): boolean {
+    const targets = [context.getHandler(), context.getClass()];
+    if (this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, targets) === true) {
+      return true;
+    }
+    const request = context.switchToHttp().getRequest<{ user?: AuthUser }>();
+    request.user = admin;
+    return true;
+  }
+}
 
 const extId = 'tab-unique-152fz';
 const pepper = 'local-dev-ext-id-pepper';
@@ -64,6 +92,10 @@ describe('API интеграции HR', { concurrent: false }, () => {
         quit: vi.fn(),
         connect: vi.fn(),
       })
+      .overrideProvider(AccessGuard)
+      .useClass(AdminAccessGuard)
+      .overrideProvider(ScenariosService)
+      .useValue({ onApplicationBootstrap: () => undefined })
       .compile();
     app = moduleRef.createNestApplication(new FastifyAdapter({ bodyLimit: 1_048_576 }), {
       logger: false,

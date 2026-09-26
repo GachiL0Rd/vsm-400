@@ -1,10 +1,9 @@
-import { Controller, Get, Inject, Param, UseGuards } from '@nestjs/common';
+import { Controller, Get, Inject, Param } from '@nestjs/common';
 import { ApiBearerAuth, ApiCookieAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { ZodResponse } from 'nestjs-zod';
 import type { AuthUser } from '../auth/auth-user';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { Roles } from '../auth/roles.decorator';
-import { AccessGuard } from '../cabinet/access.guard';
 import { Role } from '../generated/prisma/client';
 import { AnalyticsService } from './analytics.service';
 import { GapsDto, HeatmapDto, ScenarioFunnelDto } from './dto';
@@ -12,7 +11,6 @@ import { GapsDto, HeatmapDto, ScenarioFunnelDto } from './dto';
 @ApiTags('analytics')
 @ApiCookieAuth('vsm_access')
 @ApiBearerAuth('bearer')
-@UseGuards(AccessGuard)
 @Roles(Role.CHIEF, Role.METHODIST, Role.ADMIN)
 @Controller('analytics')
 export class AnalyticsController {

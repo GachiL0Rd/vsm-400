@@ -1,7 +1,7 @@
 import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { z } from 'zod';
 import type { AuthUser } from '../auth/auth-user';
-import { assertBrigadeAccess } from '../cabinet/access.guard';
+import { assertBrigadeAccess } from '../cabinet/brigade-access';
 import { applyScores } from '../cabinet/competencies';
 import type { Competency } from '../engine/schema';
 import { PrismaService } from '../prisma/prisma.service';

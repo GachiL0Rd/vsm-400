@@ -12,7 +12,6 @@ import {
 import type { AuthUser } from '../auth/auth-user';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { Roles } from '../auth/roles.decorator';
-import { assertScenarioEditor } from './access';
 import { type CatalogItem, CatalogItemDto, type ScenarioDetail, ScenarioDetailDto } from './dto';
 import { ScenariosService } from './scenarios.service';
 
@@ -38,8 +37,7 @@ export class ScenariosController {
   @ApiUnauthorizedResponse({ description: 'Нет сессии' })
   @ApiForbiddenResponse({ description: 'Нужна роль методиста или администратора' })
   @ApiNotFoundResponse({ description: 'Сценарий не найден' })
-  scenario(@CurrentUser() user: AuthUser, @Param('id') id: string): Promise<ScenarioDetail> {
-    assertScenarioEditor(user);
+  scenario(@CurrentUser() _user: AuthUser, @Param('id') id: string): Promise<ScenarioDetail> {
     return this.scenarios.getById(id);
   }
 }

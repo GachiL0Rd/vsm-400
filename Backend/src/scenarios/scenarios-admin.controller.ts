@@ -14,7 +14,6 @@ import {
 import type { AuthUser } from '../auth/auth-user';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { Roles } from '../auth/roles.decorator';
-import { assertScenarioEditor } from './access';
 import {
   type ScenarioDetail,
   ScenarioDetailDto,
@@ -46,7 +45,6 @@ export class ScenariosAdminController {
     @Param('id') id: string,
     @Body() body: unknown,
   ): Promise<ScenarioDetail> {
-    assertScenarioEditor(user);
     return this.scenarios.saveGraph(id, body, user.id);
   }
 
@@ -59,12 +57,7 @@ export class ScenariosAdminController {
   @ApiForbiddenResponse({ description: 'Нужна роль методиста или администратора' })
   @ApiNotFoundResponse({ description: 'Сценарий не найден' })
   @ApiUnprocessableEntityResponse({ description: 'Неизвестный статус' })
-  setStatus(
-    @CurrentUser() user: AuthUser,
-    @Param('id') id: string,
-    @Body() body: unknown,
-  ): Promise<ScenarioStatusView> {
-    assertScenarioEditor(user);
+  setStatus(@Param('id') id: string, @Body() body: unknown): Promise<ScenarioStatusView> {
     // Параметр стирается в import type, глобальный pipe его не видит.
     const parsed = ScenarioStatusPatchSchema.safeParse(body);
     if (!parsed.success) {
