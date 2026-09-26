@@ -140,7 +140,7 @@ describe('кабинет, аналитика, назначения', () => {
 
   beforeAll(async () => {
     // Своя база: параллельный sync сценариев в общую vsm ловит гонку по версии.
-    process.env.DATABASE_URL = readEnv('DATABASE_URL').replace(/\/vsm$/, '/vsm_cabinet');
+    process.env.DATABASE_URL = readEnv('DATABASE_URL').replace(/\/[^/]+$/, '/vsm_cabinet');
     process.env.REDIS_URL = readEnv('REDIS_URL');
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
       .overrideProvider(AccessGuard)
