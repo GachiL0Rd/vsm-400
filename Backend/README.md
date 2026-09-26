@@ -178,3 +178,28 @@ METHODIST и ADMIN любой. `GET /api/v1/analytics/scenarios/:id` — вор�
 - `POST /api/v1/promotions/:id/decision` — тело `{ "approve": true|false }`. Начальник своей бригады или администратор. Утверждение меняет грейд.
 
 `GET /api/v1/me/achievements` отдаёт кабинет. Список собирает `AchievementsService.listForUser`: `code`, `title`, `description`, `earnedAt` или `null`, для незакрытых счётчиков ещё `progress`.
+
+### Игровые сессии
+
+`POST /api/v1/game-sessions` `{transport, carClass?}` — любой залогиненный.
+Если смена уже `PENDING` или `ACTIVE`, возвращается она, в аудит пишется
+`anticheat.multi-session`. Иначе собирается план, seed шифруется AES-256-GCM,
+в cookie `vsm_game` (HttpOnly, SameSite=Strict, Path=/game-ws, 2 минуты) и в
+тело кладётся билет. Ответ: `{sessionId, ticket, wsUrl, seedCommit, plan}` —
+публичный план без графа: поезд, маршрут, вагон, класс, отправление, число
+перегонов и названия. Назначенная `PLANNED` смена становится `STARTED`.
+
+`GET /api/v1/game-sessions/:id` — узел, шкалы, дедлайн, seq. Просроченный
+дедлайн на GET сервер закрывает сам. `POST /:id/decisions` `{seq, choiceId,
+clientTs?}`: опоздание больше 500 мс — timeout; повтор того же seq и choiceId
+отдаёт прежний ответ, иной — 409 `SEQ_MISMATCH`. `POST /:id/abort` ставит
+`ABORTED` без рейса. `GET /:id/reveal` после `COMPLETED` отдаёт seed и commit.
+
+Внутренний контур `/api/internal/v1` (заголовок `X-Service-Token`):
+`POST /tickets/verify` гасит jti в Redis (`vsm:ticket:<jti>`, 300 с), повтор —
+409 `TICKET_REUSED`, сессия `PENDING` становится `ACTIVE`.
+`POST /game-sessions/:id/decisions`, `/events`, `/report`. Отчёт v1 нормализуется
+в итог рейса (correct→best, late→ok, incorrect→worse, missed→missed,
+ride→enroute). Повтор отчёта — 200 и тот же `runId`. Отмена и истечение
+публикуют `vsm:game:<sessionId>`. Раз в минуту просроченные `PENDING`/`ACTIVE`
+становятся `EXPIRED`.

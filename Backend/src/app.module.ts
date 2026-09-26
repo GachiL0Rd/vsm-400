@@ -21,6 +21,7 @@ import { ProgressionModule } from './progression/progression.module';
 import { RedisModule } from './redis/redis.module';
 import { RulesModule } from './rules/rules.module';
 import { ScenariosModule } from './scenarios/scenarios.module';
+import { SessionsModule } from './sessions/sessions.module';
 import { UsersModule } from './users/users.module';
 
 @Module({
@@ -36,6 +37,7 @@ import { UsersModule } from './users/users.module';
     UsersModule,
     OrgModule,
     ScenariosModule,
+    SessionsModule,
     ProgressionModule,
     AchievementsModule,
     CabinetModule,
