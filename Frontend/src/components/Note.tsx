@@ -7,7 +7,7 @@ interface NoteProps {
   tone?: Tone;
   /** С заголовком тон несёт сам заголовок, полоса не нужна. */
   title?: string;
-  source?: string;
+  source?: string | undefined;
   children: ReactNode;
 }
 
