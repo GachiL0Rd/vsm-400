@@ -1,5 +1,5 @@
-// Модель данных кабинета. Поля Run/Achievement совместимы с API из
-// feature/cabinet (Server/src/schemas.ts) и расширены тем, что нужно экранам.
+// Модель данных кабинета. Контракт API ещё не зафиксирован: поля Run и
+// Achievement расширены тем, что нужно экранам.
 
 export type CompetencyId =
   | 'safety'
@@ -9,19 +9,31 @@ export type CompetencyId =
   | 'service'
   | 'escalation';
 
-export const COMPETENCIES: readonly { id: CompetencyId; title: string }[] = [
+type IfCovers<T extends readonly { id: CompetencyId; title: string }[]> = [
+  Exclude<CompetencyId, T[number]['id']>,
+] extends [never]
+  ? T
+  : Exclude<CompetencyId, T[number]['id']>;
+
+// Порядок — оси радара. IfCovers не даёт собрать массив без каждого CompetencyId.
+const COMPETENCY_ROWS = [
   { id: 'safety', title: 'Безопасность' },
   { id: 'procedure', title: 'Процедуры' },
   { id: 'detection', title: 'Обнаружение' },
   { id: 'reaction', title: 'Реакция' },
   { id: 'service', title: 'Сервис' },
   { id: 'escalation', title: 'Эскалация' },
-];
+] as const satisfies readonly { id: CompetencyId; title: string }[];
+
+export const COMPETENCIES: IfCovers<typeof COMPETENCY_ROWS> = COMPETENCY_ROWS;
 
 export type Competencies = Record<CompetencyId, number>;
 
 /** Ниже — компетенция считается проседающей. */
 export const WEAK_SCORE = 50;
+
+/** Порог провала шкалы рейса: безопасность и лояльность. */
+export const FAIL_SCORE = 30;
 
 export interface Profile {
   callsign: string;
@@ -37,7 +49,7 @@ export interface Profile {
   competencies: Competencies;
   /** Изменение за последние 5 рейсов. */
   trend: Competencies;
-  /** Почему компетенция проседает — вывод по истории рейсов. */
+  /** Заметка по компетенции — вывод по истории рейсов. */
   weakNote: Partial<Record<CompetencyId, string>>;
 }
 

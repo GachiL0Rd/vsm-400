@@ -482,7 +482,7 @@ export const leaderboards: Record<Scope, Leaderboard> = {
 };
 
 /** Место бригады среди бригад депо. */
-export const brigadeInDepot = { rank: 2, total: 14 };
+export const brigadeInDepot: { rank: number; total: number } = { rank: 2, total: 14 };
 
 export const notices: Notice[] = [
   {
