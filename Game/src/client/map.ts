@@ -10,10 +10,11 @@ export interface ScreenPoint {
 }
 export const MAP_WIDTH = 14;
 export const MAP_HEIGHT = 6;
-export const TILE_WIDTH = 96;
-export const TILE_HEIGHT = 48;
-export const ORIGIN_X = 720;
-export const ORIGIN_Y = 150;
+export const TILE_SIZE = 76;
+export const ORIGIN_X = 100;
+export const ORIGIN_Y = 270;
+export const WORLD_WIDTH = ORIGIN_X * 2 + MAP_WIDTH * TILE_SIZE;
+export const WORLD_HEIGHT = ORIGIN_Y * 2 + MAP_HEIGHT * TILE_SIZE;
 
 const ANCHORS: Record<string, Tile> = {
   'platform-1': { x: 1, y: 2 },
@@ -30,15 +31,16 @@ const ANCHORS: Record<string, Tile> = {
 
 export function tileToScreen(tile: Tile): ScreenPoint {
   return {
-    x: ORIGIN_X + ((tile.x - tile.y) * TILE_WIDTH) / 2,
-    y: ORIGIN_Y + ((tile.x + tile.y) * TILE_HEIGHT) / 2,
+    x: ORIGIN_X + (tile.x + 0.5) * TILE_SIZE,
+    y: ORIGIN_Y + (tile.y + 0.5) * TILE_SIZE,
   };
 }
 
 export function screenToTile(point: ScreenPoint): Tile {
-  const a = (point.x - ORIGIN_X) / (TILE_WIDTH / 2);
-  const b = (point.y - ORIGIN_Y) / (TILE_HEIGHT / 2);
-  return { x: Math.round((a + b) / 2), y: Math.round((b - a) / 2) };
+  return {
+    x: Math.floor((point.x - ORIGIN_X) / TILE_SIZE),
+    y: Math.floor((point.y - ORIGIN_Y) / TILE_SIZE),
+  };
 }
 
 export function zoneOf(tile: Tile): ZoneId {

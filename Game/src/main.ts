@@ -34,7 +34,7 @@ ui = new ClientUI(uiRoot, connection, scene);
 new Phaser.Game({
   type: Phaser.AUTO,
   parent: gameRoot,
-  backgroundColor: '#132b35',
+  backgroundColor: '#10232c',
   scale: { mode: Phaser.Scale.RESIZE, width: window.innerWidth, height: window.innerHeight },
   render: { pixelArt: false, antialias: true },
   scene: [scene],

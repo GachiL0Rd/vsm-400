@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { findRoute, isWalkable, screenToTile, tileToScreen, zoneOf } from './map';
+import { findRoute, isWalkable, screenToTile, TILE_SIZE, tileToScreen, zoneOf } from './map';
 
 describe('local navigation', () => {
   it('routes through the vestibule and stays out of seats and walls', () => {
@@ -11,8 +11,23 @@ describe('local navigation', () => {
   });
 
   it('projects and picks the same tile', () => {
-    const tile = { x: 8, y: 3 };
-    expect(screenToTile(tileToScreen(tile))).toEqual(tile);
+    for (let x = 0; x < 14; x += 1) {
+      for (let y = 0; y < 6; y += 1) {
+        const tile = { x, y };
+        const center = tileToScreen(tile);
+        expect(screenToTile(center)).toEqual(tile);
+        for (const offsetX of [-0.49, 0.49]) {
+          for (const offsetY of [-0.49, 0.49]) {
+            expect(
+              screenToTile({
+                x: center.x + offsetX * TILE_SIZE,
+                y: center.y + offsetY * TILE_SIZE,
+              }),
+            ).toEqual(tile);
+          }
+        }
+      }
+    }
   });
 
   it('routes around a passenger standing in the aisle', () => {
