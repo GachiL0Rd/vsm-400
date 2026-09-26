@@ -3,6 +3,9 @@ import { APP_FILTER, APP_PIPE } from '@nestjs/core';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { ScheduleModule } from '@nestjs/schedule';
 import { ZodValidationPipe } from 'nestjs-zod';
+import { AnalyticsModule } from './analytics/analytics.module';
+import { AssignmentsModule } from './assignments/assignments.module';
+import { CabinetModule } from './cabinet/cabinet.module';
 import { ProblemFilter } from './common/problem.filter';
 import { ConfigModule } from './config/config.module';
 import { HealthModule } from './health/health.module';
@@ -18,6 +21,9 @@ import { RulesModule } from './rules/rules.module';
     PrismaModule,
     RedisModule,
     RulesModule,
+    CabinetModule,
+    AnalyticsModule,
+    AssignmentsModule,
     HealthModule,
   ],
   providers: [
