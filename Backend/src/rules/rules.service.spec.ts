@@ -25,6 +25,7 @@ describe('rules.yaml', () => {
     expect(rules.ewmaAlpha()).toBeCloseTo(0.3);
     expect(rules.weakScore()).toBe(50);
     expect(rules.failScore()).toBe(30);
+    expect(rules.challengePoints()).toBe(40);
     expect(rules.gradeRules().map((rule) => [rule.from, rule.to])).toEqual([
       ['TRAINEE', 'CONDUCTOR'],
       ['CONDUCTOR', 'CONDUCTOR_SENIOR'],
