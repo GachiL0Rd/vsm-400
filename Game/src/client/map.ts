@@ -8,6 +8,18 @@ export interface ScreenPoint {
   x: number;
   y: number;
 }
+export function sameTile(a: Tile, b: Tile): boolean {
+  return a.x === b.x && a.y === b.y;
+}
+
+export function neighbours(tile: Tile): Tile[] {
+  return [
+    { x: tile.x - 1, y: tile.y },
+    { x: tile.x + 1, y: tile.y },
+    { x: tile.x, y: tile.y - 1 },
+    { x: tile.x, y: tile.y + 1 },
+  ];
+}
 export const MAP_WIDTH = 14;
 export const MAP_HEIGHT = 6;
 export const TILE_SIZE = 76;
