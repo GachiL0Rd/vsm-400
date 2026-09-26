@@ -1,8 +1,9 @@
 import { useEffect } from 'react';
+import { Route, Routes, useLocation } from 'react-router';
 import { Nav } from './components/Nav';
 import { NotFound } from './components/NotFound';
-import { notices, profile } from './demo';
-import { type Route, useRoute } from './route';
+import { findRun, notices, profile } from './demo';
+import { paths, runId } from './paths';
 import { FeedScreen } from './screens/FeedScreen';
 import { ProfileScreen } from './screens/ProfileScreen';
 import { RatingScreen } from './screens/RatingScreen';
@@ -10,36 +11,38 @@ import { RunScreen } from './screens/RunScreen';
 import { ShiftScreen } from './screens/ShiftScreen';
 import './App.css';
 
-const titles: Record<Route['name'], string> = {
-  shift: 'Смена',
-  profile: 'Профиль',
-  rating: 'Рейтинг',
-  feed: 'Лента',
-  run: 'Разбор рейса',
-  missing: 'Нет страницы',
-};
+function titleFor(pathname: string): string {
+  if (pathname === paths.shift) return 'Смена';
+  if (pathname === paths.profile) return 'Профиль';
+  if (pathname === paths.rating) return 'Рейтинг';
+  if (pathname === paths.feed) return 'Лента';
+  const id = runId(pathname);
+  if (id !== null) return findRun(id)?.outcomeNote ?? 'Рейс не найден';
+  return 'Нет страницы';
+}
 
 function App() {
-  const route = useRoute();
-  const title = titles[route.name];
-  const unread = notices.filter((n) => n.unread).length;
+  const { pathname } = useLocation();
+  const unread = notices.filter((notice) => notice.unread).length;
 
-  // Новый экран — новый заголовок вкладки и прокрутка к началу.
+  // Смена пути, а не текста заголовка: рейс → рейс тоже начинается сверху.
   useEffect(() => {
-    document.title = title;
+    document.title = titleFor(pathname);
     window.scrollTo(0, 0);
-  }, [title]);
+  }, [pathname]);
 
   return (
     <div className="app">
-      <Nav route={route} unread={unread} callsign={profile.callsign} level={profile.level} />
+      <Nav unread={unread} callsign={profile.callsign} level={profile.level} />
       <main className="app__main">
-        {route.name === 'shift' && <ShiftScreen />}
-        {route.name === 'profile' && <ProfileScreen />}
-        {route.name === 'rating' && <RatingScreen />}
-        {route.name === 'feed' && <FeedScreen />}
-        {route.name === 'run' && <RunScreen id={route.id} />}
-        {route.name === 'missing' && <NotFound />}
+        <Routes>
+          <Route path={paths.shift} element={<ShiftScreen />} />
+          <Route path={paths.profile} element={<ProfileScreen />} />
+          <Route path={paths.rating} element={<RatingScreen />} />
+          <Route path={paths.feed} element={<FeedScreen unread={unread} />} />
+          <Route path={paths.runPattern} element={<RunScreen />} />
+          <Route path="*" element={<NotFound />} />
+        </Routes>
       </main>
     </div>
   );

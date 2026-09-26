@@ -1,12 +1,13 @@
-import { href } from '../route';
+import { Link } from 'react-router';
+import { paths } from '../paths';
 
 export function NotFound({ title = 'Такой страницы нет' }: { title?: string }) {
   return (
     <div className="screen">
       <h1 className="screen__title">{title}</h1>
-      <a className="btn btn--ghost screen__action" href={href.shift}>
+      <Link className="btn btn--ghost screen__action" to={paths.shift}>
         На смену
-      </a>
+      </Link>
     </div>
   );
 }

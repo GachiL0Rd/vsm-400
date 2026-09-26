@@ -1,3 +1,4 @@
+import { Link } from 'react-router';
 import { Icon, type IconName } from '../components/Icon';
 import { notices } from '../demo';
 import { formatAgo } from '../format';
@@ -13,9 +14,7 @@ const KINDS: Record<NoticeKind, { icon: IconName; title: string }> = {
   achievement: { icon: 'medal', title: 'Знак отличия' },
 };
 
-export function FeedScreen() {
-  const unread = notices.filter((n) => n.unread).length;
-
+export function FeedScreen({ unread }: { unread: number }) {
   return (
     <div className="screen">
       <header className="screen__head">
@@ -57,9 +56,9 @@ function NoticeEntry({ notice }: { notice: Notice }) {
   const className = `notice${notice.unread ? ' notice--unread' : ''}`;
 
   return notice.link ? (
-    <a className={`${className} notice--link`} href={notice.link}>
+    <Link className={`${className} notice--link`} to={notice.link}>
       {body}
-    </a>
+    </Link>
   ) : (
     <div className={className}>{body}</div>
   );

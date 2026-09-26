@@ -1,11 +1,12 @@
+import { Link, useParams } from 'react-router';
 import { Icon } from '../components/Icon';
 import { Note } from '../components/Note';
 import { NotFound } from '../components/NotFound';
 import { OutcomeTag } from '../components/OutcomeTag';
-import { runs } from '../demo';
+import { findRun } from '../demo';
 import { formatDate, formatDelta, plural } from '../format';
 import { COMPETENCIES, type Decision, STAGE_TITLES, type Verdict } from '../model';
-import { href } from '../route';
+import { paths } from '../paths';
 import './RunScreen.css';
 
 const VERDICTS: Record<Verdict, { title: string; tone: string }> = {
@@ -17,18 +18,19 @@ const VERDICTS: Record<Verdict, { title: string; tone: string }> = {
 
 const FAIL_SCORE = 30;
 
-export function RunScreen({ id }: { id: string }) {
-  const run = runs.find((r) => r.id === id);
+export function RunScreen() {
+  const { id } = useParams();
+  const run = id ? findRun(id) : undefined;
   if (!run) return <NotFound title="Рейс не найден" />;
 
   const lucky = run.decisions.filter((d) => d.lucky).length;
 
   return (
     <div className="screen">
-      <a className="back" href={href.shift}>
+      <Link className="back" to={paths.shift}>
         <Icon name="back" size={20} />
         Журнал рейсов
-      </a>
+      </Link>
 
       <header className="screen__head">
         <div>

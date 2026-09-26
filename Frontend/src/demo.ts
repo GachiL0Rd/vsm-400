@@ -13,6 +13,7 @@ import type {
   Scope,
   Stats,
 } from './model';
+import { paths } from './paths';
 
 const HOUR = 60 * 60 * 1000;
 const at = (hoursFromNow: number) => new Date(Date.now() + hoursFromNow * HOUR).toISOString();
@@ -367,6 +368,10 @@ export const runs: Run[] = [
   },
 ];
 
+export function findRun(id: string): Run | undefined {
+  return runs.find((run) => run.id === id);
+}
+
 export const achievements: Achievement[] = [
   {
     code: 'before-boarding',
@@ -527,6 +532,6 @@ export const notices: Notice[] = [
     text: 'Табло аварийного выхода найдено на приёмке, рейс ВСМ 701.',
     at: daysAgo(4),
     unread: false,
-    link: '#/runs/r405',
+    link: paths.run('r405'),
   },
 ];

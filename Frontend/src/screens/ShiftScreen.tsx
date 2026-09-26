@@ -1,8 +1,9 @@
+import { Link } from 'react-router';
 import { OutcomeTag } from '../components/OutcomeTag';
 import { nextShift, runs, stats } from '../demo';
 import { formatDate } from '../format';
 import { COMPETENCIES, type Run } from '../model';
-import { href } from '../route';
+import { paths } from '../paths';
 import './ShiftScreen.css';
 
 const gameUrl = import.meta.env.VITE_GAME_URL;
@@ -109,9 +110,9 @@ function JournalRow({ run }: { run: Run }) {
     <tr className="journal__row">
       <td className="journal__date num">{formatDate(run.finishedAt)}</td>
       <td className="journal__run">
-        <a className="journal__link" href={href.run(run.id)}>
+        <Link className="journal__link" to={paths.run(run.id)}>
           {run.route}
-        </a>
+        </Link>
         <span className="label">
           {run.train}, вагон {run.car}
         </span>
