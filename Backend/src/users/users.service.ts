@@ -29,6 +29,8 @@ export type CreateUserInput = {
   position: string;
   grade: Grade;
   brigadeId?: string | null;
+  /** HMAC табельного номера. Кадровый контур передаёт, админская ручка — нет. */
+  extHash?: string;
 };
 
 const profileSelect = {
@@ -182,6 +184,7 @@ export class UsersService {
             grade: input.grade,
             brigadeId: input.brigadeId ?? null,
             mustChangePassword: true,
+            ...(input.extHash ? { extHash: input.extHash } : {}),
           },
           select: profileSelect,
         });

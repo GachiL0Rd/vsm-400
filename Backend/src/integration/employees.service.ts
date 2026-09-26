@@ -1,14 +1,13 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { ConflictException, Inject, Injectable } from '@nestjs/common';
 import { APP_CONFIG, type AppConfig } from '../config/env';
 import type { Prisma } from '../generated/prisma/client';
 import { Competency, RunOutcome } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { RulesService } from '../rules/rules.service';
-import { randomCallsign } from './callsign';
+import { UsersService } from '../users/users.service';
 import type { UpsertEmployee } from './dto';
 import { extHashOf, loginFromExtHash } from './ext-hash';
 import { httpError } from './http-error';
-import { generatePassword, hashPassword } from './password';
 
 type PlaceDb = {
   depot: { findUnique(args: Prisma.DepotFindUniqueArgs): Promise<{ id: string } | null> };
@@ -40,6 +39,7 @@ export class EmployeesService {
     @Inject(PrismaService) private readonly prisma: PrismaService,
     @Inject(APP_CONFIG) private readonly config: AppConfig,
     @Inject(RulesService) private readonly rules: RulesService,
+    @Inject(UsersService) private readonly users: UsersService,
   ) {}
 
   async upsert(extId: string, input: UpsertEmployee): Promise<UpsertResult> {
@@ -90,17 +90,41 @@ export class EmployeesService {
   }
 
   private async write(hash: string, input: UpsertEmployee): Promise<UpsertResult> {
-    return this.prisma.$transaction(async (tx) => {
-      const brigadeId = await brigadeOf(tx, input);
-      const existing = await tx.user.findUnique({
-        where: { extHash: hash },
-        select: { id: true },
-      });
-      if (existing) {
-        return updateEmployee(tx, existing.id, brigadeId, input);
-      }
-      return createEmployee(tx, hash, brigadeId, input);
+    const brigadeId = await brigadeOf(this.prisma, input);
+    const existing = await this.prisma.user.findUnique({
+      where: { extHash: hash },
+      select: { id: true },
     });
+    if (existing) {
+      return updateEmployee(this.prisma, existing.id, brigadeId, input);
+    }
+    try {
+      const created = await this.users.createUser({
+        login: loginFromExtHash(hash),
+        role: input.role,
+        position: input.position,
+        grade: input.grade,
+        brigadeId,
+        extHash: hash,
+      });
+      return {
+        userId: created.user.id,
+        login: created.user.login,
+        callsign: created.user.callsign,
+        created: true,
+        password: created.password,
+      };
+    } catch (error) {
+      if (!isLoginTaken(error)) {
+        throw error;
+      }
+      // Гонка двух PUT: первая вставка уже заняла логин и extHash.
+      const updated = await this.updateByHash(hash, input);
+      if (!updated) {
+        throw error;
+      }
+      return updated;
+    }
   }
 
   private async afterUnique(
@@ -247,53 +271,17 @@ async function updateEmployee(
   return { userId: user.id, login: user.login, callsign: user.callsign, created: false };
 }
 
-async function createEmployee(
-  db: {
-    user: {
-      findUnique(args: Prisma.UserFindUniqueArgs): Promise<{ id: string } | null>;
-      create(args: Prisma.UserCreateArgs): Promise<{ id: string; login: string; callsign: string }>;
-    };
-  },
-  hash: string,
-  brigadeId: string,
-  input: UpsertEmployee,
-): Promise<UpsertResult> {
-  const callsign = await freeCallsign(db);
-  const password = generatePassword();
-  const user = await db.user.create({
-    data: {
-      login: loginFromExtHash(hash),
-      passwordHash: hashPassword(password),
-      role: input.role,
-      callsign,
-      extHash: hash,
-      position: input.position,
-      grade: input.grade,
-      mustChangePassword: true,
-      brigade: { connect: { id: brigadeId } },
-    },
-    select: { id: true, login: true, callsign: true },
-  });
-  return {
-    userId: user.id,
-    login: user.login,
-    callsign: user.callsign,
-    created: true,
-    password,
-  };
-}
-
-async function freeCallsign(db: {
-  user: { findUnique(args: Prisma.UserFindUniqueArgs): Promise<{ id: string } | null> };
-}): Promise<string> {
-  for (let attempt = 0; attempt < 8; attempt += 1) {
-    const callsign = randomCallsign();
-    const taken = await db.user.findUnique({ where: { callsign }, select: { id: true } });
-    if (!taken) {
-      return callsign;
-    }
+function isLoginTaken(error: unknown): boolean {
+  if (!(error instanceof ConflictException)) {
+    return false;
   }
-  throw httpError(409, 'Не удалось выдать позывной', 'CALLSIGN_EXHAUSTED');
+  const response = error.getResponse();
+  return (
+    typeof response === 'object' &&
+    response !== null &&
+    'code' in response &&
+    response.code === 'LOGIN_TAKEN'
+  );
 }
 
 function isP2002(error: unknown): boolean {

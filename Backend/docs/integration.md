@@ -96,6 +96,5 @@ function verify(secret, timestamp, rawBody, header) {
 `rawBody` — байты тела запроса до `JSON.parse`. Имеет смысл отбрасывать
 timestamp старше нескольких минут.
 
-Пароль новой учётной записи хешируется как
-`scrypt$16384$8$1$<salt hex>$<hash hex>`, пока задача auth не подставит свой
-`UsersService`.
+Пароль новой учётной записи считает `UsersService.createUser()` (argon2id).
+Позывной выдаёт `generateCallsign()` того же сервиса.

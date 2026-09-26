@@ -179,7 +179,7 @@ describe('API интеграции HR', { concurrent: false }, () => {
     };
     expect(created.created).toBe(true);
     expect(created.password && created.password.length > 0).toBe(true);
-    expect(created.callsign).toMatch(/^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{4}$/);
+    expect(created.callsign).toMatch(/^[A-Z0-9]{4}$/);
     const hash = extHashOf(extId, pepper);
     expect(created.login).toBe(loginFromExtHash(hash));
     expect(memory.users).toHaveLength(1);

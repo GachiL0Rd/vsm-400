@@ -167,6 +167,10 @@ export class MemoryPrisma {
 
   readonly $transaction = async <T>(fn: (tx: MemoryPrisma) => Promise<T>): Promise<T> => fn(this);
 
+  readonly auditLog = {
+    create: async () => ({ id: 1n }),
+  };
+
   readonly user = {
     findUnique: (args: Args) => this.findUser(args),
     create: (args: Args) => this.createUser(args),
@@ -305,7 +309,8 @@ export class MemoryPrisma {
       extHash: typeof data.extHash === 'string' ? data.extHash : null,
       position: String(data.position),
       grade: String(data.grade),
-      brigadeId: connectId(data.brigade) ?? null,
+      brigadeId:
+        connectId(data.brigade) ?? (typeof data.brigadeId === 'string' ? data.brigadeId : null),
       mustChangePassword: data.mustChangePassword === true,
       disabledAt: null,
       createdAt: new Date(),
