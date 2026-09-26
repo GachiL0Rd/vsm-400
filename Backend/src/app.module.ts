@@ -9,6 +9,7 @@ import { AssignmentsModule } from './assignments/assignments.module';
 import { AuditModule } from './audit/audit.module';
 import { AuthModule } from './auth/auth.module';
 import { CabinetModule } from './cabinet/cabinet.module';
+import { ClockModule } from './common/clock';
 import { ProblemFilter } from './common/problem.filter';
 import { ConfigModule } from './config/config.module';
 import { HealthModule } from './health/health.module';
@@ -31,6 +32,7 @@ import { UsersModule } from './users/users.module';
     ScheduleModule.forRoot(),
     PrismaModule,
     RedisModule,
+    ClockModule,
     RulesModule,
     AuditModule,
     AuthModule,

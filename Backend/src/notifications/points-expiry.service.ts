@@ -1,5 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
+import { Clock } from '../common/clock';
 import { LedgerReason, NotificationKind } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { RulesService } from '../rules/rules.service';
@@ -23,6 +24,7 @@ export class PointsExpiryService {
     @Inject(PrismaService) private readonly prisma: PrismaService,
     @Inject(RulesService) private readonly rules: RulesService,
     @Inject(NotificationsService) private readonly notifications: NotificationsService,
+    @Inject(Clock) private readonly clock: Clock,
   ) {}
 
   @Cron(CronExpression.EVERY_HOUR, {
@@ -30,7 +32,8 @@ export class PointsExpiryService {
     timeZone: 'Europe/Moscow',
     waitForCompletion: true,
   })
-  async expireDue(now = new Date()): Promise<{ expired: number; warned: number }> {
+  async expireDue(at?: Date): Promise<{ expired: number; warned: number }> {
+    const now = at ?? this.clock.now();
     const expired = await this.expireAccruals(now);
     const warned = await this.warnAccruals(now);
     return { expired, warned };

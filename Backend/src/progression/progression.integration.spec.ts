@@ -12,6 +12,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { AchievementsModule } from '../achievements/achievements.module';
 import { AchievementsService } from '../achievements/achievements.service';
 import type { AuthUser } from '../auth/auth-user';
+import { ClockModule } from '../common/clock';
 import type { RunCompletedPayload } from '../common/events';
 import { ProblemFilter } from '../common/problem.filter';
 import { ConfigModule } from '../config/config.module';
@@ -34,7 +35,7 @@ function databaseUrl(): string {
 }
 
 @Module({
-  imports: [ConfigModule, EventEmitterModule.forRoot(), AchievementsModule],
+  imports: [ConfigModule, EventEmitterModule.forRoot(), ClockModule, AchievementsModule],
   providers: [
     { provide: APP_PIPE, useClass: ZodValidationPipe },
     { provide: APP_FILTER, useClass: ProblemFilter },

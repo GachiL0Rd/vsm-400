@@ -1,5 +1,6 @@
 import { Inject, Injectable, type OnModuleInit } from '@nestjs/common';
 import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
+import { Clock } from '../common/clock';
 import { ACHIEVEMENT_GRANTED, RUN_RECORDED, type RunRecordedPayload } from '../common/events';
 import type { Prisma } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -48,6 +49,7 @@ export class AchievementsService implements OnModuleInit {
     @Inject(RulesService) private readonly rules: RulesService,
     @Inject(EventEmitter2) private readonly events: EventEmitter2,
     @Inject(PromotionsService) private readonly promotions: PromotionsService,
+    @Inject(Clock) private readonly clock: Clock,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -159,7 +161,7 @@ export class AchievementsService implements OnModuleInit {
         return [];
       }
       const fresh: AchievementEntry[] = [];
-      const now = new Date();
+      const now = this.clock.now();
       for (const entry of this.catalog().achievements) {
         const earned = await this.applyEntry(tx, payload, entry, runs, user.streakDays, now);
         if (earned) {

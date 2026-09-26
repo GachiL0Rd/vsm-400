@@ -1,5 +1,6 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { describe, expect, it, vi } from 'vitest';
+import { Clock } from '../common/clock';
 import { NotificationKind, type Prisma } from '../generated/prisma/client';
 import type { PrismaService } from '../prisma/prisma.service';
 import type { RedisService } from '../redis/redis.service';
@@ -70,7 +71,17 @@ function match(row: Note, where: Prisma.NotificationWhereInput): boolean {
   return sameFields(row, where) && sameCursor(row, where);
 }
 
-function memory() {
+class FixedClock extends Clock {
+  constructor(private readonly at: Date) {
+    super();
+  }
+
+  now(): Date {
+    return new Date(this.at.getTime());
+  }
+}
+
+function memory(clock: Clock = new FixedClock(new Date('2026-09-26T12:00:00.000Z'))) {
   const notes: Note[] = [];
   let seq = 0;
   const published: { channel: string; message: string }[] = [];
@@ -165,6 +176,7 @@ function memory() {
   const service = new NotificationsService(
     prisma as unknown as PrismaService,
     redis as unknown as RedisService,
+    clock,
   );
   return { notes, published, service };
 }
@@ -227,7 +239,7 @@ describe('NotificationsService', () => {
   });
 
   it('листает ленту, считает непрочитанные и помечает прочитанным', async () => {
-    const { service } = memory();
+    const { service, notes } = memory();
     await service.create('user-1', { kind: NotificationKind.advice, title: '1', text: 'a' });
     await service.create('user-1', { kind: NotificationKind.advice, title: '2', text: 'b' });
     await service.create('user-1', { kind: NotificationKind.advice, title: '3', text: 'c' });
@@ -241,6 +253,9 @@ describe('NotificationsService', () => {
 
     const read = await service.markRead('user-1', first.items[0]?.id ?? '');
     expect(read.unread).toBe(false);
+    expect(notes.find((row) => row.id === read.id)?.readAt?.toISOString()).toBe(
+      '2026-09-26T12:00:00.000Z',
+    );
     expect((await service.list('user-1', 10)).unreadCount).toBe(2);
     expect(await service.markAllRead('user-1')).toEqual({ unreadCount: 0 });
     await expect(service.markRead('user-1', 'missing')).rejects.toBeInstanceOf(NotFoundException);

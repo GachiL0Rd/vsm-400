@@ -9,9 +9,11 @@ import {
   type OnModuleInit,
 } from '@nestjs/common';
 import { Observable, Subject } from 'rxjs';
+import { Clock } from '../common/clock';
 import type { Prisma } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
+import { isUniqueViolation } from '../users/unique-violation';
 import {
   decodeCursor,
   encodeCursor,
@@ -56,6 +58,7 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
   constructor(
     @Inject(PrismaService) private readonly prisma: PrismaService,
     @Inject(RedisService) private readonly redis: RedisService,
+    @Inject(Clock) private readonly clock: Clock,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -177,7 +180,7 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
   async markRead(userId: string, id: string): Promise<Notice> {
     await this.prisma.notification.updateMany({
       where: { id, userId, readAt: null },
-      data: { readAt: new Date() },
+      data: { readAt: this.clock.now() },
     });
     const row = await this.prisma.notification.findFirst({ where: { id, userId } });
     if (!row) {
@@ -192,7 +195,7 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
   async markAllRead(userId: string): Promise<{ unreadCount: number }> {
     await this.prisma.notification.updateMany({
       where: { userId, readAt: null },
-      data: { readAt: new Date() },
+      data: { readAt: this.clock.now() },
     });
     return { unreadCount: 0 };
   }
@@ -271,8 +274,4 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
       this.logger.error(error instanceof Error ? error.message : String(error));
     }
   }
-}
-
-function isUniqueViolation(error: unknown): boolean {
-  return typeof error === 'object' && error !== null && 'code' in error && error.code === 'P2002';
 }
