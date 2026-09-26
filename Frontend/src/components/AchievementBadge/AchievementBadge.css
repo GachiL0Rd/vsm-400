@@ -12,6 +12,6 @@
 }
 
 .badge--locked {
-  border: 2px dashed var(--line);
+  border: 2px solid var(--smoke);
   color: var(--smoke);
 }

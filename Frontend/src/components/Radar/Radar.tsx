@@ -31,7 +31,7 @@ export function Radar({ values }: { values: Competencies }) {
           key={k}
           points={polygon(scores.map(() => R * k))}
           fill="none"
-          stroke="var(--cloud)"
+          stroke="var(--line)"
           strokeWidth="1.5"
         />
       ))}
@@ -40,7 +40,7 @@ export function Radar({ values }: { values: Competencies }) {
         fill="var(--ink-08)"
         stroke="var(--ink)"
         strokeWidth="2.5"
-        strokeLinejoin="round"
+        strokeLinejoin="miter"
       />
       {COMPETENCIES.map((c, i) => {
         const value = values[c.id];
@@ -55,7 +55,7 @@ export function Radar({ values }: { values: Competencies }) {
               cy={y}
               r="4.5"
               fill={weak ? 'var(--stop)' : 'var(--ink)'}
-              stroke="var(--white)"
+              stroke="var(--paper)"
               strokeWidth="2"
             />
             <text

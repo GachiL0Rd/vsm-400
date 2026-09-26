@@ -4,7 +4,7 @@
   inset: auto 0 0;
   z-index: 10;
   border-top: 1px solid var(--line);
-  background: var(--white);
+  background: var(--paper);
   padding-bottom: env(safe-area-inset-bottom);
 }
 
@@ -26,7 +26,7 @@
   flex-direction: column;
   align-items: center;
   gap: 2px;
-  padding: 10px 0;
+  padding: 10px 0 8px;
   color: var(--iron);
   font-size: 12px;
   font-weight: 700;
@@ -37,9 +37,16 @@
   color: var(--ink);
 }
 
+/* «Вы здесь»: графитовая плашка, янтарная кромка читается на графите, не на бумаге. */
 .nav__item--active {
-  color: var(--ink);
+  background: var(--ink);
+  color: var(--white);
   font-weight: 800;
+  box-shadow: inset 0 -4px 0 var(--signal);
+}
+
+.nav__item--active:focus-visible {
+  outline-color: var(--signal);
 }
 
 /* Кольцо внутрь: бренд и пункты прижаты к краю окна, внешний offset обрезается. */
@@ -58,12 +65,17 @@
   right: -12px;
   min-width: 18px;
   padding: 0 4px;
-  background: var(--signal);
-  color: var(--ink);
+  background: var(--ink);
+  color: var(--signal);
   font-size: 11px;
   font-weight: 800;
   line-height: 16px;
   text-align: center;
+}
+
+.nav__item--active .nav__count {
+  background: var(--signal);
+  color: var(--ink);
 }
 
 /* Десктоп: боковая панель */
@@ -72,13 +84,13 @@
     inset: 0 auto 0 0;
     display: flex;
     flex-direction: column;
-    gap: 32px;
+    gap: 28px;
     /* Порог 900px парный с отступом .app__main. */
     width: var(--nav-width);
-    padding: 32px 0 24px;
+    padding: 28px 0 24px;
     border-top: 0;
     border-right: 1px solid var(--line);
-    background: var(--white);
+    background: var(--paper);
   }
 
   .nav__brand {
@@ -87,8 +99,20 @@
     color: var(--ink);
     font-size: 26px;
     font-weight: 800;
-    letter-spacing: -0.02em;
+    letter-spacing: -0.03em;
+    line-height: 1;
     text-decoration: none;
+  }
+
+  /* Мини-табло у названия: графит и янтарная щель. */
+  .nav__brand::before {
+    content: "";
+    display: block;
+    width: 28px;
+    height: 16px;
+    margin-bottom: 14px;
+    background: var(--ink);
+    box-shadow: inset 0 -5px 0 var(--signal);
   }
 
   .nav__list {
@@ -101,6 +125,10 @@
     gap: 14px;
     padding: 12px 24px;
     font-size: 16px;
+  }
+
+  .nav__item--active {
+    box-shadow: inset 4px 0 0 var(--signal);
   }
 
   .nav__me {

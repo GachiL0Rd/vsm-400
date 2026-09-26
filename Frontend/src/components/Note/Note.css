@@ -8,7 +8,7 @@
 /* Без заголовка: короткая цветная метка сверху */
 .note--bar::before {
   content: "";
-  width: 30px;
+  width: 28px;
   height: 4px;
   margin-bottom: 10px;
   background: var(--note-color, var(--line));

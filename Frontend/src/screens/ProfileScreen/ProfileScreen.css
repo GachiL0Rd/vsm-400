@@ -12,24 +12,27 @@
 .streak {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
-  gap: 4px;
+  gap: 6px;
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
 .streak__day {
-  height: 28px;
-  background: var(--cloud);
+  height: 36px;
+  border: 2px solid var(--line);
+  background: transparent;
 }
 
 .streak__day--done {
+  border-color: var(--ink);
   background: var(--ink);
 }
 
 .streak__day--today {
-  border: 2px dashed var(--smoke);
-  background: var(--white);
+  border-color: var(--ink);
+  border-bottom-width: 6px;
+  background: var(--paper);
 }
 
 .stats {
@@ -73,13 +76,17 @@
 .skill__numbers {
   display: flex;
   gap: 10px;
+  align-items: baseline;
   font-size: 14px;
   font-weight: 700;
 }
 
 .skill__numbers b {
-  min-width: 24px;
-  font-size: 16px;
+  min-width: 28px;
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  line-height: 1;
   text-align: right;
 }
 
@@ -92,7 +99,7 @@
 .skill--weak .skill__title,
 .skill--weak .skill__numbers b {
   color: var(--stop);
-  font-weight: 700;
+  font-weight: 800;
 }
 
 .skill--weak .skill__note {

@@ -1,5 +1,5 @@
 .track {
-  height: 8px;
+  height: 10px;
   background: var(--cloud);
   overflow: hidden;
 }

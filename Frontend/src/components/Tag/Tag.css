@@ -1,11 +1,11 @@
 /*
- * Статусы по принципу «тёмной кабины»: норма не выделяется,
- * отклонение горит сплошной плашкой.
+ * Норма не выделяется. Отклонение — сплошная плашка.
+ * «Новое» — мини-табло: янтарные буквы на графите, не кнопка.
  */
 .tag {
   display: inline-block;
   color: var(--ink);
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 500;
   line-height: 1.4;
   white-space: nowrap;
@@ -18,21 +18,21 @@
 .tag--warn,
 .tag--stop,
 .tag--new {
-  padding: 1px 8px;
-  color: var(--white);
-  font-weight: 700;
+  padding: 2px 8px;
+  font-weight: 800;
 }
 
 .tag--warn {
   background: var(--warn);
+  color: var(--white);
 }
 
 .tag--stop {
   background: var(--stop);
+  color: var(--white);
 }
 
-/* Непрочитанное — тот же оранжевый, что у счётчика в меню. Текст графитом: белый на #ff6700 не добирает контраст. */
 .tag--new {
-  background: var(--signal);
-  color: var(--ink);
+  background: var(--ink);
+  color: var(--signal);
 }

@@ -8,9 +8,9 @@
 }
 
 .segmented__item {
-  padding: 10px 0;
+  padding: 10px 4px;
   border: 0;
-  background: var(--white);
+  background: transparent;
   color: var(--ink);
   font-size: 15px;
   font-weight: 700;
@@ -29,6 +29,11 @@
 .segmented__item--on:hover {
   background: var(--ink);
   color: var(--white);
+  text-decoration: none;
+}
+
+.segmented__item--on:focus-visible {
+  outline-color: var(--signal);
 }
 
 .rating__me {
@@ -38,6 +43,9 @@
 
 .rating__me b {
   color: var(--ink);
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
 }
 
 .board {
@@ -53,21 +61,33 @@
 .board__row {
   position: relative;
   display: grid;
-  grid-template-columns: 36px 36px 1fr auto;
-  gap: 12px;
+  grid-template-columns: 44px 36px minmax(0, 1fr) auto;
+  gap: 10px;
   align-items: center;
-  padding: 10px 12px 10px 8px;
+  padding: 12px 8px 12px 4px;
   border-bottom: 1px solid var(--line);
 }
 
-/* Разрыв между топом и своей позицией */
+/* Разрыв между топом и своей позицией: черта в зазоре, не на заливке строки. */
 .board__row--gap {
-  margin-top: 12px;
-  border-top: 1px dashed var(--smoke);
+  margin-top: 22px;
+  border-top: 0;
+}
+
+.board__row--gap::after {
+  content: "";
+  position: absolute;
+  top: -12px;
+  right: 0;
+  left: 0;
+  height: 1px;
+  background: var(--line);
 }
 
 .board__rank {
+  font-size: 18px;
   font-weight: 800;
+  letter-spacing: -0.04em;
   text-align: center;
 }
 
@@ -84,20 +104,25 @@
 }
 
 .board__points {
-  font-weight: 700;
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
 }
 
-/* «Вы здесь» — тот же оранжевый маркер, что в навигации */
+/* Своя строка — та же плашка, что активный раздел: графит, место янтарём. */
 .board__row--me {
+  background: var(--ink);
+  color: var(--white);
   font-weight: 800;
 }
 
-.board__row--me::before {
-  content: "";
-  position: absolute;
-  inset: 0 auto 0 0;
-  width: 4px;
-  background: var(--signal);
+.board__row--me .board__rank {
+  color: var(--signal);
+}
+
+.board__row--me .up,
+.board__row--me .down {
+  color: var(--white);
 }
 
 .rating__brigade {

@@ -19,7 +19,7 @@ export function ShiftScreen() {
   const focus = [first, ...rest.map((title) => title.toLowerCase())].join(', ');
 
   return (
-    <div className="screen">
+    <div className="screen screen--shift">
       <h1 className="screen__title" tabIndex={-1}>
         Смена
       </h1>
@@ -134,10 +134,13 @@ function JournalRow({ run }: { run: Run }) {
 }
 
 function Score({ title, value }: { title: string; value: number }) {
+  const failed = value < FAIL_SCORE;
   return (
-    <td className={`journal__num num${value < FAIL_SCORE ? ' down' : ''}`} data-label={title}>
-      {value}
-      {value < FAIL_SCORE && <span className="label down"> низкая</span>}
+    <td className="journal__num num" data-label={title}>
+      <span className={failed ? 'journal__bad num' : 'num'}>
+        {value}
+        {failed && <span className="label"> низкая</span>}
+      </span>
     </td>
   );
 }
