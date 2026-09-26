@@ -26,9 +26,10 @@ npm run start:dev
 `npm run verify` гоняет Biome, типы, тесты и сборку. База для тестов не нужна:
 health e2e подменяет Prisma и Redis.
 
-`npm run prisma:seed` проверяет соединение и печатает число пользователей.
-Наполнение депо, бригад и рейсов (SPEC §11) ждёт движок `step()` — история
-должна считаться им, а не ручными вставками.
+`npm run prisma:seed` наполняет депо, бригады и историю рейсов. Повтор без
+`--reset` ничего не пишет, если логин `demo` уже есть. `npm run prisma:seed -- --reset`
+очищает доменные таблицы и текущую Redis DB, миграции не трогает. Prisma 7
+`migrate reset` сам сид не вызывает: после сброса нужен `npm run prisma:seed`.
 
 ## Версии URL
 
@@ -74,7 +75,7 @@ health e2e подменяет Prisma и Redis.
 | `npm run prisma:generate` | Клиент в `src/generated/` |
 | `npm run prisma:migrate` | `migrate dev` |
 | `npm run prisma:deploy` | `migrate deploy` |
-| `npm run prisma:seed` | Проверка соединения |
+| `npm run prisma:seed` | Синтетические депо, бригады и рейсы |
 | `npm run verify` | Biome, типы, тесты, сборка |
 
 ## API
@@ -178,3 +179,15 @@ METHODIST и ADMIN любой. `GET /api/v1/analytics/scenarios/:id` — вор�
 - `POST /api/v1/promotions/:id/decision` — тело `{ "approve": true|false }`. Начальник своей бригады или администратор. Утверждение меняет грейд.
 
 `GET /api/v1/me/achievements` отдаёт кабинет. Список собирает `AchievementsService.listForUser`: `code`, `title`, `description`, `earnedAt` или `null`, для незакрытых счётчиков ещё `progress`.
+
+## Демо-учётки
+
+Сид печатает те же логины. `mustChangePassword=false` только у них. Админа сид не создаёт: если ADMIN нет, его заводит старт приложения и один раз печатает пароль.
+
+| Логин | Пароль | Кто |
+| --- | --- | --- |
+| `demo` | `demo` | Проводник A7F3, бригада 12, депо Москва-Октябрьская |
+| `chief` | `chief` | Начальник поезда бригады 12 |
+| `methodist` | `methodist` | Методист |
+
+История рейсов считается движком (`generateShift`, `step`, `summarize`) и тем же `run.completed`, что прод. Время рейса пишется в `finishedAt` сессии до события, серия считается по нему. Срок баллов и `createdAt` леджера сервисы берут от `new Date()` — после записи сид сдвигает их к `finishedAt` и заново применяет правило «рейс продлевает живые начисления на 30 суток». У demo ближайшие 120 баллов сгорают через 3 дня.
