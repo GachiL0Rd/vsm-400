@@ -81,7 +81,7 @@ export class ScenariosService implements OnApplicationBootstrap {
   async getById(id: string): Promise<ScenarioDetail> {
     const row = await this.prisma.scenario.findUnique({ where: { id } });
     if (!row) {
-      throw new NotFoundException('Сценарий не найден');
+      throw new NotFoundException({ message: 'Сценарий не найден', code: 'NOT_FOUND' });
     }
     const stored = await this.readVersion(row.id, row.currentVersion);
     return {
@@ -103,7 +103,7 @@ export class ScenariosService implements OnApplicationBootstrap {
     await this.prisma.$transaction(async (tx) => {
       const actor = await tx.user.findUnique({ where: { id: actorId }, select: { id: true } });
       if (!actor) {
-        throw new NotFoundException('Пользователь не найден');
+        throw new NotFoundException({ message: 'Пользователь не найден', code: 'NOT_FOUND' });
       }
       const latest = await tx.scenarioVersion.findFirst({
         where: { scenarioId: id },
@@ -142,7 +142,7 @@ export class ScenariosService implements OnApplicationBootstrap {
       });
     } catch (error) {
       if (isMissingRow(error)) {
-        throw new NotFoundException('Сценарий не найден');
+        throw new NotFoundException({ message: 'Сценарий не найден', code: 'NOT_FOUND' });
       }
       throw error;
     }
@@ -153,7 +153,7 @@ export class ScenariosService implements OnApplicationBootstrap {
       where: { scenarioId_version: { scenarioId: id, version } },
     });
     if (!row) {
-      throw new NotFoundException('Версия сценария не найдена');
+      throw new NotFoundException({ message: 'Версия сценария не найдена', code: 'NOT_FOUND' });
     }
     return {
       scenarioId: row.scenarioId,
