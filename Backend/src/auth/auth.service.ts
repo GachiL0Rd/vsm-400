@@ -9,7 +9,6 @@ import { JwtService } from '@nestjs/jwt';
 import { AuditService } from '../audit/audit.service';
 import { ActorType, type Grade, type Role } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { REFRESH_TTL_SEC } from './cookies';
 import { PasswordService } from './password.service';
 import { refreshExpiry, rotateRefresh, type SessionMeta, type SessionUser } from './refresh';
 import { randomToken, sha256 } from './token';
@@ -40,7 +39,12 @@ export class AuthService {
     @Inject(AuditService) private readonly audit: AuditService,
   ) {}
 
-  async login(login: string, password: string, meta: SessionMeta): Promise<IssuedSession> {
+  async login(
+    login: string,
+    password: string,
+    meta: SessionMeta,
+    now = new Date(),
+  ): Promise<IssuedSession> {
     const user = await this.prisma.user.findUnique({ where: { login }, ...withDepot });
     const valid = await this.passwords.verify(user?.passwordHash ?? null, password);
     if (!user || !valid || user.disabledAt) {
@@ -53,7 +57,7 @@ export class AuthService {
       });
       throw invalidCredentials();
     }
-    const issued = await this.issue(user, meta);
+    const issued = await this.issue(user, meta, now);
     await this.audit.log({
       actorType: ActorType.USER,
       actorId: user.id,
@@ -64,11 +68,15 @@ export class AuthService {
     return issued;
   }
 
-  async refresh(raw: string | undefined, meta: SessionMeta): Promise<IssuedSession> {
+  async refresh(
+    raw: string | undefined,
+    meta: SessionMeta,
+    now = new Date(),
+  ): Promise<IssuedSession> {
     if (!raw) {
       throw invalidRefresh();
     }
-    const outcome = await this.prisma.$transaction((tx) => rotateRefresh(tx, raw, meta));
+    const outcome = await this.prisma.$transaction((tx) => rotateRefresh(tx, raw, meta, now));
     if (outcome.kind === 'reuse') {
       await this.audit.log({
         actorType: ActorType.USER,
@@ -95,7 +103,7 @@ export class AuthService {
     };
   }
 
-  async logout(raw: string | undefined, meta: SessionMeta): Promise<void> {
+  async logout(raw: string | undefined, meta: SessionMeta, now = new Date()): Promise<void> {
     if (!raw) {
       return;
     }
@@ -108,7 +116,7 @@ export class AuthService {
     if (!session.revokedAt) {
       await this.prisma.authSession.update({
         where: { id: session.id },
-        data: { revokedAt: new Date() },
+        data: { revokedAt: now },
       });
     }
     await this.audit.log({
@@ -125,6 +133,7 @@ export class AuthService {
     current: string,
     next: string,
     meta: SessionMeta,
+    now = new Date(),
   ): Promise<IssuedSession> {
     if (next.length < 10) {
       throw new BadRequestException({
@@ -149,7 +158,7 @@ export class AuthService {
       });
       await tx.authSession.updateMany({
         where: { userId, revokedAt: null },
-        data: { revokedAt: new Date() },
+        data: { revokedAt: now },
       });
       const created = await tx.authSession.create({
         data: {
@@ -157,7 +166,7 @@ export class AuthService {
           refreshHash: sha256(refresh),
           userAgent: meta.userAgent,
           ip: meta.ip,
-          expiresAt: new Date(Date.now() + REFRESH_TTL_SEC * 1000),
+          expiresAt: refreshExpiry(now),
         },
         select: { id: true },
       });
@@ -178,7 +187,11 @@ export class AuthService {
     };
   }
 
-  private async issue(user: SessionUser, meta: SessionMeta): Promise<IssuedSession> {
+  private async issue(
+    user: SessionUser,
+    meta: SessionMeta,
+    now = new Date(),
+  ): Promise<IssuedSession> {
     const refresh = randomToken();
     const session = await this.prisma.authSession.create({
       data: {
@@ -186,7 +199,7 @@ export class AuthService {
         refreshHash: sha256(refresh),
         userAgent: meta.userAgent,
         ip: meta.ip,
-        expiresAt: refreshExpiry(),
+        expiresAt: refreshExpiry(now),
       },
       select: { id: true },
     });
