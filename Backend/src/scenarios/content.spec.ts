@@ -2,6 +2,7 @@ import { readdirSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { type DecisionNode, isEndNode, type ScenarioGraph } from '../engine/schema';
+import { validateScenario } from '../engine/validate';
 import { loadScenarioFile, loadScenarioGraphs, scenariosDir } from './load-content';
 
 const LINE = 140;
@@ -44,6 +45,13 @@ describe('content/scenarios', () => {
   it('каждый граф играбелен', () => {
     for (const graph of graphs) {
       assertGraph(graph);
+    }
+  });
+
+  it('все content/scenarios проходят validateScenario', () => {
+    for (const graph of graphs) {
+      const result = validateScenario(graph);
+      expect(result.ok, `${graph.id} ${JSON.stringify(result.errors)}`).toBe(true);
     }
   });
 });

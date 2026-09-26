@@ -1,4 +1,8 @@
-import { type ArgumentsHost, NotFoundException } from '@nestjs/common';
+import {
+  type ArgumentsHost,
+  NotFoundException,
+  UnprocessableEntityException,
+} from '@nestjs/common';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import type { Problem } from './problem';
@@ -77,6 +81,22 @@ describe('ProblemFilter', () => {
     const reply = new FakeReply();
     filter.catch({ getZodError: () => parsed.error }, hostWith(reply));
     expect(bodyOf(reply).status).toBe(422);
+  });
+
+  it('переносит errors[] из HttpException', () => {
+    const reply = new FakeReply();
+    filter.catch(
+      new UnprocessableEntityException({
+        message: 'Граф сценария не связан',
+        code: 'VALIDATION',
+        errors: [{ path: 'nodes.n1.choices.0.next', code: 'NEXT_MISSING', message: 'нет узла' }],
+      }),
+      hostWith(reply),
+    );
+    const body = bodyOf(reply);
+    expect(body.status).toBe(422);
+    expect(body.code).toBe('VALIDATION');
+    expect(body.errors?.[0]?.path).toBe('nodes.n1.choices.0.next');
   });
 
   it('P2002 → 409 без текста драйвера', () => {

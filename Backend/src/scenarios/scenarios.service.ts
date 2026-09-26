@@ -11,6 +11,7 @@ import type { Prisma } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { graphChecksum } from './checksum';
 import type { CatalogItem, ScenarioDetail, ScenarioStatusView } from './dto';
+import { assertPlayableGraph } from './graph-check';
 import { loadScenarioGraphs } from './load-content';
 import { parseIncomingGraph } from './parse-graph';
 import { nextVersionNumber, planVersion } from './sync-plan';
@@ -49,6 +50,9 @@ export class ScenariosService implements OnApplicationBootstrap {
 
   async syncFromContent(): Promise<SyncStats> {
     const graphs = loadScenarioGraphs();
+    for (const graph of graphs) {
+      assertPlayableGraph(graph);
+    }
     let createdVersions = 0;
     await this.prisma.$transaction(async (tx) => {
       for (const graph of graphs) {
@@ -94,6 +98,7 @@ export class ScenariosService implements OnApplicationBootstrap {
   /** Редактор сохраняет снимок всегда: одинаковый граф тоже новая версия. */
   async saveGraph(id: string, raw: unknown, actorId: string): Promise<ScenarioDetail> {
     const graph = parseIncomingGraph(id, raw);
+    assertPlayableGraph(graph);
     const checksum = graphChecksum(graph);
     await this.prisma.$transaction(async (tx) => {
       const actor = await tx.user.findUnique({ where: { id: actorId }, select: { id: true } });

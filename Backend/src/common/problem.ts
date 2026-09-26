@@ -95,10 +95,33 @@ function codeFromHttp(response: unknown, status: number): string {
   return `HTTP_${status}`;
 }
 
+function errorsFromHttp(response: unknown): ProblemError[] | undefined {
+  if (!isRecord(response) || !Array.isArray(response.errors)) {
+    return undefined;
+  }
+  const errors: ProblemError[] = [];
+  for (const item of response.errors) {
+    if (!isRecord(item) || typeof item.message !== 'string') {
+      continue;
+    }
+    errors.push({
+      path: typeof item.path === 'string' ? item.path : '',
+      code: typeof item.code === 'string' ? item.code : 'custom',
+      message: item.message,
+    });
+  }
+  return errors.length > 0 ? errors : undefined;
+}
+
 function httpProblem(exception: HttpException): Problem {
   const status = exception.getStatus();
   const response = exception.getResponse();
-  return problem(status, detailFromHttp(response, status), codeFromHttp(response, status));
+  return problem(
+    status,
+    detailFromHttp(response, status),
+    codeFromHttp(response, status),
+    errorsFromHttp(response),
+  );
 }
 
 const prismaKnownErrorName = ['PrismaClient', 'KnownRequestError'].join('');
