@@ -6,7 +6,7 @@
 
 .progress {
   display: grid;
-  gap: 32px;
+  gap: 36px;
 }
 
 .streak {
@@ -20,15 +20,17 @@
 
 .streak__day {
   height: 28px;
-  background: var(--cloud);
+  background: var(--white);
+  border: 1px solid var(--line);
 }
 
 .streak__day--done {
   background: var(--ink);
+  border-color: var(--ink);
 }
 
 .streak__day--today {
-  border: 2px dashed var(--smoke);
+  border: 1px dashed var(--ink);
   background: var(--white);
 }
 
@@ -143,7 +145,7 @@
 @media (min-width: 760px) {
   .progress {
     grid-template-columns: 1fr 1fr;
-    gap: 40px;
+    gap: 48px;
   }
 
   .stats {

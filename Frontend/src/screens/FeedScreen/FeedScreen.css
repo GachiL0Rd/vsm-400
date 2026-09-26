@@ -1,9 +1,22 @@
 .feed {
+  position: relative;
   max-width: var(--measure);
   margin: 0;
   padding: 0;
-  border-top: 2px solid var(--ink);
+  border-top: 1px solid var(--ink);
   list-style: none;
+}
+
+.feed::before {
+  content: "";
+  position: absolute;
+  top: -8px;
+  right: 0;
+  width: var(--stair);
+  height: var(--stair);
+  background: var(--signal);
+  box-shadow: -10px -10px 0 var(--signal);
+  pointer-events: none;
 }
 
 .notice {
