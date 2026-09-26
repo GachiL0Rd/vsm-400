@@ -141,3 +141,10 @@ SameSite=Strict). Оба HttpOnly, флаг Secure берётся из `COOKIE_S
 | GET | `/api/v1/scenarios/:id` | методист и администратор, с графом |
 | PUT | `/api/v1/admin/scenarios/:id` | методист и администратор, новая версия |
 | POST | `/api/v1/admin/scenarios/:id/status` | методист и администратор, тело `{status}` |
+
+### Интеграция HR/LMS
+
+Ключ `X-API-Key` выпускает ADMIN: `POST /api/v1/admin/api-clients`.
+Внешний контур — `/api/integration/v1`: сотрудник по табельному номеру (хранится
+только HMAC), прогресс, оргструктура, вебхуки. Curl и проверка подписи —
+в [docs/integration.md](docs/integration.md).

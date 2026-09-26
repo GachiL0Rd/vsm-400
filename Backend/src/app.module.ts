@@ -8,6 +8,7 @@ import { AuthModule } from './auth/auth.module';
 import { ProblemFilter } from './common/problem.filter';
 import { ConfigModule } from './config/config.module';
 import { HealthModule } from './health/health.module';
+import { IntegrationModule } from './integration/integration.module';
 import { LeaderboardModule } from './leaderboard/leaderboard.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { OrgModule } from './org/org.module';
@@ -33,6 +34,7 @@ import { UsersModule } from './users/users.module';
     NotificationsModule,
     LeaderboardModule,
     HealthModule,
+    IntegrationModule,
   ],
   providers: [
     { provide: APP_PIPE, useClass: ZodValidationPipe },
