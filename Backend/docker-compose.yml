@@ -36,6 +36,38 @@ services:
       start_period: 5s
     restart: unless-stopped
 
+  # Профиль app не стартует вместе с `docker compose up -d`.
+  # DATABASE_URL и REDIS_URL здесь — имена сервисов сети compose, не 127.0.0.1 из .env.
+  backend:
+    profiles: ["app"]
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: vsm-backend-api
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      DATABASE_URL: postgresql://vsm:vsm@postgres:5432/vsm
+      REDIS_URL: redis://valkey:6379/0
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-local-dev-jwt-access-secret-32chars}
+      GAME_TICKET_SECRET: ${GAME_TICKET_SECRET:-local-dev-game-ticket-secret-32ch}
+      GAME_SERVER_TOKEN: ${GAME_SERVER_TOKEN:-local-dev-game-server-token}
+      SEED_ENC_KEY: ${SEED_ENC_KEY:-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef}
+      EXT_ID_PEPPER: ${EXT_ID_PEPPER:-local-dev-ext-id-pepper}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://127.0.0.1:5173}
+      PUBLIC_GAME_WS_URL: ${PUBLIC_GAME_WS_URL:-ws://127.0.0.1:3001/game}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
+    init: true
+    stop_grace_period: 20s
+    restart: unless-stopped
+
 volumes:
   postgres:
   valkey:
