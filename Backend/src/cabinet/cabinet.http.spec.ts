@@ -1,9 +1,9 @@
 import { randomBytes } from 'node:crypto';
-import { readFileSync } from 'node:fs';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import { Test } from '@nestjs/testing';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { testDatabaseUrl, testRedisUrl } from '../../test/databases';
 import { HeaderAccessGuard } from '../../test/header-access.guard';
 import { AppModule } from '../app.module';
 import { AccessGuard } from '../auth/access.guard';
@@ -84,16 +84,6 @@ const DECISION_KEYS = [
 
 type Actor = AuthUser;
 
-function readEnv(name: string): string {
-  const line = readFileSync('.env', 'utf8')
-    .split('\n')
-    .find((item) => item.startsWith(`${name}=`));
-  if (!line) {
-    throw new Error(`в .env нет ${name}`);
-  }
-  return line.slice(name.length + 1).trim();
-}
-
 function callsign(): string {
   const bytes = randomBytes(4);
   const chars = ['A', 'A', 'A', 'A'];
@@ -140,8 +130,8 @@ describe('кабинет, аналитика, назначения', () => {
 
   beforeAll(async () => {
     // Своя база: параллельный sync сценариев в общую vsm ловит гонку по версии.
-    process.env.DATABASE_URL = readEnv('DATABASE_URL').replace(/\/[^/]+$/, '/vsm_cabinet');
-    process.env.REDIS_URL = readEnv('REDIS_URL');
+    process.env.DATABASE_URL = testDatabaseUrl('cabinet');
+    process.env.REDIS_URL = testRedisUrl('cabinet');
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
       .overrideProvider(AccessGuard)
       .useClass(HeaderAccessGuard)

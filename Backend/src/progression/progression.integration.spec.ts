@@ -1,6 +1,4 @@
 import { randomUUID } from 'node:crypto';
-import { readFileSync } from 'node:fs';
-import path from 'node:path';
 import { Module } from '@nestjs/common';
 import { APP_FILTER, APP_PIPE } from '@nestjs/core';
 import { EventEmitterModule } from '@nestjs/event-emitter';
@@ -9,6 +7,7 @@ import { FastifyAdapter } from '@nestjs/platform-fastify';
 import { Test } from '@nestjs/testing';
 import { ZodValidationPipe } from 'nestjs-zod';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { testDatabaseUrl, testRedisUrl } from '../../test/databases';
 import { AchievementsModule } from '../achievements/achievements.module';
 import { AchievementsService } from '../achievements/achievements.service';
 import type { AuthUser } from '../auth/auth-user';
@@ -23,16 +22,6 @@ import { PrismaService } from '../prisma/prisma.service';
 import { PromotionsService } from './promotions.service';
 import { RunRecorder } from './run-recorder';
 
-function databaseUrl(): string {
-  const text = readFileSync(path.join(process.cwd(), '.env'), 'utf8');
-  for (const line of text.split('\n')) {
-    if (line.startsWith('DATABASE_URL=')) {
-      return line.slice('DATABASE_URL='.length).trim();
-    }
-  }
-  throw new Error('В Backend/.env нет DATABASE_URL');
-}
-
 @Module({
   imports: [ConfigModule, EventEmitterModule.forRoot(), AchievementsModule],
   providers: [
@@ -45,8 +34,8 @@ class ProgressionTestModule {}
 function testConfig() {
   return loadConfig({
     ...process.env,
-    DATABASE_URL: databaseUrl(),
-    REDIS_URL: 'redis://127.0.0.1:6379/5',
+    DATABASE_URL: testDatabaseUrl('progression'),
+    REDIS_URL: testRedisUrl('progression'),
   });
 }
 

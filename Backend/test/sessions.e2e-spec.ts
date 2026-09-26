@@ -1,5 +1,4 @@
 import { createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import { Test } from '@nestjs/testing';
@@ -21,24 +20,8 @@ import type { DecisionView, OpenedSession, RunReport, SessionView } from '../src
 import { decryptSeed } from '../src/sessions/seed-box';
 import { SessionsService } from '../src/sessions/sessions.service';
 import { randomCallsign } from '../src/users/callsign';
+import { testDatabaseUrl, testRedisUrl } from './databases';
 import { HeaderAccessGuard } from './header-access.guard';
-
-function envLine(name: string): string {
-  const text = readFileSync('.env', 'utf8');
-  for (const line of text.split('\n')) {
-    if (line.startsWith(`${name}=`)) {
-      return line.slice(name.length + 1).trim();
-    }
-  }
-  throw new Error(`В Backend/.env нет ${name}`);
-}
-
-/** Соседние e2e отрезают суффикс /vsm. Наша база всегда vsm_sessions. */
-function sessionsDatabaseUrl(): string {
-  const url = new URL(envLine('DATABASE_URL'));
-  url.pathname = '/vsm_sessions';
-  return url.toString();
-}
 
 function linear(
   id: string,
@@ -205,13 +188,13 @@ describe('игровые сессии', () => {
   const serviceToken = process.env.GAME_SERVER_TOKEN ?? '';
 
   beforeAll(async () => {
-    redisUrl = envLine('REDIS_URL');
+    redisUrl = testRedisUrl('sessions');
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
       .overrideProvider(APP_CONFIG)
       .useValue(
         loadConfig({
           ...process.env,
-          DATABASE_URL: sessionsDatabaseUrl(),
+          DATABASE_URL: testDatabaseUrl('sessions'),
           REDIS_URL: redisUrl,
         }),
       )
