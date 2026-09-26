@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { loginTracker, passwordChangeAllows } from './request';
+import { loginRateKey, passwordChangeAllows, passwordRateKey, throttleIp } from './request';
 
 describe('пути и ключ throttler', () => {
   it('пускает только смену пароля, выход и чтение сессии', () => {
@@ -18,11 +18,20 @@ describe('пути и ключ throttler', () => {
     expect(passwordChangeAllows('POST', '/api/v1/not/auth/password')).toBe(false);
   });
 
-  it('ключит лимит по IP и логину', () => {
-    const left = loginTracker({ ip: '10.0.0.1', body: { login: ' admin ' } });
-    const right = loginTracker({ ip: '10.0.0.1', body: { login: 'other' } });
-    expect(left).toBe('10.0.0.1:admin');
-    expect(right).not.toBe(left);
-    expect(loginTracker({ body: {} })).toBe('unknown:');
+  it('режет IPv6 до /64 и не даёт длинному логину плодить ключи', () => {
+    expect(throttleIp('10.0.0.1')).toBe('10.0.0.1');
+    expect(throttleIp('::ffff:10.1.2.3')).toBe('10.1.2.3');
+    expect(throttleIp(undefined)).toBe('unknown');
+    const left = throttleIp('2001:db8:1:2::1');
+    const right = throttleIp('2001:db8:1:2::abcd');
+    expect(left).toBe(right);
+    expect(left).toBe('2001:0db8:0001:0002::/64');
+    expect(throttleIp('2001:db8:1:3::1')).not.toBe(left);
+    expect(loginRateKey({ login: ' admin ' })).toBe('admin');
+    expect(loginRateKey({ login: `  ${'a'.repeat(80)}` })).toHaveLength(64);
+    expect(loginRateKey({ login: 1 })).toBe('');
+    expect(loginRateKey(null)).toBe('');
+    expect(passwordRateKey({ user: { id: 'user-1' }, ip: '10.0.0.1' })).toBe('user-1');
+    expect(passwordRateKey({ ip: '10.0.0.8' })).toBe('10.0.0.8');
   });
 });

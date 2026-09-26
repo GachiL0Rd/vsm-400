@@ -1,7 +1,7 @@
 import { Global, Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { JwtModule } from '@nestjs/jwt';
-import { seconds, ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { AuditModule } from '../audit/audit.module';
 import { APP_CONFIG, type AppConfig } from '../config/env';
 import { RedisService } from '../redis/redis.service';
@@ -12,9 +12,9 @@ import { BootstrapService } from './bootstrap.service';
 import { ACCESS_TTL_SEC, AuthCookies } from './cookies';
 import { PasswordService } from './password.service';
 import { RedisThrottlerStorage } from './redis-throttler.storage';
-import { loginTracker } from './request';
 import { RolesGuard } from './roles.guard';
 import { ServiceTokenGuard } from './service-token.guard';
+import { authThrottlers } from './throttle';
 
 @Global()
 @Module({
@@ -29,10 +29,9 @@ import { ServiceTokenGuard } from './service-token.guard';
     ThrottlerModule.forRootAsync({
       inject: [RedisService],
       useFactory: (redis: RedisService) => ({
-        errorMessage: 'Слишком много попыток входа',
-        throttlers: [{ name: 'login', limit: 5, ttl: seconds(60) }],
+        errorMessage: 'Слишком много попыток',
+        throttlers: authThrottlers(),
         storage: new RedisThrottlerStorage(redis),
-        getTracker: (req) => loginTracker(req),
       }),
     }),
     AuditModule,

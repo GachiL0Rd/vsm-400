@@ -11,6 +11,11 @@ const nodeEnvSchema = z.preprocess(
   z.enum(['development', 'test', 'production']),
 );
 
+const trustProxySchema = z.preprocess(
+  (value: unknown) => (value === undefined || value === '' ? 0 : value),
+  z.coerce.number().int().min(0).max(32),
+);
+
 const cookieSecureSchema = z.preprocess(
   (value: unknown) => (value === undefined || value === '' ? 'false' : value),
   z.enum(['true', 'false']).transform((value) => value === 'true'),
@@ -41,6 +46,7 @@ const EnvSchema = z
       .refine((value) => value.length > 0, { message: 'нужен хотя бы один origin' }),
     PUBLIC_GAME_WS_URL: z.string().regex(/^wss?:\/\/\S+$/, 'ожидается ws:// или wss://'),
     COOKIE_SECURE: cookieSecureSchema,
+    TRUST_PROXY: trustProxySchema,
     WEBHOOK_ALLOWED_HOSTS: z.preprocess(
       (value: unknown) => (value === undefined || value === '' ? '' : value),
       z.string().transform((value) =>
@@ -73,6 +79,7 @@ const EnvSchema = z
     corsOrigins: env.CORS_ORIGINS,
     publicGameWsUrl: env.PUBLIC_GAME_WS_URL,
     cookieSecure: env.COOKIE_SECURE,
+    trustProxy: env.TRUST_PROXY,
     webhookAllowedHosts: env.WEBHOOK_ALLOWED_HOSTS,
   }));
 
@@ -122,6 +129,11 @@ function formatEnvError(error: z.ZodError): string {
  * Падает с понятным текстом, если env не совпал со схемой.
  * Явный source нужен тестам: .env с диска при этом не читается.
  */
+/** 0 — не верить X-Forwarded-For. Иначе число прокси перед приложением. */
+export function fastifyTrustProxy(hops: number): number | false {
+  return hops > 0 ? hops : false;
+}
+
 export function loadConfig(source?: NodeJS.ProcessEnv): AppConfig {
   if (!source) {
     loadLocalEnv();

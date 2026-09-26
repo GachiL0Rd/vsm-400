@@ -85,6 +85,7 @@ export class AuthController {
 
   @Post('password')
   @HttpCode(HttpStatus.OK)
+  @UseGuards(ThrottlerGuard)
   @ApiCookieAuth('vsm_access')
   @ApiBearerAuth('bearer')
   @ApiOperation({ summary: 'Сменить пароль' })

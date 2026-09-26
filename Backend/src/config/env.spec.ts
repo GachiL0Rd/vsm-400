@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { loadConfig } from './env';
+import { fastifyTrustProxy, loadConfig } from './env';
 
 const valid = {
   NODE_ENV: 'test',
@@ -31,6 +31,14 @@ describe('loadConfig', () => {
 
   it('не принимает короткий ключ AES', () => {
     expect(() => loadConfig({ ...valid, SEED_ENC_KEY: 'abcd' })).toThrow(/SEED_ENC_KEY/);
+  });
+
+  it('берёт число хопов прокси и не доверяет заголовок при нуле', () => {
+    expect(loadConfig(valid).trustProxy).toBe(0);
+    expect(fastifyTrustProxy(0)).toBe(false);
+    expect(loadConfig({ ...valid, TRUST_PROXY: '2' }).trustProxy).toBe(2);
+    expect(fastifyTrustProxy(2)).toBe(2);
+    expect(() => loadConfig({ ...valid, TRUST_PROXY: '-1' })).toThrow(/TRUST_PROXY/);
   });
 
   it('в production требует COOKIE_SECURE=true', () => {
