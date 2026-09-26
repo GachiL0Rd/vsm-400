@@ -32,11 +32,19 @@ export type JournalEntry = {
   loyaltyDelta: number;
   safetyDelta: number;
   reactionMs: number | null;
+  /** Длина таймера узла, секунды. null — узел без таймера. */
+  timerSec: number | null;
   consequence: string | null;
   lucky: boolean;
   better: string | null;
   basis: string | null;
   deviation: boolean;
+};
+
+export type NodeProgress = {
+  /** Номер сценария в смене, с 1. */
+  index: number;
+  total: number;
 };
 
 export type RunSummary = {
@@ -45,6 +53,8 @@ export type RunSummary = {
   safety: number;
   politeness: number;
   timeouts: number;
+  /** Среднее reactionMs по ходам с реакцией. Timeout не входит. */
+  reactionAvgMs: number;
   competencyDelta: Partial<Record<Competency, number>>;
   decisions: JournalEntry[];
   facts: {
@@ -65,6 +75,7 @@ export type NodeView = {
   safety: number;
   seq: number;
   finished: boolean;
+  progress: NodeProgress;
 };
 
 /**
@@ -79,6 +90,8 @@ export type ShiftPlan = {
   stops: string[];
   car: number;
   carClass: CarClass;
+  /** Время отправления HH:MM. От него считаются часы узлов. */
+  departure: string;
   scenarios: {
     scenarioId: string;
     version: number;

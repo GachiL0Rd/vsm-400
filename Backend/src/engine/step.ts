@@ -1,11 +1,12 @@
 import { nextGameTime } from './clock';
-import { asCompare, conditionHolds, type EffectsIf, numericHolds, readEffectsIf } from './compare';
+import { conditionHolds, numericHolds } from './compare';
 import { EngineError } from './errors';
 import { PARAM_NODE_STEP_MIN, takeParams } from './params';
 import { clampScale } from './scale';
 import {
   type Competency,
   type DecisionNode,
+  type EffectsIf,
   isEndNode,
   type RunOutcome,
   type ScenarioGraph,
@@ -112,6 +113,7 @@ export function step(
     loyaltyDelta,
     safetyDelta,
     ctx.elapsedMs,
+    node.timer ?? null,
   );
   draft.journal.push(entry);
   draft.seq = entry.idx + 1;
@@ -167,11 +169,11 @@ function choiceAction(node: DecisionNode, choiceId: string, flags: readonly stri
     verdict: choice.verdict ?? 'ok',
     better: choice.better ?? null,
     basis: choice.basis ?? null,
-    consequence: readOptionalString(choice, 'consequence'),
+    consequence: choice.consequence ?? null,
     deviation: choice.deviation ?? false,
-    lucky: readFlagBool(choice, 'lucky'),
+    lucky: choice.lucky === true,
     next: choice.next,
-    effectsIf: readEffectsIf(choice),
+    effectsIf: choice.effectsIf ?? [],
   };
 }
 
@@ -188,13 +190,13 @@ function timeoutAction(node: DecisionNode): RawAction {
     skills: {},
     set: timeout.set ? timeout.set.slice() : [],
     verdict: timeout.verdict ?? 'missed',
-    better: readOptionalString(timeout, 'better'),
-    basis: readOptionalString(timeout, 'basis'),
+    better: timeout.better ?? null,
+    basis: timeout.basis ?? null,
     consequence: timeout.consequence ?? null,
-    deviation: readFlagBool(timeout, 'deviation'),
-    lucky: readFlagBool(timeout, 'lucky'),
+    deviation: timeout.deviation === true,
+    lucky: timeout.lucky === true,
     next: timeout.next,
-    effectsIf: readEffectsIf(timeout),
+    effectsIf: timeout.effectsIf ?? [],
   };
 }
 
@@ -224,6 +226,7 @@ function makeEntry(
   loyaltyDelta: number,
   safetyDelta: number,
   elapsedMs: number,
+  timerSec: number | null,
 ): JournalEntry {
   return {
     idx: draft.journal.length,
@@ -238,6 +241,7 @@ function makeEntry(
     loyaltyDelta,
     safetyDelta,
     reactionMs: action.choiceId === 'timeout' ? null : elapsedMs,
+    timerSec,
     consequence: action.consequence,
     lucky: action.lucky,
     better: action.better,
@@ -251,10 +255,10 @@ function gateTripped(scenario: ScenarioGraph, state: EngineState): boolean {
   if (!failIf) {
     return false;
   }
-  if (failIf.safety && numericHolds(asCompare(failIf.safety), state.safety)) {
+  if (failIf.safety && numericHolds(failIf.safety, state.safety)) {
     return true;
   }
-  return Boolean(failIf.loyalty && numericHolds(asCompare(failIf.loyalty), state.loyalty));
+  return Boolean(failIf.loyalty && numericHolds(failIf.loyalty, state.loyalty));
 }
 
 function move(draft: EngineState, scenario: ScenarioGraph, nextId: string, ctx: StepContext): void {
@@ -345,13 +349,4 @@ function hasAllFlags(flags: readonly string[], required: readonly string[]): boo
     }
   }
   return true;
-}
-
-function readOptionalString(source: object, key: string): string | null {
-  const value = (source as Record<string, unknown>)[key];
-  return typeof value === 'string' ? value : null;
-}
-
-function readFlagBool(source: object, key: string): boolean {
-  return (source as Record<string, unknown>)[key] === true;
 }

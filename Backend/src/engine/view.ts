@@ -1,28 +1,14 @@
-import { asCompare, conditionHolds } from './compare';
+import { conditionHolds } from './compare';
 import { EngineError } from './errors';
 import { PARAM_SCENARIO_TOTAL } from './params';
 import { type DecisionNode, isEndNode, type ScenarioGraph } from './schema';
-import type { EngineState, NodeView } from './types';
-
-export type NodeProgress = {
-  /** Номер сценария в смене, с 1. */
-  index: number;
-  total: number;
-};
-
-/**
- * В NodeView нет «сценария i из n»: types.ts фиксирует кадр узла,
- * прогресс смены добавляется рядом.
- */
-export type ClientNodeView = NodeView & {
-  progress: NodeProgress;
-};
+import type { EngineState, NodeProgress, NodeView } from './types';
 
 /**
  * now — миллисекунды, уже прошедшие на узле. Дедлайн сессии снаружи,
  * в EngineState его нет, поэтому без now отдаём таймер как в графе.
  */
-export function view(state: EngineState, scenario: ScenarioGraph, now?: number): ClientNodeView {
+export function view(state: EngineState, scenario: ScenarioGraph, now?: number): NodeView {
   const node = scenario.nodes[state.nodeId];
   if (!node) {
     throw new EngineError('NODE_MISSING');
@@ -49,7 +35,7 @@ export function resolveText(
   state: Pick<EngineState, 'flags' | 'params'>,
 ): string {
   for (const variant of node.variants ?? []) {
-    if (conditionHolds(asCompare(variant.if), state)) {
+    if (conditionHolds(variant.if, state)) {
       return variant.text;
     }
   }

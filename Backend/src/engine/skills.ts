@@ -32,24 +32,3 @@ export function copySkills(
   addSkills(copy, source);
   return copy;
 }
-
-export function readSkills(value: unknown): Partial<Record<Competency, number>> | undefined {
-  if (typeof value !== 'object' || value === null) {
-    return undefined;
-  }
-  const record = value as Record<string, unknown>;
-  const skills: Partial<Record<Competency, number>> = {};
-  let found = false;
-  for (const key of COMPETENCIES) {
-    const delta = record[key];
-    if (typeof delta !== 'number') {
-      continue;
-    }
-    skills[key] = delta;
-    found = true;
-  }
-  if (!found) {
-    return undefined;
-  }
-  return skills;
-}

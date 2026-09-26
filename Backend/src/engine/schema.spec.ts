@@ -84,6 +84,58 @@ describe('ScenarioGraphSchema', () => {
     expect(start.choices.map((choice) => choice.id)).toEqual(['ask', 'pill', 'call-doctor']);
   });
 
+  it('принимает effectsIf, lucky, consequence и complaint на финале', () => {
+    const start = validGraph.nodes.n1;
+    if (!('choices' in start)) {
+      throw new Error('n1');
+    }
+    const ask = start.choices[0];
+    if (!ask) {
+      throw new Error('ask');
+    }
+    const parsed = ScenarioGraphSchema.safeParse({
+      ...validGraph,
+      nodes: {
+        ...validGraph.nodes,
+        n1: {
+          ...start,
+          choices: [
+            {
+              ...ask,
+              consequence: 'Пассажир сел ровнее',
+              lucky: true,
+              effectsIf: [{ if: { param: 'nextStopMin', lt: 10 }, effects: { safety: 1 } }],
+            },
+            ...start.choices.slice(1),
+          ],
+        },
+        'end-bad': {
+          end: 'incident',
+          text: 'Ситуация вышла из-под контроля',
+          complaint: true,
+          set: ['intervention'],
+        },
+      },
+    });
+    expect(parsed.success).toBe(true);
+    if (!parsed.success) {
+      return;
+    }
+    const node = parsed.data.nodes.n1;
+    if (!node || isEndNode(node)) {
+      throw new Error('n1');
+    }
+    expect(node.choices[0]?.lucky).toBe(true);
+    expect(node.choices[0]?.consequence).toBe('Пассажир сел ровнее');
+    expect(node.choices[0]?.effectsIf).toHaveLength(1);
+    const finale = parsed.data.nodes['end-bad'];
+    if (!finale || !isEndNode(finale)) {
+      throw new Error('end');
+    }
+    expect(finale.complaint).toBe(true);
+    expect(finale.set).toEqual(['intervention']);
+  });
+
   it('отклоняет чужую категорию и сломанный узел', () => {
     const badCategory = ScenarioGraphSchema.safeParse({ ...validGraph, category: 'magic' });
     expect(badCategory.success).toBe(false);

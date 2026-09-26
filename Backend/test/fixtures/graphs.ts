@@ -72,9 +72,9 @@ export function climateScenario(): ScenarioGraph {
     skills: { procedure: 3 },
     set: ['complaint'],
     verdict: 'best' as const,
+    lucky: true,
     next: 'end-inc',
   };
-  Object.assign(reset, { lucky: true });
   return {
     id: 'tech-ac',
     title: 'Климат в вагоне',

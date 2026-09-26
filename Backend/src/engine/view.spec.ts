@@ -15,6 +15,7 @@ function plan(ids: string[]): ShiftPlan {
     stops: ['Тверь'],
     car: 2,
     carClass: 'ECONOMY',
+    departure: '06:20',
     scenarios: ids.map((id) => ({
       scenarioId: id,
       version: 1,

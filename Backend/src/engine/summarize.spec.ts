@@ -15,6 +15,7 @@ function planOf(entries: { id: string; params: Record<string, number> }[]): Shif
     stops: ['Тверь', 'Бологое'],
     car: 3,
     carClass: 'FAMILY',
+    departure: '06:20',
     scenarios: entries.map((entry) => ({
       scenarioId: entry.id,
       version: 1,
@@ -70,6 +71,7 @@ describe('summarize', () => {
           loyaltyDelta: 0,
           safetyDelta: 10,
           reactionMs: 800,
+          timerSec: 20,
           consequence: null,
           lucky: false,
           better: null,
@@ -89,6 +91,7 @@ describe('summarize', () => {
           loyaltyDelta: 6,
           safetyDelta: 0,
           reactionMs: 2000,
+          timerSec: null,
           consequence: null,
           lucky: false,
           better: 'Сначала предупредить пассажира',
@@ -108,6 +111,7 @@ describe('summarize', () => {
           loyaltyDelta: 2,
           safetyDelta: 5,
           reactionMs: 1500,
+          timerSec: 15,
           consequence: null,
           lucky: true,
           better: null,
@@ -190,6 +194,24 @@ describe('summarize', () => {
     expect(summary.outcome).toBe('terminated');
     expect(summary.facts.incidents).toBe(0);
     expect(summary.facts.prevented).toBe(0);
+  });
+
+  it('флаг complaint на финале считается, если ход туда пришёл', () => {
+    const marked = greet(false);
+    const end = marked.nodes.end;
+    if (!end || !('end' in end)) {
+      throw new Error('end');
+    }
+    end.complaint = true;
+    expect(finish(marked, 'help', 100).facts.complaints).toBe(1);
+
+    const listed = greet(false);
+    const listedEnd = listed.nodes.end;
+    if (!listedEnd || !('end' in listedEnd)) {
+      throw new Error('end');
+    }
+    listedEnd.set = ['complaint'];
+    expect(finish(listed, 'help', 100).facts.complaints).toBe(1);
   });
 });
 

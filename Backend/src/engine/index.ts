@@ -1,10 +1,5 @@
 export { EngineError, type EngineErrorCode } from './errors';
-export {
-  type CatalogEntry,
-  type GeneratedShift,
-  type GenerateShiftOptions,
-  generateShift,
-} from './generator';
+export { type CatalogEntry, type GenerateShiftOptions, generateShift } from './generator';
 export { commitOf, createRng, newSeed, type Rng } from './rng';
 export { type Routes, RoutesSchema } from './routes';
 export {
@@ -17,14 +12,15 @@ export {
   type Verdict,
 } from './schema';
 export { createState, type StepContext, step, TIMEOUT_ACTION } from './step';
-export { politenessOf, type RunSummaryReport, summarize } from './summarize';
+export { politenessOf, summarize } from './summarize';
 export type {
   EngineState,
   JournalEntry,
+  NodeProgress,
   NodeView,
   RunSummary,
   ShiftPlan,
   StepInput,
 } from './types';
 export { type ValidationIssue, type ValidationResult, validateScenario } from './validate';
-export { type ClientNodeView, type NodeProgress, resolveText, view } from './view';
+export { resolveText, view } from './view';

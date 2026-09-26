@@ -1,5 +1,5 @@
 import { clampScale } from './scale';
-import type { RunOutcome, ScenarioGraph } from './schema';
+import { isEndNode, type RunOutcome, type ScenarioGraph } from './schema';
 import { copySkills } from './skills';
 import type { EngineState, JournalEntry, RunSummary } from './types';
 import {
@@ -36,15 +36,7 @@ export function politenessOf(
   return clampScale(Math.round(0.5 * loyalty + 0.5 * 100 * share));
 }
 
-/** В RunSummary нет средней реакции — поле рядом, сессия считается целиком. */
-export type RunSummaryReport = RunSummary & {
-  reactionAvgMs: number;
-};
-
-export function summarize(
-  state: EngineState,
-  scenarios: readonly ScenarioGraph[],
-): RunSummaryReport {
+export function summarize(state: EngineState, scenarios: readonly ScenarioGraph[]): RunSummary {
   return {
     outcome: summaryOutcome(state, scenarios),
     loyalty: state.loyalty,
@@ -53,7 +45,11 @@ export function summarize(
     timeouts: state.timeouts,
     reactionAvgMs: reactionAvg(state.journal),
     competencyDelta: copySkills(state.skills),
-    decisions: state.journal.map((entry) => copyEntry(entry)),
+    decisions: state.journal.map((entry) => {
+      const copy = copyEntry(entry);
+      copy.timerSec = timerSecOf(scenarios, entry);
+      return copy;
+    }),
     facts: {
       prevented: countPrevented(state, scenarios),
       incidents: countIncidents(state, scenarios),
@@ -88,6 +84,16 @@ function summaryOutcome(state: EngineState, scenarios: readonly ScenarioGraph[])
     return 'incident';
   }
   return 'completed';
+}
+
+/** Секунды таймера узла, на котором сделан ход. Нет узла или таймера — null. */
+function timerSecOf(scenarios: readonly ScenarioGraph[], entry: JournalEntry): number | null {
+  const scenario = scenarios.find((item) => item.id === entry.scenarioId);
+  const node = scenario?.nodes[entry.nodeId];
+  if (!node || isEndNode(node) || typeof node.timer !== 'number') {
+    return null;
+  }
+  return node.timer;
 }
 
 function reactionAvg(journal: readonly JournalEntry[]): number {

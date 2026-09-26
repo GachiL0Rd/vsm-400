@@ -23,11 +23,6 @@ export type GenerateShiftOptions = {
   count?: number;
 };
 
-/** В ShiftPlan нет времени отправления — оно нужно смене и часам узлов. */
-export type GeneratedShift = ShiftPlan & {
-  departure: string;
-};
-
 /**
  * Порядок RNG фиксирован: вагон, направление, отправление, номер поезда,
  * длина смены, пулы сценариев, параметры по порядку узлов и ключей.
@@ -38,7 +33,7 @@ export function generateShift(
   catalog: readonly CatalogEntry[],
   opts: GenerateShiftOptions | undefined,
   routesInput: unknown,
-): GeneratedShift {
+): ShiftPlan {
   const routes = RoutesSchema.parse(routesInput);
   const options = opts ?? {};
   const picked = chooseCar(rng, routes, options.carClass);

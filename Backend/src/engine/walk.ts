@@ -90,15 +90,12 @@ export function skipUnfollowed(
   return !currentIsEnd(state, scenarios);
 }
 
-export function nodeTags(node: object): string[] {
+export function nodeTags(node: EndNode): string[] {
   const tags: string[] = [];
-  for (const flag of readStringList(node, 'flags')) {
-    tags.push(flag);
-  }
-  for (const flag of readStringList(node, 'set')) {
-    if (!tags.includes(flag)) {
-      tags.push(flag);
-    }
+  pushFlags(tags, node.flags);
+  pushFlags(tags, node.set);
+  if (node.complaint === true && !tags.includes('complaint')) {
+    tags.push('complaint');
   }
   return tags;
 }
@@ -117,6 +114,7 @@ export function copyEntry(entry: JournalEntry): JournalEntry {
     loyaltyDelta: entry.loyaltyDelta,
     safetyDelta: entry.safetyDelta,
     reactionMs: entry.reactionMs,
+    timerSec: entry.timerSec,
     consequence: entry.consequence,
     lucky: entry.lucky,
     better: entry.better,
@@ -144,10 +142,13 @@ function currentIsEnd(state: EngineState, scenarios: readonly ScenarioGraph[]): 
   return node !== undefined && isEndNode(node);
 }
 
-function readStringList(source: object, key: string): string[] {
-  const value = (source as Record<string, unknown>)[key];
-  if (!Array.isArray(value)) {
-    return [];
+function pushFlags(tags: string[], flags: readonly string[] | undefined): void {
+  if (!flags) {
+    return;
   }
-  return value.filter((item): item is string => typeof item === 'string');
+  for (const flag of flags) {
+    if (!tags.includes(flag)) {
+      tags.push(flag);
+    }
+  }
 }

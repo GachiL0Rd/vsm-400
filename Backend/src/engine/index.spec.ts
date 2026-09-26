@@ -15,6 +15,7 @@ describe('engine index', () => {
       stops: ['Тверь', 'Бологое'],
       car: 1,
       carClass: 'ECONOMY' as const,
+      departure: '06:20',
       scenarios: [
         { scenarioId: door.id, version: 1, params: { gameTimeMin: 540, nodeStepMin: 10 } },
       ],

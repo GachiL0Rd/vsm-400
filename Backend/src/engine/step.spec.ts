@@ -15,6 +15,7 @@ function planOf(entries: { id: string; params?: Record<string, number> }[]): Shi
     stops: ['Тверь', 'Бологое'],
     car: 1,
     carClass: 'ECONOMY',
+    departure: '06:20',
     scenarios: entries.map((entry) => ({
       scenarioId: entry.id,
       version: 1,
@@ -170,13 +171,11 @@ describe('step', () => {
       effects: { safety: 10 },
       verdict: 'ok' as const,
       next: 'end-ok',
-    };
-    Object.assign(choice, {
       effectsIf: [
         { if: { param: 'occupancy', gte: 80 }, effects: { safety: -4 }, skills: { reaction: 2 } },
         { if: { param: 'occupancy', lt: 10 }, effects: { safety: 1 } },
       ],
-    });
+    };
     const scenario: ScenarioGraph = {
       ...door,
       gates: undefined,

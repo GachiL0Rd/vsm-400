@@ -31,6 +31,12 @@ export type RunOutcome = z.infer<typeof EndOutcomeSchema>;
 export const CompareSchema = z
   .strictObject({
     param: z.string().min(1).optional(),
+    flag: z.string().min(1).optional().describe('Один флаг, который уже должен стоять'),
+    flags: z
+      .array(z.string().min(1))
+      .min(1)
+      .optional()
+      .describe('Все перечисленные флаги должны стоять'),
     lt: z.number().optional(),
     lte: z.number().optional(),
     gt: z.number().optional(),
@@ -43,8 +49,10 @@ export const CompareSchema = z
       value.lte !== undefined ||
       value.gt !== undefined ||
       value.gte !== undefined ||
-      value.eq !== undefined,
-    { message: 'нужен оператор lt, lte, gt, gte или eq' },
+      value.eq !== undefined ||
+      value.flag !== undefined ||
+      value.flags !== undefined,
+    { message: 'нужен оператор lt, lte, gt, gte, eq или флаг' },
   );
 
 export const RangeSchema = z
@@ -83,10 +91,19 @@ export const RequiresSchema = z.strictObject({
 
 const flagList = z.array(z.string().min(1)).min(1);
 
+export const EffectsIfSchema = z
+  .strictObject({
+    if: CompareSchema,
+    effects: ScaleDeltaSchema.optional(),
+    skills: SkillsSchema.optional(),
+  })
+  .describe('Добавка к эффекту, если условие совпало с params или флагами');
+
 export const ChoiceSchema = z.strictObject({
   id: z.string().min(1),
   text: z.string(),
   effects: ScaleDeltaSchema.optional(),
+  effectsIf: z.array(EffectsIfSchema).min(1).optional().describe('Условные эффекты поверх effects'),
   skills: SkillsSchema.optional(),
   set: flagList.optional(),
   verdict: VerdictSchema.optional(),
@@ -94,14 +111,21 @@ export const ChoiceSchema = z.strictObject({
   basis: z.string().optional(),
   requires: RequiresSchema.optional(),
   deviation: z.boolean().optional(),
+  consequence: z.string().optional().describe('Последствие этого выбора'),
+  lucky: z.boolean().optional().describe('Решение удалось вопреки риску'),
   next: z.string().min(1),
 });
 
 export const TimeoutSchema = z.strictObject({
   effects: ScaleDeltaSchema.optional(),
+  effectsIf: z.array(EffectsIfSchema).min(1).optional().describe('Условные эффекты таймаута'),
   set: flagList.optional(),
   verdict: VerdictSchema.optional(),
+  better: z.string().optional().describe('Что стоило сделать вместо пропуска'),
+  basis: z.string().optional().describe('Основание из регламента'),
+  deviation: z.boolean().optional().describe('Нетиповое, но допустимое молчание'),
   consequence: z.string().optional(),
+  lucky: z.boolean().optional().describe('Пропуск обошёлся удачей'),
   next: z.string().min(1),
 });
 
@@ -116,6 +140,9 @@ export const DecisionNodeSchema = z.strictObject({
 export const EndNodeSchema = z.strictObject({
   end: EndOutcomeSchema,
   text: z.string(),
+  set: flagList.optional().describe('Флаги финала, в том числе complaint и intervention'),
+  flags: flagList.optional().describe('Те же флаги финала, если автор написал flags'),
+  complaint: z.boolean().optional().describe('Жалоба пассажира, если ход пришёл в этот финал'),
 });
 
 export const NodeSchema = z.union([EndNodeSchema, DecisionNodeSchema]);
@@ -149,6 +176,8 @@ export const ScenarioGraphSchema = z.strictObject({
   nodes: z.record(z.string(), NodeSchema),
 });
 
+export type Compare = z.infer<typeof CompareSchema>;
+export type EffectsIf = z.infer<typeof EffectsIfSchema>;
 export type ScenarioGraph = z.infer<typeof ScenarioGraphSchema>;
 export type ScenarioNode = z.infer<typeof NodeSchema>;
 export type DecisionNode = z.infer<typeof DecisionNodeSchema>;
