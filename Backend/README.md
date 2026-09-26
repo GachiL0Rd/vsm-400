@@ -68,8 +68,14 @@ docker compose --profile app up --build -d
 | `PUBLIC_GAME_WS_URL` | `ws://` или `wss://`, адрес GameServer для клиента |
 | `COOKIE_SECURE` | `true` или `false`. В prod — `true` |
 
-Локальные Postgres и Valkey поднимает `docker-compose.yml`: порты
-`127.0.0.1:5432` и `127.0.0.1:6379`, пользователь и база `vsm`, пароль `vsm`.
+Локальные Postgres и Valkey поднимает `docker-compose.yml`. На хост
+публикуются `127.0.0.1:${POSTGRES_PORT:-5432}` и
+`127.0.0.1:${REDIS_PORT:-6379}`: внутри сети контейнеры по-прежнему слушают
+5432 и 6379, сервис `backend` ходит к ним по именам `postgres` и `valkey`.
+Пользователь и база `vsm`, пароль `vsm`. Если 5432 занят другим Postgres,
+`POSTGRES_PORT=5433 docker compose up -d` и тот же порт в `DATABASE_URL`.
+`REDIS_PORT` — то же для Valkey. Переменные читает compose из `.env`, приложению
+они не нужны.
 
 ## Скрипты
 
