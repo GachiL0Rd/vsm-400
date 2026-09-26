@@ -3,6 +3,7 @@ import { Nav } from './components/Nav';
 import { NotFound } from './components/NotFound';
 import { notices, profile } from './demo';
 import { type Route, useRoute } from './route';
+import { FeedScreen } from './screens/FeedScreen';
 import { ProfileScreen } from './screens/ProfileScreen';
 import { RatingScreen } from './screens/RatingScreen';
 import { ShiftScreen } from './screens/ShiftScreen';
@@ -35,6 +36,7 @@ function App() {
         {route.name === 'shift' && <ShiftScreen />}
         {route.name === 'profile' && <ProfileScreen />}
         {route.name === 'rating' && <RatingScreen />}
+        {route.name === 'feed' && <FeedScreen />}
         {route.name === 'missing' && <NotFound />}
       </main>
     </div>
