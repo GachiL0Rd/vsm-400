@@ -3,6 +3,7 @@ import { Nav } from './components/Nav';
 import { NotFound } from './components/NotFound';
 import { notices, profile } from './demo';
 import { type Route, useRoute } from './route';
+import { ShiftScreen } from './screens/ShiftScreen';
 import './App.css';
 
 const titles: Record<Route['name'], string> = {
@@ -28,7 +29,10 @@ function App() {
   return (
     <div className="app">
       <Nav route={route} unread={unread} callsign={profile.callsign} level={profile.level} />
-      <main className="app__main">{route.name === 'missing' && <NotFound />}</main>
+      <main className="app__main">
+        {route.name === 'shift' && <ShiftScreen />}
+        {route.name === 'missing' && <NotFound />}
+      </main>
     </div>
   );
 }
