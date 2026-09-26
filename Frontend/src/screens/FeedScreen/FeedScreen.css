@@ -2,7 +2,7 @@
   max-width: var(--measure);
   margin: 0;
   padding: 0;
-  border-top: 2px solid var(--ink);
+  border-top: 1px solid var(--line);
   list-style: none;
 }
 
@@ -57,7 +57,7 @@
 }
 
 .notice:not(.notice--unread) .notice__icon {
-  color: var(--smoke);
+  color: var(--iron);
 }
 
 .notice__text {

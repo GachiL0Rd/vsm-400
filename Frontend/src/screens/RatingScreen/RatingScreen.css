@@ -1,34 +1,35 @@
 .segmented {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  max-width: 480px;
+  gap: 4px;
+  max-width: 420px;
+  min-inline-size: 0;
   margin: 0;
-  padding: 0;
-  border: 2px solid var(--ink);
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: var(--white);
 }
 
 .segmented__item {
-  padding: 10px 0;
+  padding: 8px 6px;
   border: 0;
-  background: var(--white);
+  border-radius: var(--radius-pill);
+  background: transparent;
   color: var(--ink);
   font-size: 15px;
   font-weight: 700;
   cursor: pointer;
 }
 
-.segmented__item + .segmented__item {
-  border-left: 2px solid var(--ink);
-}
-
 .segmented__item:hover {
-  text-decoration: underline;
+  background: var(--cloud);
 }
 
 .segmented__item--on,
 .segmented__item--on:hover {
-  background: var(--ink);
-  color: var(--white);
+  background: var(--signal);
+  color: var(--ink);
 }
 
 .rating__me {
@@ -46,7 +47,7 @@
   max-width: var(--measure);
   margin: 0;
   padding: 0;
-  border-top: 2px solid var(--ink);
+  border-top: 1px solid var(--line);
   list-style: none;
 }
 
@@ -62,8 +63,8 @@
 
 /* Разрыв между топом и своей позицией */
 .board__row--gap {
-  margin-top: 12px;
-  border-top: 1px dashed var(--smoke);
+  margin-top: 16px;
+  border-top: 1px dashed var(--iron);
 }
 
 .board__rank {
@@ -87,16 +88,20 @@
   font-weight: 700;
 }
 
-/* «Вы здесь» — тот же оранжевый маркер, что в навигации */
+/* «Вы здесь» — вертикальная пилюля того же оранжевого, что у кнопки смены. */
 .board__row--me {
+  padding-left: 16px;
   font-weight: 800;
 }
 
 .board__row--me::before {
   content: "";
   position: absolute;
-  inset: 0 auto 0 0;
-  width: 4px;
+  top: 10px;
+  bottom: 10px;
+  left: 0;
+  width: 6px;
+  border-radius: var(--radius-pill);
   background: var(--signal);
 }
 

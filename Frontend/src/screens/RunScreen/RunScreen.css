@@ -19,7 +19,7 @@
   display: grid;
   gap: 20px;
   padding: 20px 0;
-  border-top: 2px solid var(--ink);
+  border-top: 1px solid var(--line);
   border-bottom: 1px solid var(--line);
 }
 
