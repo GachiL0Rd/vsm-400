@@ -1,0 +1,127 @@
+# Курение: Ситуации на борту, ситуация 20. Датчик: ИОТ ВСМ-2026, п. 4.2.2–4.2.4.
+id: ride-smoke-sensor
+title: "Датчик дыма и сигарета"
+category: safety
+stage: enroute
+carClasses: [BUSINESS]
+difficulty: 3
+competencies: [safety, detection, escalation]
+params:
+  nextStopMin: { min: 6, max: 30 }
+init: { loyalty: 66, safety: 64 }
+gates:
+  failIf:
+    safety: { lt: 30 }
+start: open
+nodes:
+  open:
+    text: "В бизнесе пищит датчик. У кресла пар электронной сигареты."
+    variants:
+      - if: { param: nextStopMin, lt: 8 }
+        text: "До станции меньше 8 минут, сигнал не смолкает."
+    timer: 12
+    choices:
+      - id: stop-it
+        text: "Потребовать прекратить: это риск для движения"
+        effects: { safety: 8, loyalty: -2 }
+        skills: { safety: 2, detection: 1 }
+        set: [warned]
+        verdict: best
+        next: follow
+      - id: wave
+        text: "Махнуть рукой: пар не дым, салон и так тих"
+        effects: { loyalty: 8, safety: -18 }
+        verdict: worse
+        better: "Курение, включая электронное, прекращают сразу"
+        basis: "Ситуации на борту.pdf, с. 9, ситуация 20"
+        next: risk
+      - id: move
+        text: "Отвести соседей и смотреть, что пищит, не требуя тушить"
+        deviation: true
+        verdict: ok
+        better: "Сначала прекратить источник, датчик не бросают"
+        basis: "ИОТ ВСМ-2026, п. 4.2.2"
+        set: [looked]
+        next: follow
+    onTimeout:
+      effects: { safety: -12, loyalty: -6 }
+      verdict: missed
+      consequence: "Сигнал чаще, пассажиры встали с кресел"
+      next: late
+  follow:
+    text: "Пассажир прячет устройство и спорит, что это не дым."
+    timer: 14
+    choices:
+      - id: call
+        text: "Звать начальника поезда и ПТБ, датчик не глушить"
+        requires: { flags: [warned] }
+        effects: { safety: 10 }
+        skills: { escalation: 2 }
+        verdict: best
+        next: end-ok
+      - id: mute
+        text: "Выключить сигнал, чтобы не пугать салон"
+        effects: { loyalty: 7, safety: -20 }
+        verdict: worse
+        better: "Причину датчика нельзя оставлять невыясненной"
+        basis: "ИОТ ВСМ-2026, п. 4.2.2"
+        next: end-bad
+      - id: warn-late
+        text: "Потребовать прекратить и звать начальника с ПТБ"
+        effects: { safety: 6 }
+        set: [warned]
+        verdict: ok
+        better: "Требование звучит сразу, не после спора"
+        basis: "Ситуации на борту.pdf, с. 9, ситуация 20"
+        next: end-ok
+    onTimeout:
+      effects: { safety: -18 }
+      verdict: missed
+      consequence: "Запахло гарью, сигнал так и орёт"
+      next: end-stop
+  late:
+    text: "Люди столпились у датчика. Пар уже у багажной полки."
+    timer: 12
+    choices:
+      - id: report
+        text: "Увести людей и доложить машинисту и ЛНП"
+        effects: { safety: 10, loyalty: -2 }
+        set: [warned]
+        verdict: best
+        next: end-ok
+      - id: false-alarm
+        text: "Сказать, что тревога ложная, и сесть"
+        effects: { loyalty: 6, safety: -18 }
+        verdict: worse
+        better: "Ложной тревогу объявляют только после проверки"
+        basis: "ИОТ ВСМ-2026, п. 4.2.2"
+        next: end-bad
+    onTimeout:
+      effects: { safety: -20, loyalty: -8 }
+      verdict: missed
+      consequence: "Пассажиры бегут в тамбур, проход забит"
+      next: end-stop
+  risk:
+    text: "Сигнал смолк. Пассажир благодарит, что не подняли шум."
+    choices:
+      - id: still
+        text: "Всё равно доложить ЛНП и проверить салон"
+        effects: { safety: 8, loyalty: -2 }
+        verdict: best
+        next: end-ok
+      - id: nod
+        text: "Кивнуть и идти дальше по вагону"
+        effects: { loyalty: 4, safety: -16 }
+        verdict: worse
+        better: "Сработавший датчик не оставляют без доклада"
+        basis: "ИОТ ВСМ-2026, п. 4.2.2"
+        next: end-stop
+  end-ok:
+    end: completed
+    text: "Курение прекращено, датчик передан ЛНП"
+  end-bad:
+    end: incident
+    text: "Сигнал заглушили или пар оставили"
+  end-stop:
+    end: terminated
+    text: "Салон встал из-за непроверенного датчика"

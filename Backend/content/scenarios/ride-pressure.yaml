@@ -1,0 +1,130 @@
+# Разгерметизация: ИОТ ВСМ-2026, п. 3.4.10. Дверь на ходу — п. 3.4.5, 3.4.9.
+id: ride-pressure
+title: "Закладывает уши, свист"
+category: technical
+stage: enroute
+carClasses: [ECONOMY, FAMILY, BUSINESS, FIRST]
+difficulty: 3
+competencies: [safety, reaction, escalation]
+params:
+  nextStopMin: { min: 6, max: 25 }
+  occupancy: { min: 30, max: 100 }
+init: { loyalty: 64, safety: 66 }
+gates:
+  failIf:
+    safety: { lt: 30 }
+start: open
+nodes:
+  open:
+    text: "На скорости свист из тамбура. Пассажир держится за уши."
+    variants:
+      - if: { param: nextStopMin, lt: 10 }
+        text: "До остановки меньше 10 минут, свист не стихает."
+      - if: { param: occupancy, gte: 80 }
+        text: "Салон полный: люди уже тянутся в тамбур."
+    timer: 12
+    choices:
+      - id: radio
+        text: "Сразу доложить ЛНП или машинисту по связи"
+        effects: { safety: 12 }
+        skills: { reaction: 2, escalation: 1 }
+        set: [reported]
+        verdict: best
+        next: follow
+      - id: yawn
+        text: "Советовать зевать и глотать, связь не трогать"
+        effects: { loyalty: 7, safety: -16 }
+        verdict: worse
+        better: "Свист и заложенные уши — немедленный доклад"
+        basis: "ИОТ ВСМ-2026, п. 3.4.10"
+        next: risk
+      - id: walk
+        text: "Сначала сам дойти до свиста, потом доложить"
+        deviation: true
+        verdict: ok
+        better: "Доклад не ждут, пока обойдёте тамбур"
+        basis: "ИОТ ВСМ-2026, п. 3.4.10"
+        set: [heard]
+        next: follow
+    onTimeout:
+      effects: { safety: -12, loyalty: -6 }
+      verdict: missed
+      consequence: "Несколько человек идут к двери тамбура"
+      next: late
+  follow:
+    text: "Связь набрана. Пассажиры спрашивают, открывать ли дверь."
+    timer: 14
+    choices:
+      - id: sit
+        text: "Сидеть на местах, дверь не трогать, ждать команду"
+        requires: { flags: [reported] }
+        effects: { safety: 8, loyalty: 2 }
+        verdict: best
+        next: end-ok
+      - id: plug
+        text: "Искать щель и зажать её подручным"
+        effects: { loyalty: 4, safety: -18 }
+        verdict: worse
+        better: "Щель не ищут сами: это доклад, не ремонт"
+        basis: "ИОТ ВСМ-2026, п. 3.4.9"
+        next: end-bad
+      - id: radio-now
+        text: "Доложить сейчас и вернуть людей в кресла"
+        effects: { safety: 6 }
+        set: [reported]
+        verdict: ok
+        better: "Доклад делают до того, как люди встали"
+        basis: "ИОТ ВСМ-2026, п. 3.4.10"
+        next: end-ok
+    onTimeout:
+      effects: { safety: -20 }
+      verdict: missed
+      consequence: "Кто-то тянет ручку двери в тамбуре"
+      next: end-stop
+  late:
+    text: "У двери тамбура толпа. Свист громче."
+    timer: 12
+    choices:
+      - id: away
+        text: "Увести от двери и доложить машинисту"
+        effects: { safety: 10 }
+        set: [reported]
+        verdict: best
+        next: end-ok
+      - id: crack
+        text: "Приоткрыть дверь, чтобы стравило"
+        effects: { loyalty: 5, safety: -24 }
+        verdict: worse
+        better: "Дверь на ходу не приоткрывают"
+        basis: "ИОТ ВСМ-2026, п. 3.4.5"
+        next: end-bad
+    onTimeout:
+      effects: { safety: -22, loyalty: -8 }
+      verdict: missed
+      consequence: "Толпа давит на дверь"
+      next: end-stop
+  risk:
+    text: "Люди зевают. Свист на месте."
+    choices:
+      - id: break-tip
+        text: "Прервать совет и доложить по связи"
+        effects: { safety: 10, loyalty: -2 }
+        set: [reported]
+        verdict: best
+        next: follow
+      - id: water
+        text: "Раздать воду и считать тему закрытой"
+        effects: { loyalty: 5, safety: -12 }
+        verdict: worse
+        better: "Вода не заменяет доклад о свисте"
+        basis: "ИОТ ВСМ-2026, п. 3.4.10"
+        next: end-stop
+  end-ok:
+    end: completed
+    text: "Доклад ушёл, люди сидят, дверь не трогали"
+  end-bad:
+    end: incident
+    text: "Свист остался без доклада или дверь трогали"
+  end-stop:
+    end: terminated
+    text: "У двери началась давка"
