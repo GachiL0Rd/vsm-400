@@ -5,6 +5,7 @@
   width: 40px;
   height: 40px;
   border: 2px solid var(--ink);
+  border-radius: 50%;
   background: var(--white);
   color: var(--ink);
   font-size: 14px;
@@ -12,9 +13,9 @@
 }
 
 .avatar--lg {
-  width: 72px;
-  height: 72px;
-  font-size: 24px;
+  width: 84px;
+  height: 84px;
+  font-size: 26px;
 }
 
 .avatar--sm {

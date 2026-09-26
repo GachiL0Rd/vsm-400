@@ -1,5 +1,6 @@
 .track {
-  height: 8px;
+  height: 10px;
+  border-radius: var(--radius-pill);
   background: var(--cloud);
   overflow: hidden;
 }
@@ -11,6 +12,7 @@
 .track__fill {
   display: block;
   height: 100%;
+  border-radius: inherit;
   background: var(--ink);
 }
 

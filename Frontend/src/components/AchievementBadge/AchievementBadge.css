@@ -4,6 +4,7 @@
   place-items: center;
   width: 52px;
   height: 52px;
+  border-radius: 50%;
 }
 
 .badge--earned {
@@ -12,6 +13,6 @@
 }
 
 .badge--locked {
-  border: 2px dashed var(--line);
-  color: var(--smoke);
+  border: 1.5px dashed var(--iron);
+  color: var(--iron);
 }

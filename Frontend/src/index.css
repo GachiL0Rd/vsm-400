@@ -27,28 +27,34 @@
 }
 
 :root {
-  /* Нейтральная шкала: основа интерфейса. */
+  /* Тёплая бумага и одна белая поверхность — плашка отправления. */
+  --paper: #f7f6f4;
   --white: #ffffff;
-  --cloud: #e8e8e6;
-  --line: #dcdcd9;
-  --smoke: #a3a5a8;
-  --iron: #6b6e73;
-  /* Основной цвет текста и контуров — графит, как ливрея поездов ВСМ. */
+  /* Желоб шкал и пустые клетки. Темнее бумаги, без текста поверх. */
+  --cloud: #c4b9ab;
+  /* Линейки и кромка плашки. На белом ≥ 3:1. */
+  --line: #9a8c7e;
+  --iron: #5c6168;
+  /* Основной цвет текста — графит, как ливрея поездов ВСМ. */
   --ink: #25282c;
-  --ink-08: rgb(37 40 44 / 8%);
+  --ink-soft: rgb(37 40 44 / 12%);
 
   /* Единственный акцент — сигнальный оранжевый. Только действие и «вы здесь». */
   --signal: #ff6700;
   --signal-hover: #ff7a1f;
-  --signal-press: #e65c00;
+  /* Темнее основного, но текст графитом всё ещё ≥ 4.5:1. */
+  --signal-press: #f06500;
 
-  /* Статусы по логике светофора */
-  --ok: #1f7a34;
+  /* Светофор: норма тихая, отклонение — сплошная плашка. */
+  --ok: #1c6b32;
   --warn: #7a5900;
-  --warn-line: #f0cf5a;
-  --stop: #c62828;
+  --stop: #b42318;
 
   --font: "Moscow Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+
+  /* Контейнер-плашка 20px. Кнопки, теги, аватары, треки — пилюля. */
+  --radius-card: 20px;
+  --radius-pill: 999px;
 
   /* 232px при min-width: 900px — порог парный в Nav.css и App.css. */
   --nav-width: 232px;
@@ -61,13 +67,14 @@
 }
 
 html {
+  background: var(--paper);
   -webkit-text-size-adjust: 100%;
 }
 
 body {
   margin: 0;
   min-width: 320px;
-  background: var(--white);
+  background: var(--paper);
   color: var(--ink);
   font-family: var(--font);
   font-size: 16px;
@@ -91,8 +98,8 @@ button {
 }
 
 :focus-visible {
-  outline: 3px solid var(--signal);
-  outline-offset: 2px;
+  outline: 3px solid var(--ink);
+  outline-offset: 3px;
 }
 
 /* ---------- Общие элементы ---------- */
@@ -119,13 +126,14 @@ button {
   justify-content: center;
   align-items: center;
   gap: 8px;
-  padding: 13px 24px;
-  border: 0;
-  border-bottom: 3px solid var(--signal-press);
+  padding: 13px 26px;
+  border: 2px solid transparent;
+  border-radius: var(--radius-pill);
   background: var(--signal);
   color: var(--ink);
   font-size: 17px;
   font-weight: 700;
+  line-height: 1.2;
   text-decoration: none;
   cursor: pointer;
 }
@@ -135,36 +143,28 @@ button {
 }
 
 .btn:active {
-  border-bottom-width: 1px;
-  margin-top: 2px;
+  background: var(--signal-press);
 }
 
 .btn--ghost {
-  border: 2px solid var(--ink);
-  background: var(--white);
+  border-color: var(--ink);
+  background: transparent;
+  color: var(--ink);
 }
 
-.btn--ghost:hover {
+.btn--ghost:hover,
+.btn--ghost:active {
   background: var(--ink);
   color: var(--white);
 }
 
-.btn--ghost:active {
-  border-bottom-width: 2px;
-  margin-top: 0;
-}
-
-.btn[aria-disabled="true"] {
-  border-color: var(--cloud);
-  background: var(--cloud);
+.btn[aria-disabled="true"],
+.btn[aria-disabled="true"]:hover,
+.btn[aria-disabled="true"]:active {
+  border-color: var(--line);
+  background: transparent;
   color: var(--iron);
   cursor: not-allowed;
-}
-
-/* pointer-events: none убрал бы cursor: not-allowed, поэтому гасим только сдвиг :active. */
-.btn[aria-disabled="true"]:active {
-  border-bottom-width: 3px;
-  margin-top: 0;
 }
 
 /* Пары «подпись — значение» в строку */

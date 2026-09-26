@@ -17,10 +17,10 @@
 }
 
 .screen__title {
-  font-size: 32px;
+  font-size: 34px;
   font-weight: 800;
-  line-height: 1.1;
-  letter-spacing: -0.01em;
+  line-height: 1.12;
+  letter-spacing: -0.03em;
 }
 
 .screen__title:focus {
@@ -43,6 +43,6 @@
   }
 
   .screen__title {
-    font-size: 44px;
+    font-size: 48px;
   }
 }

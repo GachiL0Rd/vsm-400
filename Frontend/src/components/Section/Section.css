@@ -9,12 +9,13 @@
   justify-content: space-between;
   align-items: baseline;
   gap: 12px;
-  padding-bottom: 10px;
-  border-bottom: 2px solid var(--ink);
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--line);
 }
 
 .section__title {
   font-size: 20px;
   font-weight: 800;
+  letter-spacing: -0.02em;
   line-height: 1.2;
 }
