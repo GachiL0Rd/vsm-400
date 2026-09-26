@@ -1,0 +1,180 @@
+.me {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+
+.me__avatar {
+  width: 72px;
+  height: 72px;
+  font-size: 24px;
+}
+
+.progress {
+  display: grid;
+  gap: 32px;
+}
+
+@media (min-width: 760px) {
+  .progress {
+    grid-template-columns: 1fr 1fr;
+    gap: 40px;
+  }
+}
+
+.streak {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.streak__day {
+  height: 28px;
+  background: var(--cloud);
+}
+
+.streak__day--done {
+  background: var(--ink);
+}
+
+.streak__day--today {
+  border: 2px dashed var(--smoke);
+  background: var(--white);
+}
+
+.stats {
+  margin-top: -16px;
+}
+
+@media (min-width: 760px) {
+  .stats {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    column-gap: 40px;
+  }
+}
+
+/* ---------- Компетенции ---------- */
+
+.skills {
+  display: grid;
+  gap: 24px;
+}
+
+.radar {
+  display: block;
+  width: 100%;
+  max-width: 420px;
+  margin: 0 auto;
+}
+
+@media (min-width: 800px) {
+  .skills {
+    grid-template-columns: 1fr 1fr;
+    align-items: center;
+    gap: 40px;
+  }
+}
+
+.skills__list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.skill {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.skill__title {
+  font-weight: 500;
+}
+
+.skill__numbers {
+  display: flex;
+  gap: 10px;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.skill__numbers b {
+  min-width: 24px;
+  font-size: 16px;
+  text-align: right;
+}
+
+.skill__note {
+  color: var(--iron);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.skill--weak .skill__title,
+.skill--weak .skill__numbers b {
+  color: var(--stop);
+  font-weight: 700;
+}
+
+.skill--weak .skill__note {
+  color: var(--ink);
+}
+
+/* ---------- Знаки отличия ---------- */
+
+.insignia {
+  display: grid;
+  margin: -16px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+@media (min-width: 760px) {
+  .insignia {
+    grid-template-columns: 1fr 1fr;
+    column-gap: 40px;
+  }
+}
+
+.insignia__item {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.insignia__body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.insignia__item--locked .insignia__title {
+  color: var(--iron);
+}
+
+.insignia__text {
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+.insignia__progress {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.insignia__progress .track {
+  flex: 1;
+}

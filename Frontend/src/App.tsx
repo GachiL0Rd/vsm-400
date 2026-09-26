@@ -3,6 +3,7 @@ import { Nav } from './components/Nav';
 import { NotFound } from './components/NotFound';
 import { notices, profile } from './demo';
 import { type Route, useRoute } from './route';
+import { ProfileScreen } from './screens/ProfileScreen';
 import { ShiftScreen } from './screens/ShiftScreen';
 import './App.css';
 
@@ -31,6 +32,7 @@ function App() {
       <Nav route={route} unread={unread} callsign={profile.callsign} level={profile.level} />
       <main className="app__main">
         {route.name === 'shift' && <ShiftScreen />}
+        {route.name === 'profile' && <ProfileScreen />}
         {route.name === 'missing' && <NotFound />}
       </main>
     </div>
