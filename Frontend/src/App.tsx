@@ -4,6 +4,7 @@ import { NotFound } from './components/NotFound';
 import { notices, profile } from './demo';
 import { type Route, useRoute } from './route';
 import { ProfileScreen } from './screens/ProfileScreen';
+import { RatingScreen } from './screens/RatingScreen';
 import { ShiftScreen } from './screens/ShiftScreen';
 import './App.css';
 
@@ -33,6 +34,7 @@ function App() {
       <main className="app__main">
         {route.name === 'shift' && <ShiftScreen />}
         {route.name === 'profile' && <ProfileScreen />}
+        {route.name === 'rating' && <RatingScreen />}
         {route.name === 'missing' && <NotFound />}
       </main>
     </div>
