@@ -1,11 +1,11 @@
 import { Link } from 'react-router';
-import { OutcomeTag } from '../components/OutcomeTag';
-import { Section } from '../components/Section';
-import { nextShift, runs, stats } from '../demo';
-import { formatDate } from '../format';
-import { COMPETENCIES, FAIL_SCORE, type Run } from '../model';
-import { paths } from '../paths';
-import { usePageTitle } from '../usePageTitle';
+import { OutcomeTag } from '../../components/OutcomeTag/OutcomeTag';
+import { Section } from '../../components/Section/Section';
+import { nextShift, runs, stats } from '../../demo';
+import { formatDate } from '../../format';
+import { usePageTitle } from '../../hooks/usePageTitle';
+import { COMPETENCIES, FAIL_SCORE, type Run } from '../../model';
+import { paths } from '../../paths';
 import './ShiftScreen.css';
 
 const gameUrl = import.meta.env.VITE_GAME_URL;

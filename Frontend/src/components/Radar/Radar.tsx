@@ -1,4 +1,4 @@
-import { COMPETENCIES, type Competencies, WEAK_SCORE } from '../model';
+import { COMPETENCIES, type Competencies, WEAK_SCORE } from '../../model';
 import './Radar.css';
 
 const CX = 170;

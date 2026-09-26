@@ -1,12 +1,12 @@
-import { AchievementBadge } from '../components/AchievementBadge';
-import { Avatar } from '../components/Avatar';
-import { Meter } from '../components/Meter';
-import { Radar } from '../components/Radar';
-import { Section } from '../components/Section';
-import { achievements, profile, stats } from '../demo';
-import { formatDate, formatDelta, formatNumber, plural } from '../format';
-import { COMPETENCIES, WEAK_SCORE } from '../model';
-import { usePageTitle } from '../usePageTitle';
+import { AchievementBadge } from '../../components/AchievementBadge/AchievementBadge';
+import { Avatar } from '../../components/Avatar/Avatar';
+import { Meter } from '../../components/Meter/Meter';
+import { Radar } from '../../components/Radar/Radar';
+import { Section } from '../../components/Section/Section';
+import { achievements, profile, stats } from '../../demo';
+import { formatDate, formatDelta, formatNumber, plural } from '../../format';
+import { usePageTitle } from '../../hooks/usePageTitle';
+import { COMPETENCIES, WEAK_SCORE } from '../../model';
 import './ProfileScreen.css';
 
 const WEEK = [6, 5, 4, 3, 2, 1, 0];

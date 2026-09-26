@@ -1,4 +1,4 @@
-import { Icon, type IconName } from './Icon';
+import { Icon, type IconName } from '../Icon/Icon';
 import './AchievementBadge.css';
 
 const glyphs: Record<string, IconName> = {

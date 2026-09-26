@@ -1,6 +1,6 @@
 import { Link } from 'react-router';
-import { paths } from '../paths';
-import { usePageTitle } from '../usePageTitle';
+import { usePageTitle } from '../../hooks/usePageTitle';
+import { paths } from '../../paths';
 
 export function NotFound({ title = 'Такой страницы нет' }: { title?: string }) {
   usePageTitle(title);

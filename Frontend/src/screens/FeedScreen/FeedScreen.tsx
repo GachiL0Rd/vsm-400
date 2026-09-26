@@ -1,10 +1,10 @@
 import { Link } from 'react-router';
-import { Icon, type IconName } from '../components/Icon';
-import { Tag } from '../components/Tag';
-import { notices } from '../demo';
-import { formatAgo } from '../format';
-import type { Notice, NoticeKind } from '../model';
-import { usePageTitle } from '../usePageTitle';
+import { Icon, type IconName } from '../../components/Icon/Icon';
+import { Tag } from '../../components/Tag/Tag';
+import { notices } from '../../demo';
+import { formatAgo } from '../../format';
+import { usePageTitle } from '../../hooks/usePageTitle';
+import type { Notice, NoticeKind } from '../../model';
 import './FeedScreen.css';
 
 const KINDS: Record<NoticeKind, { icon: IconName; title: string }> = {

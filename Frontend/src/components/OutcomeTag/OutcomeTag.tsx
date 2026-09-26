@@ -1,5 +1,5 @@
-import { OUTCOME_TITLES, type RunOutcome } from '../model';
-import { Tag, type TagTone } from './Tag';
+import { OUTCOME_TITLES, type RunOutcome } from '../../model';
+import { Tag, type TagTone } from '../Tag/Tag';
 
 const TONES: Record<RunOutcome, TagTone> = {
   completed: 'ok',

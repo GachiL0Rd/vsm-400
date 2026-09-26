@@ -1,14 +1,14 @@
 import { useEffect, useRef } from 'react';
 import { Route, Routes, useLocation } from 'react-router';
-import { Nav } from './components/Nav';
-import { NotFound } from './components/NotFound';
+import { Nav } from './components/Nav/Nav';
+import { NotFound } from './components/NotFound/NotFound';
 import { notices, profile } from './demo';
 import { paths } from './paths';
-import { FeedScreen } from './screens/FeedScreen';
-import { ProfileScreen } from './screens/ProfileScreen';
-import { RatingScreen } from './screens/RatingScreen';
-import { RunScreen } from './screens/RunScreen';
-import { ShiftScreen } from './screens/ShiftScreen';
+import { FeedScreen } from './screens/FeedScreen/FeedScreen';
+import { ProfileScreen } from './screens/ProfileScreen/ProfileScreen';
+import { RatingScreen } from './screens/RatingScreen/RatingScreen';
+import { RunScreen } from './screens/RunScreen/RunScreen';
+import { ShiftScreen } from './screens/ShiftScreen/ShiftScreen';
 import './App.css';
 
 function App() {

@@ -1,7 +1,7 @@
 import { Link, useLocation } from 'react-router';
-import { paths, runId } from '../paths';
-import { Avatar } from './Avatar';
-import { Icon, type IconName } from './Icon';
+import { paths, runId } from '../../paths';
+import { Avatar } from '../Avatar/Avatar';
+import { Icon, type IconName } from '../Icon/Icon';
 import './Nav.css';
 
 type Tab = 'shift' | 'rating' | 'profile' | 'feed';

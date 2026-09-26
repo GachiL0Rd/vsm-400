@@ -1,16 +1,16 @@
 import { Link, useParams } from 'react-router';
-import { Icon } from '../components/Icon';
-import { Meter } from '../components/Meter';
-import { Note } from '../components/Note';
-import { NotFound } from '../components/NotFound';
-import { OutcomeTag } from '../components/OutcomeTag';
-import { Section } from '../components/Section';
-import { Tag, type TagTone } from '../components/Tag';
-import { findRun } from '../demo';
-import { formatDate, formatDelta, plural } from '../format';
-import { COMPETENCIES, type Decision, FAIL_SCORE, STAGE_TITLES, type Verdict } from '../model';
-import { paths } from '../paths';
-import { usePageTitle } from '../usePageTitle';
+import { Icon } from '../../components/Icon/Icon';
+import { Meter } from '../../components/Meter/Meter';
+import { Note } from '../../components/Note/Note';
+import { NotFound } from '../../components/NotFound/NotFound';
+import { OutcomeTag } from '../../components/OutcomeTag/OutcomeTag';
+import { Section } from '../../components/Section/Section';
+import { Tag, type TagTone } from '../../components/Tag/Tag';
+import { findRun } from '../../demo';
+import { formatDate, formatDelta, plural } from '../../format';
+import { usePageTitle } from '../../hooks/usePageTitle';
+import { COMPETENCIES, type Decision, FAIL_SCORE, STAGE_TITLES, type Verdict } from '../../model';
+import { paths } from '../../paths';
 import './RunScreen.css';
 
 const VERDICTS: Record<Verdict, { title: string; tone: TagTone }> = {

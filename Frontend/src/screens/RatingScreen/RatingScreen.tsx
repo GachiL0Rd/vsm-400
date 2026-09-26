@@ -1,9 +1,9 @@
 import { useState } from 'react';
-import { Avatar } from '../components/Avatar';
-import { brigadeInDepot, leaderboards, profile } from '../demo';
-import { formatIn, formatNumber } from '../format';
-import type { LeaderRow, Scope } from '../model';
-import { usePageTitle } from '../usePageTitle';
+import { Avatar } from '../../components/Avatar/Avatar';
+import { brigadeInDepot, leaderboards, profile } from '../../demo';
+import { formatIn, formatNumber } from '../../format';
+import { usePageTitle } from '../../hooks/usePageTitle';
+import type { LeaderRow, Scope } from '../../model';
 import './RatingScreen.css';
 
 const SCOPES: { id: Scope; title: string }[] = [
