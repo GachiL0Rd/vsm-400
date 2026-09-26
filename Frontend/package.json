@@ -12,7 +12,7 @@
     "preview": "vite preview --host 0.0.0.0",
     "format": "biome format --write .",
     "lint": "biome lint .",
-    "check:biome": "biome ci .",
+    "check:biome": "biome ci --error-on-warnings .",
     "check:write": "biome check --write .",
     "typecheck": "tsc -b",
     "verify": "npm run check:biome && npm run typecheck && npm run build"
