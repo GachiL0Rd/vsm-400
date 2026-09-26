@@ -148,3 +148,24 @@ SameSite=Strict). Оба HttpOnly, флаг Secure берётся из `COOKIE_S
 Внешний контур — `/api/integration/v1`: сотрудник по табельному номеру (хранится
 только HMAC), прогресс, оргструктура, вебхуки. Curl и проверка подписи —
 в [docs/integration.md](docs/integration.md).
+
+### Кабинет
+
+`GET /api/v1/me`, `/me/stats`, `/me/next-shift`, `/me/runs`, `/me/runs/:id`,
+`/me/achievements`, `/me/compare`. Имена полей — как у `Frontend/src/model.ts`,
+в профиле дополнительно `grade`. Баллы профиля — несгоревшие начисления.
+Уровень — пожизненная сумма положительных `RUN` и `ACHIEVEMENT`. Сезонный
+рейтинг сюда не входит. `total` в журнале — число всех рейсов («5 из 38»).
+
+### Аналитика
+
+`GET /api/v1/analytics/brigades/:id/heatmap` и `/gaps`: CHIEF своей бригады,
+METHODIST и ADMIN любой. `GET /api/v1/analytics/scenarios/:id` — воронка узлов
+для METHODIST и ADMIN.
+
+### Назначения
+
+`POST /api/v1/assignments` создаёт `ShiftAssignment` на каждого сотрудника и
+публикует `assignment.created`. CHIEF назначает только свою бригаду.
+`GET /api/v1/assignments?brigadeId`, `DELETE /api/v1/assignments/:id` ставит
+`CANCELLED`.
