@@ -141,8 +141,9 @@ SameSite=Strict). Оба HttpOnly, флаг Secure берётся из `COOKIE_S
 
 ### Рейтинг и уведомления
 
-- `GET /api/v1/leaderboards/:scope` — `brigade`, `depot` или `company`. Query `season` — id, иначе текущая неделя МСК. Ответ `{ season, endsAt, total, rows: [{ rank, callsign, points, move, me? }] }`: бригада целиком, депо и компания — топ-5 и своя строка.
-- `GET /api/v1/leaderboards/brigades` — место бригады среди бригад депо, `{ rank, total }`.
+- `GET /api/v1/leaderboards/:scope` — `brigade`, `depot` или `company`. Query `season` — uuid сезона, иначе текущая неделя МСК. Ответ `{ seasonId, season, endsAt, total, rows }`: `seasonId` тот же uuid, `season` — название («Сезон 39»). Бригада целиком, депо и компания — топ-5 и своя строка. Без бригады scope `brigade` отдаёт пустой список.
+- `GET /api/v1/leaderboards/brigades` — место бригады среди бригад депо, `{ rank, total }`. Нет бригады — `{ rank: null, total: 0 }`.
+- Уведомление `scenario` — проводникам, у которых рейс или назначение того же класса вагона, что у опубликованной версии. `advice` — понедельник 09:00 МСК, компетенция ниже `weakScore` и ниже среднего депо, в тексте название сценария. `challenge` — понедельник 00:00 МСК, тема недели = самая слабая компетенция депо, бонус `challengePoints` в леджер с причиной `CHALLENGE`. Назначение пишет названия сценариев.
 - `GET /api/v1/notifications` — `{ unreadCount, items, nextCursor }`. Элемент: `{ id, kind, title, text, at, unread, link? }`.
 - `POST /api/v1/notifications/:id/read`, `POST /api/v1/notifications/read-all`.
 - `GET /api/v1/notifications/stream` — SSE, событие `new-notification`, heartbeat 25 с.

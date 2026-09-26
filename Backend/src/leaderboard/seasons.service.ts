@@ -1,6 +1,8 @@
 import { Inject, Injectable } from '@nestjs/common';
+import { Clock } from '../common/clock';
 import type { Season } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { isUniqueViolation } from '../users/unique-violation';
 import { seasonWindow } from './season-window';
 
 /** Один создатель сезона на кластер. Уникальность startsAt — запасной замок. */
@@ -8,11 +10,15 @@ const SEASON_LOCK = 7_482_391_001n;
 
 @Injectable()
 export class SeasonsService {
-  constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
+  constructor(
+    @Inject(PrismaService) private readonly prisma: PrismaService,
+    @Inject(Clock) private readonly clock: Clock,
+  ) {}
 
   /** Лениво создаёт сезон недели, в которую попадает instant. */
-  async current(instant = new Date()): Promise<Season> {
-    const window = seasonWindow(instant);
+  async current(instant?: Date): Promise<Season> {
+    const at = instant ?? this.clock.now();
+    const window = seasonWindow(at);
     const existing = await this.prisma.season.findUnique({
       where: { startsAt: window.startsAt },
     });
@@ -47,8 +53,4 @@ export class SeasonsService {
       return row;
     }
   }
-}
-
-function isUniqueViolation(error: unknown): boolean {
-  return typeof error === 'object' && error !== null && 'code' in error && error.code === 'P2002';
 }

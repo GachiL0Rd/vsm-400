@@ -1,6 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
 import { z } from 'zod';
+import { Clock } from '../common/clock';
 import {
   RUN_COMPLETED,
   RUN_RECORDED,
@@ -9,12 +10,14 @@ import {
 } from '../common/events';
 import { CarClassSchema } from '../engine/schema';
 import type { JournalEntry } from '../engine/types';
-import { Competency, type Prisma, type RunOutcome } from '../generated/prisma/client';
+import { ActorType, Competency, type Prisma, type RunOutcome } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { RulesService } from '../rules/rules.service';
+import { isUniqueViolation } from '../users/unique-violation';
 import { assertUuid, lockUser } from './lock-user';
 import { computePoints, ewmaCompetency, NEUTRAL_COMPETENCY } from './scoring';
 import { nextStreak } from './streak';
+import { decisionList, isRunOutcome, summaryViolations } from './summary-invariants';
 
 const COMPETENCIES = [
   Competency.safety,
@@ -36,10 +39,6 @@ const DAY_MS = 86_400_000;
 
 function isCompetency(key: string): key is Competency {
   return (COMPETENCIES as readonly string[]).includes(key);
-}
-
-function isUniqueViolation(error: unknown): boolean {
-  return typeof error === 'object' && error !== null && 'code' in error && error.code === 'P2002';
 }
 
 function scale(value: number): number {
@@ -126,7 +125,7 @@ function assertEvent(event: RunCompletedPayload): void {
   assertUuid(event.userId, 'Пользователь');
   assertUuid(event.runId, 'Рейс');
   assertUuid(event.sessionId, 'Сессия');
-  if (!event.summary || !Array.isArray(event.summary.decisions)) {
+  if (!event.summary || typeof event.summary !== 'object') {
     throw new Error('В событии нет итога рейса');
   }
 }
@@ -184,6 +183,7 @@ export class RunRecorder {
     @Inject(PrismaService) private readonly prisma: PrismaService,
     @Inject(RulesService) private readonly rules: RulesService,
     @Inject(EventEmitter2) private readonly events: EventEmitter2,
+    @Inject(Clock) private readonly clock: Clock,
   ) {}
 
   // promisify: без него eventemitter2 ставит слушателя на setImmediate и теряет промис.
@@ -239,15 +239,36 @@ export class RunRecorder {
       throw new Error('Пользователь не найден');
     }
 
-    const now = new Date();
+    const now = this.clock.now();
     const finishedAt = session.finishedAt ?? now;
     const plan = readPlan(session.plan);
     const summary = event.summary;
-    const suspicious = event.suspicious === true;
-    const difficulty = await difficultyOf(tx, summary.decisions);
-    // Подозрительный рейс пишется, но очки в рейтинг не идут. В примечание флаг не кладём.
+    const violations = summaryViolations(summary);
+    // Флаг сессии уже выставил sessions. Сломанный итог — второй замок, очки всё равно ноль.
+    const suspicious = event.suspicious === true || violations.length > 0;
+    const decisions = decisionList(summary);
+    const outcome = isRunOutcome(summary.outcome) ? summary.outcome : 'terminated';
+    const difficulty = await difficultyOf(tx, decisions);
     const points = suspicious ? 0 : computePoints(summary, difficulty, this.rules.scoring());
     const expiresAt = new Date(now.getTime() + this.rules.pointsTtlDays() * DAY_MS);
+    if (violations.length > 0) {
+      await tx.auditLog.create({
+        data: {
+          actorType: ActorType.SYSTEM,
+          action: 'run.summary.invariant',
+          target: event.sessionId,
+          meta: toJson({
+            runId: event.runId,
+            violations,
+            loyalty: summary.loyalty,
+            safety: summary.safety,
+            politeness: summary.politeness,
+            outcome: summary.outcome,
+            decisions: Array.isArray(summary.decisions) ? summary.decisions.length : null,
+          }),
+        },
+      });
+    }
 
     await tx.run.create({
       data: {
@@ -258,8 +279,8 @@ export class RunRecorder {
         route: plan.route,
         car: plan.car,
         carClass: plan.carClass,
-        outcome: summary.outcome,
-        outcomeNote: outcomeNote(summary.outcome),
+        outcome,
+        outcomeNote: outcomeNote(outcome),
         loyalty: scale(summary.loyalty),
         safety: scale(summary.safety),
         politeness: scale(summary.politeness),
@@ -269,9 +290,7 @@ export class RunRecorder {
         facts: toJson(summary.facts),
         suspicious,
         finishedAt,
-        ...(summary.decisions.length > 0
-          ? { decisions: { create: summary.decisions.map(mapDecision) } }
-          : {}),
+        ...(decisions.length > 0 ? { decisions: { create: decisions.map(mapDecision) } } : {}),
       },
     });
 
@@ -307,7 +326,7 @@ export class RunRecorder {
       brigadeId: user.brigadeId,
       depotId: user.brigade?.depotId ?? null,
       points,
-      outcome: summary.outcome,
+      outcome,
       suspicious,
     };
   }

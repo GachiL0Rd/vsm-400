@@ -3,6 +3,7 @@ import { Inject, Injectable, InternalServerErrorException, Logger } from '@nestj
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { AuditService } from '../audit/audit.service';
 import type { AuthUser } from '../auth/auth-user';
+import { Clock } from '../common/clock';
 import { RUN_COMPLETED, type RunCompletedPayload } from '../common/events';
 import { APP_CONFIG, type AppConfig } from '../config/env';
 import { EngineError } from '../engine/errors';
@@ -16,6 +17,7 @@ import { ActorType, type GameSession, type Prisma } from '../generated/prisma/cl
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { ScenariosService } from '../scenarios/scenarios.service';
+import { isUniqueViolation } from '../users/unique-violation';
 import {
   addedFlags,
   FLAG_MULTI_SESSION,
@@ -26,8 +28,6 @@ import {
   mergeFlags,
   reactionFlag,
 } from './anti-cheat';
-import type { Clock } from './clock';
-import { Clock as ClockToken } from './clock';
 import { computeNext } from './compute-next';
 import type {
   DecisionView,
@@ -120,7 +120,7 @@ export class SessionsService {
     @Inject(TicketService) private readonly tickets: TicketService,
     @Inject(EventEmitter2) private readonly events: EventEmitter2,
     @Inject(APP_CONFIG) private readonly config: AppConfig,
-    @Inject(ClockToken) private readonly clock: Clock,
+    @Inject(Clock) private readonly clock: Clock,
   ) {}
 
   async open(user: AuthUser, body: OpenBody, ip: string | null): Promise<OpenedSession> {
@@ -902,8 +902,4 @@ function readCompletedMeta(meta: unknown): StoredRun | null {
 
 function isSummary(value: unknown): value is RunSummary {
   return isRecord(value) && typeof value.outcome === 'string' && Array.isArray(value.decisions);
-}
-
-function isUniqueViolation(error: unknown): boolean {
-  return isRecord(error) && error.code === 'P2002';
 }

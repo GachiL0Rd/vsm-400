@@ -1,6 +1,7 @@
 import { NotFoundException } from '@nestjs/common';
 import { describe, expect, it, vi } from 'vitest';
 import type { AuthUser } from '../auth/auth-user';
+import { Clock } from '../common/clock';
 import type { RunRecordedPayload } from '../common/events';
 import { NotificationKind, Role, type RunOutcome } from '../generated/prisma/client';
 import type { NotificationsService } from '../notifications/notifications.service';
@@ -207,11 +208,17 @@ class Harness {
       ),
     };
     const seasons = { current: vi.fn(async () => this.season) };
+    const clock = new (class extends Clock {
+      now(): Date {
+        return at;
+      }
+    })();
     this.service = new LeaderboardService(
       this.prisma() as unknown as PrismaService,
       this.redis as unknown as RedisService,
       seasons as unknown as SeasonsService,
       notifications as unknown as NotificationsService,
+      clock,
     );
   }
 
@@ -324,6 +331,7 @@ describe('рейтинг', () => {
     await db.service.onRunRecorded(recorded({ runId: 'r4', userId: 'c', points: 25 }));
 
     const board = await db.service.board(auth('a', 'brigade-1', 'depot-1'), 'depot');
+    expect(board.seasonId).toBe('season-39');
     expect(board.season).toBe('Сезон 39');
     expect(board.total).toBe(3);
     expect(
@@ -451,5 +459,15 @@ describe('рейтинг', () => {
       'Бригада «Гамма» заняла 3-е место.',
     ]);
     expect(db.created.every((row) => row.kind === NotificationKind.challenge)).toBe(true);
+  });
+
+  it('без бригады место пустое, а доска бригады не 404', async () => {
+    const db = new Harness();
+    expect(await db.service.brigadePlace(auth('solo', null, null))).toEqual({
+      rank: null,
+      total: 0,
+    });
+    const board = await db.service.board(auth('solo', null, null), 'brigade');
+    expect(board).toMatchObject({ seasonId: 'season-39', season: 'Сезон 39', total: 0, rows: [] });
   });
 });

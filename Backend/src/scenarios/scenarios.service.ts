@@ -5,6 +5,8 @@ import {
   NotFoundException,
   type OnApplicationBootstrap,
 } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
+import { SCENARIO_PUBLISHED, type ScenarioPublishedPayload } from '../common/events';
 import type { ScenarioGraph } from '../engine/schema';
 import { ScenarioGraphSchema } from '../engine/schema';
 import type { Prisma } from '../generated/prisma/client';
@@ -41,7 +43,10 @@ type ScenarioMeta = {
 export class ScenariosService implements OnApplicationBootstrap {
   private readonly logger = new Logger(ScenariosService.name);
 
-  constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
+  constructor(
+    @Inject(PrismaService) private readonly prisma: PrismaService,
+    @Inject(EventEmitter2) private readonly events: EventEmitter2,
+  ) {}
 
   async onApplicationBootstrap(): Promise<void> {
     const stats = await this.syncFromContent();
@@ -54,14 +59,19 @@ export class ScenariosService implements OnApplicationBootstrap {
       assertPlayableGraph(graph);
     }
     let createdVersions = 0;
+    const published: ScenarioPublishedPayload[] = [];
     await this.prisma.$transaction(async (tx) => {
       for (const graph of graphs) {
-        const created = await syncGraph(tx, graph);
-        if (created) {
+        const version = await syncGraph(tx, graph);
+        if (version !== null) {
           createdVersions += 1;
+          published.push({ scenarioId: graph.id, version });
         }
       }
     });
+    for (const payload of published) {
+      await this.emitPublished(payload);
+    }
     return { scenarios: graphs.length, createdVersions };
   }
 
@@ -100,6 +110,7 @@ export class ScenariosService implements OnApplicationBootstrap {
     const graph = parseIncomingGraph(id, raw);
     assertPlayableGraph(graph);
     const checksum = graphChecksum(graph);
+    let announced: number | null = null;
     await this.prisma.$transaction(async (tx) => {
       const actor = await tx.user.findUnique({ where: { id: actorId }, select: { id: true } });
       if (!actor) {
@@ -112,13 +123,19 @@ export class ScenariosService implements OnApplicationBootstrap {
       });
       const version = nextVersionNumber(latest);
       const meta = scenarioMeta(graph, version);
-      const existing = await tx.scenario.findUnique({ where: { id }, select: { id: true } });
+      const existing = await tx.scenario.findUnique({
+        where: { id },
+        select: { id: true, status: true },
+      });
       if (!existing) {
         await tx.scenario.create({
           data: { id, ...meta, status: 'DRAFT' },
         });
       } else {
         await tx.scenario.update({ where: { id }, data: meta });
+        if (existing.status === 'PUBLISHED') {
+          announced = version;
+        }
       }
       await tx.scenarioVersion.create({
         data: {
@@ -130,22 +147,33 @@ export class ScenariosService implements OnApplicationBootstrap {
         },
       });
     });
+    if (announced !== null) {
+      await this.emitPublished({ scenarioId: id, version: announced });
+    }
     return this.getById(id);
   }
 
   async setStatus(id: string, status: ScenarioStatusView['status']): Promise<ScenarioStatusView> {
     try {
-      return await this.prisma.scenario.update({
+      const updated = await this.prisma.scenario.update({
         where: { id },
         data: { status },
-        select: { id: true, status: true },
+        select: { id: true, status: true, currentVersion: true },
       });
+      if (updated.status === 'PUBLISHED') {
+        await this.emitPublished({ scenarioId: updated.id, version: updated.currentVersion });
+      }
+      return { id: updated.id, status: updated.status };
     } catch (error) {
       if (isMissingRow(error)) {
         throw new NotFoundException('Сценарий не найден');
       }
       throw error;
     }
+  }
+
+  private async emitPublished(payload: ScenarioPublishedPayload): Promise<void> {
+    await this.events.emitAsync(SCENARIO_PUBLISHED, payload);
   }
 
   private async readVersion(id: string, version: number): Promise<ScenarioVersionView> {
@@ -213,7 +241,7 @@ type SyncClient = Pick<Prisma.TransactionClient, 'scenario' | 'scenarioVersion'>
  * Файл из content — источник каталога. Совпадение checksum не плодит версию,
  * но статус снова PUBLISHED: архив методиста не переживает рестарт.
  */
-async function syncGraph(tx: SyncClient, graph: ScenarioGraph): Promise<boolean> {
+async function syncGraph(tx: SyncClient, graph: ScenarioGraph): Promise<number | null> {
   const latest = await tx.scenarioVersion.findFirst({
     where: { scenarioId: graph.id },
     orderBy: { version: 'desc' },
@@ -225,7 +253,7 @@ async function syncGraph(tx: SyncClient, graph: ScenarioGraph): Promise<boolean>
       where: { id: graph.id, status: { not: 'PUBLISHED' } },
       data: { status: 'PUBLISHED' },
     });
-    return false;
+    return null;
   }
   const meta = scenarioMeta(graph, plan.version);
   await tx.scenario.upsert({
@@ -241,7 +269,7 @@ async function syncGraph(tx: SyncClient, graph: ScenarioGraph): Promise<boolean>
       graph: graph as Prisma.InputJsonValue,
     },
   });
-  return true;
+  return plan.version;
 }
 
 function isMissingRow(error: unknown): boolean {

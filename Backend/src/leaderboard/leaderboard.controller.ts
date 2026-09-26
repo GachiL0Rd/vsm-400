@@ -24,7 +24,7 @@ export class LeaderboardController {
   @Get('brigades')
   @ApiOperation({ summary: 'Место бригады среди бригад депо' })
   @ApiOkResponse({ type: BrigadePlaceDto })
-  place(@CurrentUser() user: AuthUser): Promise<{ rank: number; total: number }> {
+  place(@CurrentUser() user: AuthUser): Promise<{ rank: number | null; total: number }> {
     return this.boards.brigadePlace(user);
   }
 

@@ -128,6 +128,8 @@ export const RulesSchema = z
     ewmaAlpha: z.number().gt(0).lte(1),
     weakScore: z.number().min(0).max(100),
     failScore: z.number().min(0).max(100),
+    /** Плоский бонус за рейс, в котором была компетенция недели депо. */
+    challengePoints: z.number().int().positive(),
     grades: GradesSchema,
   })
   .superRefine((rules, ctx) => {

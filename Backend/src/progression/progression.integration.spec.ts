@@ -11,6 +11,7 @@ import { testDatabaseUrl, testRedisUrl } from '../../test/databases';
 import { AchievementsModule } from '../achievements/achievements.module';
 import { AchievementsService } from '../achievements/achievements.service';
 import type { AuthUser } from '../auth/auth-user';
+import { ClockModule } from '../common/clock';
 import type { RunCompletedPayload } from '../common/events';
 import { ProblemFilter } from '../common/problem.filter';
 import { ConfigModule } from '../config/config.module';
@@ -23,7 +24,7 @@ import { PromotionsService } from './promotions.service';
 import { RunRecorder } from './run-recorder';
 
 @Module({
-  imports: [ConfigModule, EventEmitterModule.forRoot(), AchievementsModule],
+  imports: [ConfigModule, EventEmitterModule.forRoot(), ClockModule, AchievementsModule],
   providers: [
     { provide: APP_PIPE, useClass: ZodValidationPipe },
     { provide: APP_FILTER, useClass: ProblemFilter },
@@ -323,6 +324,25 @@ describe('прогрессия в базе', () => {
       where: { userId_competency: { userId: user.id, competency: 'service' } },
     });
     expect(score.value).toBeCloseTo(52.4);
+  });
+
+  it('шкала вне 0..100 делает рейс подозрительным и пишет аудит', async () => {
+    const user = await createUser();
+    const session = await createSession(user.id, new Date());
+    const payload = completed(user.id, session.id, summary({ loyalty: 140, safety: 80 }));
+
+    await recorder.onRunCompleted(payload);
+
+    const run = await prisma.run.findUniqueOrThrow({ where: { sessionId: session.id } });
+    expect(run.suspicious).toBe(true);
+    expect(run.points).toBe(0);
+    expect(run.loyalty).toBe(100);
+    expect(await prisma.pointLedger.count({ where: { runId: run.id, reason: 'RUN' } })).toBe(0);
+    const audit = await prisma.auditLog.findFirst({
+      where: { action: 'run.summary.invariant', target: session.id },
+    });
+    expect(audit?.actorType).toBe('SYSTEM');
+    expect(audit?.meta).toMatchObject({ violations: ['loyalty'], loyalty: 140 });
   });
 
   it('прерванный рейс получает failPoints, а не формулу шкалы', async () => {

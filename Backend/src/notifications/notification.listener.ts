@@ -7,6 +7,8 @@ import {
   type AssignmentCreatedPayload,
   PROMOTION_RECOMMENDED,
   type PromotionRecommendedPayload,
+  SCENARIO_PUBLISHED,
+  type ScenarioPublishedPayload,
 } from '../common/events';
 import { NotificationKind, Role } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -77,13 +79,61 @@ export class NotificationListener {
 
   @OnEvent(ASSIGNMENT_CREATED, { async: true })
   async onAssignment(payload: AssignmentCreatedPayload): Promise<void> {
-    const text =
-      payload.scenarioIds.length > 0 ? payload.scenarioIds.join(', ') : 'Список сценариев пуст.';
+    const text = await this.assignmentText(payload.scenarioIds);
     await this.notifications.create(payload.userId, {
       kind: NotificationKind.assignment,
       title: 'Назначен сценарий',
       text,
       dedupKey: `assignment:${payload.assignmentId}`,
     });
+  }
+
+  @OnEvent(SCENARIO_PUBLISHED, { async: true })
+  async onScenarioPublished(payload: ScenarioPublishedPayload): Promise<void> {
+    const scenario = await this.prisma.scenario.findUnique({
+      where: { id: payload.scenarioId },
+      select: { id: true, title: true, carClasses: true, status: true },
+    });
+    if (scenario?.status !== 'PUBLISHED') {
+      return;
+    }
+    if (scenario.carClasses.length === 0) {
+      return;
+    }
+    const conductors = await this.prisma.user.findMany({
+      where: {
+        role: Role.CONDUCTOR,
+        disabledAt: null,
+        OR: [
+          { runs: { some: { carClass: { in: scenario.carClasses } } } },
+          { assignedShifts: { some: { carClass: { in: scenario.carClasses } } } },
+        ],
+      },
+      select: { id: true },
+    });
+    for (const conductor of conductors) {
+      await this.notifications.create(conductor.id, {
+        kind: NotificationKind.scenario,
+        title: `Новый сценарий «${scenario.title}»`,
+        text: scenario.title,
+        dedupKey: `scenario:${scenario.id}:v${payload.version}:${conductor.id}`,
+      });
+    }
+  }
+
+  private async assignmentText(scenarioIds: readonly string[]): Promise<string> {
+    if (scenarioIds.length === 0) {
+      return 'Список сценариев пуст.';
+    }
+    const rows = await this.prisma.scenario.findMany({
+      where: { id: { in: [...scenarioIds] } },
+      select: { id: true, title: true },
+    });
+    const titles = new Map(rows.map((row) => [row.id, row.title]));
+    const names: string[] = [];
+    for (const id of scenarioIds) {
+      names.push(titles.get(id) ?? id);
+    }
+    return names.join(', ');
   }
 }

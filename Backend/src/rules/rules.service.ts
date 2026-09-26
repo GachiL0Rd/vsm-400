@@ -1,7 +1,7 @@
-import { existsSync, readFileSync } from 'node:fs';
-import path from 'node:path';
+import { readFileSync } from 'node:fs';
 import { Injectable, type OnModuleInit } from '@nestjs/common';
 import { parse } from 'yaml';
+import { contentFile } from './content-file';
 import {
   type GradeRule,
   type LevelBand,
@@ -10,16 +10,8 @@ import {
   type ScoringParams,
 } from './rules.schema';
 
-/**
- * Сборка кладёт js в dist/rules, исходник — в src/rules.
- * Оба пути на два уровня выше упираются в Backend/content.
- */
 export function rulesPath(): string {
-  const besideBuild = path.join(__dirname, '..', '..', 'content', 'rules.yaml');
-  if (existsSync(besideBuild)) {
-    return besideBuild;
-  }
-  return path.join(process.cwd(), 'content', 'rules.yaml');
+  return contentFile('rules.yaml');
 }
 
 export function loadRules(filePath = rulesPath()): Rules {
@@ -100,6 +92,10 @@ export class RulesService implements OnModuleInit {
 
   failScore(): number {
     return this.current().failScore;
+  }
+
+  challengePoints(): number {
+    return this.current().challengePoints;
   }
 
   private current(): Rules {

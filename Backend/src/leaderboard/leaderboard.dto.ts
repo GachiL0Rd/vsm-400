@@ -30,6 +30,9 @@ export class LeaderRowDto {
 }
 
 export class LeaderboardDto {
+  @ApiProperty({ type: String, format: 'uuid' })
+  seasonId = '';
+
   @ApiProperty({ type: String, example: 'Сезон 39' })
   season = '';
 
@@ -44,8 +47,8 @@ export class LeaderboardDto {
 }
 
 export class BrigadePlaceDto {
-  @ApiProperty({ type: Number, example: 2 })
-  rank = 0;
+  @ApiProperty({ type: Number, nullable: true, example: 2 })
+  rank: number | null = null;
 
   @ApiProperty({ type: Number, example: 14 })
   total = 0;

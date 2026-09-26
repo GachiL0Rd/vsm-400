@@ -54,3 +54,11 @@ export type AssignmentCreatedPayload = {
   assignedById: string | null;
   scenarioIds: string[];
 };
+
+/** Новая версия сценария стала опубликованной. */
+export const SCENARIO_PUBLISHED = 'scenario.published' as const;
+
+export type ScenarioPublishedPayload = {
+  scenarioId: string;
+  version: number;
+};

@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { Clock } from '../common/clock';
 import { LedgerReason, NotificationKind } from '../generated/prisma/client';
 import type { PrismaService } from '../prisma/prisma.service';
 import type { RedisService } from '../redis/redis.service';
@@ -59,7 +60,17 @@ function matchesLedger(row: Ledger, where: ExpiryWhere): boolean {
   return true;
 }
 
-function harness() {
+class FixedClock extends Clock {
+  constructor(private readonly at: Date) {
+    super();
+  }
+
+  now(): Date {
+    return new Date(this.at.getTime());
+  }
+}
+
+function harness(clockAt = new Date('2026-09-26T12:00:00+03:00')) {
   const ledger: Ledger[] = [];
   const notes: Note[] = [];
   let seq = 0;
@@ -139,12 +150,19 @@ function harness() {
     ...api,
     $transaction: async (fn: (tx: typeof api) => Promise<unknown>) => fn(api),
   };
+  const clock = new FixedClock(clockAt);
   const notifications = new NotificationsService(
     prisma as unknown as PrismaService,
     { publish: vi.fn(async () => 1) } as unknown as RedisService,
+    clock,
   );
   const rules = { expiryWarnDays: () => 3 } as unknown as RulesService;
-  const service = new PointsExpiryService(prisma as unknown as PrismaService, rules, notifications);
+  const service = new PointsExpiryService(
+    prisma as unknown as PrismaService,
+    rules,
+    notifications,
+    clock,
+  );
   return { ledger, notes, service };
 }
 
@@ -202,5 +220,21 @@ describe('сгорание баллов', () => {
     });
     expect(notes[0]?.dedupKey).toBe('ledger:soon');
     expect(notes[0]?.link).toBeNull();
+  });
+
+  it('без аргумента сжигает по часам, а не по стенному времени', async () => {
+    const early = new Date('2026-01-01T00:00:00+03:00');
+    const { ledger, service } = harness(early);
+    ledger.push({
+      id: 'future-wall',
+      userId: 'user-1',
+      amount: 10,
+      reason: LedgerReason.RUN,
+      runId: null,
+      expiresAt: new Date('2026-02-01T00:00:00+03:00'),
+      expiredAt: null,
+    });
+    expect(await service.expireDue()).toEqual({ expired: 0, warned: 0 });
+    expect(ledger[0]?.expiredAt).toBeNull();
   });
 });

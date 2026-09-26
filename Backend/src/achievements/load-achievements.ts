@@ -1,18 +1,10 @@
-import { existsSync, readFileSync } from 'node:fs';
-import path from 'node:path';
+import { readFileSync } from 'node:fs';
 import { parse } from 'yaml';
+import { contentFile } from '../rules/content-file';
 import { type AchievementsFile, parseAchievements } from './achievement.schema';
 
-/**
- * Сборка кладёт js в dist/achievements, исходник — в src/achievements.
- * Оба пути на два уровня выше упираются в Backend/content.
- */
 export function achievementsPath(): string {
-  const besideBuild = path.join(__dirname, '..', '..', 'content', 'achievements.yaml');
-  if (existsSync(besideBuild)) {
-    return besideBuild;
-  }
-  return path.join(process.cwd(), 'content', 'achievements.yaml');
+  return contentFile('achievements.yaml');
 }
 
 export function loadAchievements(filePath = achievementsPath()): AchievementsFile {

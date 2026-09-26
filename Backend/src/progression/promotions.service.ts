@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import type { AuthUser } from '../auth/auth-user';
+import { Clock } from '../common/clock';
 import { PROMOTION_RECOMMENDED } from '../common/events';
 import {
   ActorType,
@@ -81,6 +82,7 @@ export class PromotionsService {
     @Inject(PrismaService) private readonly prisma: PrismaService,
     @Inject(RulesService) private readonly rules: RulesService,
     @Inject(EventEmitter2) private readonly events: EventEmitter2,
+    @Inject(Clock) private readonly clock: Clock,
   ) {}
 
   async consider(userId: string): Promise<void> {
@@ -131,13 +133,14 @@ export class PromotionsService {
       });
     }
 
+    const now = this.clock.now();
     await this.prisma.$transaction(async (tx) => {
       const updated = await tx.promotionRecommendation.updateMany({
         where: { id, status: PromotionStatus.PENDING },
         data: {
           status: approve ? PromotionStatus.APPROVED : PromotionStatus.REJECTED,
           decidedById: actor.id,
-          decidedAt: new Date(),
+          decidedAt: now,
         },
       });
       if (updated.count !== 1) {
@@ -240,7 +243,7 @@ export class PromotionsService {
     userId: string,
     rule: ReturnType<RulesService['gradeRules']>[number],
   ): Promise<string[] | null> {
-    const level = this.rules.levelFor(await activePoints(tx, userId)).level;
+    const level = this.rules.levelFor(await activePoints(tx, userId, this.clock.now())).level;
     if (level < rule.minLevel) {
       return null;
     }
@@ -281,8 +284,11 @@ function isUuidSafe(value: string): boolean {
   }
 }
 
-async function activePoints(tx: Prisma.TransactionClient, userId: string): Promise<number> {
-  const now = new Date();
+async function activePoints(
+  tx: Prisma.TransactionClient,
+  userId: string,
+  now: Date,
+): Promise<number> {
   const rows = await tx.pointLedger.findMany({
     where: {
       userId,
