@@ -9,6 +9,7 @@
 | Путь | Содержимое |
 | --- | --- |
 | `Game/` | Phaser-игра и её локальная dev-оболочка; запуск описан в `Game/README.md` |
+| `Backend/` | API тренажёра (NestJS, Prisma, PostgreSQL); см. `Backend/README.md` |
 | `Server/` | Тестовый backend кабинета и раздача `Client/`; см. `Server/README.md` |
 | `Client/` | Статический личный кабинет; см. `Client/README.md` |
 | `docs/user/` | Актуальные продуктовые требования и фактическая база |
