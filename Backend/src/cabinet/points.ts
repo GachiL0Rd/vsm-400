@@ -1,9 +1,10 @@
 /**
  * Три разных счёта, их нельзя склеивать:
- * - уровень — пожизненная сумма положительных начислений RUN и ACHIEVEMENT
+ * - уровень — пожизненная сумма положительных RUN, ACHIEVEMENT и CHALLENGE
  *   (сгоревшие тоже остаются: уровень не откатывается);
- * - баллы профиля — сумма ещё не сгоревших положительных начислений
+ * - баллы профиля — те же причины, но только ещё не сгоревшие
  *   (expiredAt пуст и срок expiresAt не вышел; пустой expiresAt — бессрочное);
+ * - EXPIRE и ADJUST в оба счёта не входят;
  * - недельный рейтинг живёт в SeasonScore и в профиль не входит.
  */
 export type LedgerReason = 'RUN' | 'ACHIEVEMENT' | 'CHALLENGE' | 'EXPIRE' | 'ADJUST';
@@ -15,15 +16,16 @@ export type LedgerRow = {
   expiredAt: Date | null;
 };
 
-const LEVEL_REASONS: ReadonlySet<LedgerReason> = new Set(['RUN', 'ACHIEVEMENT']);
+const BALANCE_REASONS: ReadonlySet<LedgerReason> = new Set(['RUN', 'ACHIEVEMENT', 'CHALLENGE']);
+
+export function countsTowardBalance(reason: LedgerReason): boolean {
+  return BALANCE_REASONS.has(reason);
+}
 
 export function lifetimeLevelPoints(rows: readonly LedgerRow[]): number {
   let sum = 0;
   for (const row of rows) {
-    if (row.amount <= 0) {
-      continue;
-    }
-    if (!LEVEL_REASONS.has(row.reason)) {
+    if (row.amount <= 0 || !countsTowardBalance(row.reason)) {
       continue;
     }
     sum += row.amount;
@@ -32,7 +34,7 @@ export function lifetimeLevelPoints(rows: readonly LedgerRow[]): number {
 }
 
 export function isActiveGrant(row: LedgerRow, now: Date): boolean {
-  if (row.amount <= 0) {
+  if (row.amount <= 0 || !countsTowardBalance(row.reason)) {
     return false;
   }
   if (row.expiredAt) {

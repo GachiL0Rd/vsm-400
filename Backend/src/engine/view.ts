@@ -3,19 +3,21 @@ import { EngineError } from './errors';
 import { PARAM_SCENARIO_TOTAL } from './params';
 import { type DecisionNode, isEndNode, type ScenarioGraph } from './schema';
 import type { EngineState, NodeProgress, NodeView } from './types';
+import { hasAllFlags } from './walk';
 
 /**
- * now — миллисекунды, уже прошедшие на узле. Дедлайн сессии снаружи,
- * в EngineState его нет, поэтому без now отдаём таймер как в графе.
+ * elapsedMs — миллисекунды, уже прошедшие на узле, не стенные часы и не HH:mm.
+ * Дедлайн сессии снаружи: в EngineState его нет, поэтому без elapsedMs
+ * отдаём таймер как в графе.
  */
-export function view(state: EngineState, scenario: ScenarioGraph, now?: number): NodeView {
+export function view(state: EngineState, scenario: ScenarioGraph, elapsedMs?: number): NodeView {
   const node = scenario.nodes[state.nodeId];
   if (!node) {
     throw new EngineError('NODE_MISSING');
   }
   const finished = state.outcome !== null || isEndNode(node);
   const text = isEndNode(node) ? node.text : resolveText(node, state);
-  const timerSec = finished || isEndNode(node) ? null : remainingTimer(node.timer, now);
+  const timerSec = finished || isEndNode(node) ? null : remainingTimer(node.timer, elapsedMs);
   const choices = finished || isEndNode(node) ? [] : visibleChoices(node, state);
   return {
     nodeId: state.nodeId,
@@ -46,7 +48,7 @@ function visibleChoices(node: DecisionNode, state: EngineState): { id: string; t
   const choices: { id: string; text: string }[] = [];
   for (const choice of node.choices) {
     const required = choice.requires?.flags;
-    if (required && !hasAll(state.flags, required)) {
+    if (required && !hasAllFlags(state.flags, required)) {
       continue;
     }
     choices.push({ id: choice.id, text: choice.text });
@@ -54,23 +56,17 @@ function visibleChoices(node: DecisionNode, state: EngineState): { id: string; t
   return choices;
 }
 
-function hasAll(flags: readonly string[], required: readonly string[]): boolean {
-  for (const flag of required) {
-    if (!flags.includes(flag)) {
-      return false;
-    }
-  }
-  return true;
-}
-
-function remainingTimer(timer: number | null | undefined, now: number | undefined): number | null {
+function remainingTimer(
+  timer: number | null | undefined,
+  elapsedMs: number | undefined,
+): number | null {
   if (timer == null) {
     return null;
   }
-  if (now == null) {
+  if (elapsedMs == null) {
     return timer;
   }
-  const left = timer - now / 1000;
+  const left = timer - elapsedMs / 1000;
   if (left <= 0) {
     return 0;
   }

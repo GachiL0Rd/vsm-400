@@ -46,6 +46,7 @@ const SHIFT_KEYS = [
   'car',
   'carClass',
   'departure',
+  'departureAt',
   'focus',
   'from',
   'fromGenitive',
@@ -207,7 +208,29 @@ describe('кабинет, аналитика, назначения', () => {
     expect(Object.keys(body).sort()).toEqual(SHIFT_KEYS);
     expect(body.focus).toEqual(['escalation', 'reaction']);
     expect(body.departure).toMatch(/^\d{2}:\d{2}$/);
-    expect(body.stops.length).toBeGreaterThan(0);
+    expect(body.stops).toEqual(
+      expect.arrayContaining(['Тверь', 'Вышний Волочёк', 'Бологое', 'Чудово']),
+    );
+    expect(new Date(body.departureAt).getTime()).toBeGreaterThan(Date.now());
+  });
+
+  it('прошедший PLANNED не подменяет следующую смену', async () => {
+    const created = await call('POST', '/api/v1/assignments', chief, {
+      userIds: [conductor.id],
+      scenarioIds: [escId],
+      departureAt: '2020-01-01T06:30:00.000Z',
+    });
+    expect(created.statusCode).toBe(201);
+    const row = (created.json() as { assignments: { id: string }[] }).assignments[0];
+    const next = await call('GET', '/api/v1/me/next-shift', conductor);
+    const body = next.json() as ShiftBody;
+    expect(next.statusCode).toBe(200);
+    expect(body.departureAt.startsWith('2020-')).toBe(false);
+    expect(new Date(body.departureAt).getTime()).toBeGreaterThan(Date.now());
+    if (row) {
+      const removed = await call('DELETE', `/api/v1/assignments/${row.id}`, chief);
+      expect(removed.statusCode).toBe(200);
+    }
   });
 
   it('журнал отдаёт total и страницу без decisions', async () => {
@@ -433,10 +456,18 @@ describe('кабинет, аналитика, назначения', () => {
   it('openapi содержит ручки кабинета', async () => {
     const response = await call('GET', '/api/openapi.json', conductor);
     expect(response.statusCode).toBe(200);
-    const paths = (response.json() as { paths: Record<string, unknown> }).paths;
-    expect(paths['/api/v1/me']).toBeDefined();
-    expect(paths['/api/v1/analytics/brigades/{id}/heatmap']).toBeDefined();
-    expect(paths['/api/v1/assignments']).toBeDefined();
+    const document = response.json() as {
+      paths: Record<string, unknown>;
+      components?: { schemas?: Record<string, unknown> };
+    };
+    expect(document.paths['/api/v1/me']).toBeDefined();
+    expect(document.paths['/api/v1/analytics/brigades/{id}/heatmap']).toBeDefined();
+    expect(document.paths['/api/v1/assignments']).toBeDefined();
+    const profile = JSON.stringify(document.components?.schemas?.Profile_Output ?? {});
+    const shift = JSON.stringify(document.components?.schemas?.NextShift_Output ?? {});
+    expect(profile).toContain('"nullable":true');
+    expect(profile).not.toContain('"type":"null"');
+    expect(shift).toContain('departureAt');
   });
 
   async function collectRunIds(cursor: string): Promise<string[]> {
@@ -835,6 +866,7 @@ type ShiftBody = {
   from: string;
   to: string;
   departure: string;
+  departureAt: string;
   focus: string[];
   stops: string[];
   carClass: string;

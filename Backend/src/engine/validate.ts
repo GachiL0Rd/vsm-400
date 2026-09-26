@@ -1,3 +1,5 @@
+import { type DecisionNode, isEndNode, type ScenarioGraph, type ScenarioNode } from './schema';
+
 export type ValidationIssue = {
   code: string;
   path: string;
@@ -11,93 +13,47 @@ export type ValidationResult = {
 
 const WARNING = 'FLAG_NEVER_SET';
 
-type GraphInput = {
-  start?: unknown;
-  nodes?: unknown;
-};
+type Choice = DecisionNode['choices'][number];
 
-export function validateScenario(graph: GraphInput): ValidationResult {
+/**
+ * Связность уже разобранного графа. Форму ловит ScenarioGraphSchema,
+ * здесь — next, старт, финал, таймер без onTimeout и флаги requires.
+ */
+export function validateScenario(graph: ScenarioGraph): ValidationResult {
   const errors: ValidationIssue[] = [];
-  const nodes = readNodes(graph, errors);
-  if (!nodes) {
-    return { ok: false, errors };
-  }
-  checkStart(graph, nodes, errors);
+  const nodes = graph.nodes;
+  checkStart(graph, errors);
   for (const [nodeId, node] of Object.entries(nodes)) {
     checkNode(nodeId, node, nodes, errors);
   }
-  checkReachability(graph, nodes, errors);
+  checkReachability(graph, errors);
   checkFinales(nodes, errors);
   checkFlags(nodes, errors);
   const ok = errors.every((issue) => issue.code === WARNING);
   return { ok, errors };
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function readNodes(graph: GraphInput, errors: ValidationIssue[]): Record<string, unknown> | null {
-  if (!isRecord(graph.nodes)) {
-    errors.push({ code: 'GRAPH_INVALID', path: 'nodes', message: 'nodes должен быть объектом' });
-    return null;
-  }
-  return graph.nodes;
-}
-
-function checkStart(
-  graph: GraphInput,
-  nodes: Record<string, unknown>,
-  errors: ValidationIssue[],
-): void {
-  if (typeof graph.start !== 'string' || nodes[graph.start] === undefined) {
+function checkStart(graph: ScenarioGraph, errors: ValidationIssue[]): void {
+  if (graph.nodes[graph.start] === undefined) {
     errors.push({ code: 'START_MISSING', path: 'start', message: 'стартовый узел не найден' });
   }
 }
 
 function checkNode(
   nodeId: string,
-  node: unknown,
-  nodes: Record<string, unknown>,
+  node: ScenarioNode,
+  nodes: ScenarioGraph['nodes'],
   errors: ValidationIssue[],
 ): void {
-  if (!isRecord(node)) {
-    errors.push({
-      code: 'GRAPH_INVALID',
-      path: `nodes.${nodeId}`,
-      message: 'узел должен быть объектом',
-    });
-    return;
-  }
-  if (typeof node.end === 'string') {
-    checkFinale(nodeId, node, errors);
+  if (isEndNode(node)) {
     return;
   }
   checkTimer(nodeId, node, errors);
   checkChoices(nodeId, node, nodes, errors);
 }
 
-function checkFinale(
-  nodeId: string,
-  node: Record<string, unknown>,
-  errors: ValidationIssue[],
-): void {
-  if (!Array.isArray(node.choices) || node.choices.length === 0) {
-    return;
-  }
-  errors.push({
-    code: 'FINALE_HAS_CHOICES',
-    path: `nodes.${nodeId}.choices`,
-    message: 'финал не содержит выборов',
-  });
-}
-
-function checkTimer(
-  nodeId: string,
-  node: Record<string, unknown>,
-  errors: ValidationIssue[],
-): void {
-  if (typeof node.timer !== 'number' || isRecord(node.onTimeout)) {
+function checkTimer(nodeId: string, node: DecisionNode, errors: ValidationIssue[]): void {
+  if (typeof node.timer !== 'number' || node.onTimeout) {
     return;
   }
   errors.push({
@@ -109,20 +65,19 @@ function checkTimer(
 
 function checkChoices(
   nodeId: string,
-  node: Record<string, unknown>,
-  nodes: Record<string, unknown>,
+  node: DecisionNode,
+  nodes: ScenarioGraph['nodes'],
   errors: ValidationIssue[],
 ): void {
-  const choices = Array.isArray(node.choices) ? node.choices : [];
   const seen = new Set<string>();
-  for (const choice of choices) {
+  for (const choice of node.choices) {
     checkChoice(nodeId, choice, seen, nodes, errors);
   }
-  if (!isRecord(node.onTimeout)) {
+  const timeout = node.onTimeout;
+  if (!timeout) {
     return;
   }
-  const next = node.onTimeout.next;
-  if (typeof next === 'string' && nodes[next] !== undefined) {
+  if (nodes[timeout.next] !== undefined) {
     return;
   }
   errors.push({
@@ -134,48 +89,32 @@ function checkChoices(
 
 function checkChoice(
   nodeId: string,
-  choice: unknown,
+  choice: Choice,
   seen: Set<string>,
-  nodes: Record<string, unknown>,
+  nodes: ScenarioGraph['nodes'],
   errors: ValidationIssue[],
 ): void {
-  if (!isRecord(choice)) {
-    errors.push({
-      code: 'GRAPH_INVALID',
-      path: `nodes.${nodeId}.choices`,
-      message: 'выбор должен быть объектом',
-    });
-    return;
-  }
-  const id = typeof choice.id === 'string' ? choice.id : '';
-  if (id === '' || seen.has(id)) {
+  if (seen.has(choice.id)) {
     errors.push({
       code: 'DUPLICATE_CHOICE_ID',
-      path: `nodes.${nodeId}.choices.${id || '?'}`,
+      path: `nodes.${nodeId}.choices.${choice.id}`,
       message: 'id выбора повторяется в узле',
     });
   }
-  if (id !== '') {
-    seen.add(id);
-  }
-  const next = choice.next;
-  if (typeof next === 'string' && nodes[next] !== undefined) {
+  seen.add(choice.id);
+  if (nodes[choice.next] !== undefined) {
     return;
   }
   errors.push({
     code: 'NEXT_MISSING',
-    path: `nodes.${nodeId}.choices.${id || '?'}.next`,
+    path: `nodes.${nodeId}.choices.${choice.id}.next`,
     message: 'next не ведёт в узел',
   });
 }
 
-function checkReachability(
-  graph: GraphInput,
-  nodes: Record<string, unknown>,
-  errors: ValidationIssue[],
-): void {
-  const seen = walkReachable(graph.start, nodes);
-  for (const id of Object.keys(nodes).sort()) {
+function checkReachability(graph: ScenarioGraph, errors: ValidationIssue[]): void {
+  const seen = walkReachable(graph);
+  for (const id of Object.keys(graph.nodes).sort()) {
     if (seen.has(id)) {
       continue;
     }
@@ -187,12 +126,12 @@ function checkReachability(
   }
 }
 
-function walkReachable(start: unknown, nodes: Record<string, unknown>): Set<string> {
+function walkReachable(graph: ScenarioGraph): Set<string> {
   const seen = new Set<string>();
-  if (typeof start !== 'string' || nodes[start] === undefined) {
+  if (graph.nodes[graph.start] === undefined) {
     return seen;
   }
-  const queue = [start];
+  const queue = [graph.start];
   let head = 0;
   while (head < queue.length) {
     const id = queue[head];
@@ -201,8 +140,9 @@ function walkReachable(start: unknown, nodes: Record<string, unknown>): Set<stri
       continue;
     }
     seen.add(id);
-    for (const next of outgoing(nodes[id])) {
-      if (nodes[next] !== undefined && !seen.has(next)) {
+    const node = graph.nodes[id];
+    for (const next of outgoing(node)) {
+      if (graph.nodes[next] !== undefined && !seen.has(next)) {
         queue.push(next);
       }
     }
@@ -210,37 +150,30 @@ function walkReachable(start: unknown, nodes: Record<string, unknown>): Set<stri
   return seen;
 }
 
-function outgoing(node: unknown): string[] {
-  if (!isRecord(node) || typeof node.end === 'string') {
+function outgoing(node: ScenarioNode | undefined): string[] {
+  if (!node || isEndNode(node)) {
     return [];
   }
-  const nexts: string[] = [];
-  if (Array.isArray(node.choices)) {
-    for (const choice of node.choices) {
-      if (isRecord(choice) && typeof choice.next === 'string') {
-        nexts.push(choice.next);
-      }
-    }
-  }
-  if (isRecord(node.onTimeout) && typeof node.onTimeout.next === 'string') {
+  const nexts = node.choices.map((choice) => choice.next);
+  if (node.onTimeout) {
     nexts.push(node.onTimeout.next);
   }
   return nexts;
 }
 
-function checkFinales(nodes: Record<string, unknown>, errors: ValidationIssue[]): void {
+function checkFinales(nodes: ScenarioGraph['nodes'], errors: ValidationIssue[]): void {
   for (const node of Object.values(nodes)) {
-    if (isRecord(node) && typeof node.end === 'string') {
+    if (isEndNode(node)) {
       return;
     }
   }
   errors.push({ code: 'NO_FINALE', path: 'nodes', message: 'в графе нет финала' });
 }
 
-function checkFlags(nodes: Record<string, unknown>, errors: ValidationIssue[]): void {
+function checkFlags(nodes: ScenarioGraph['nodes'], errors: ValidationIssue[]): void {
   const setFlags = collectSetFlags(nodes);
   for (const [nodeId, node] of Object.entries(nodes)) {
-    if (!isRecord(node) || !Array.isArray(node.choices)) {
+    if (isEndNode(node)) {
       continue;
     }
     for (const choice of node.choices) {
@@ -249,51 +182,46 @@ function checkFlags(nodes: Record<string, unknown>, errors: ValidationIssue[]): 
   }
 }
 
-function collectSetFlags(nodes: Record<string, unknown>): Set<string> {
+function collectSetFlags(nodes: ScenarioGraph['nodes']): Set<string> {
   const flags = new Set<string>();
   for (const node of Object.values(nodes)) {
-    if (!isRecord(node)) {
+    if (isEndNode(node)) {
       continue;
     }
-    absorbSet(node.onTimeout, flags);
-    if (!Array.isArray(node.choices)) {
-      continue;
-    }
+    absorb(node.onTimeout?.set, flags);
     for (const choice of node.choices) {
-      absorbSet(choice, flags);
+      absorb(choice.set, flags);
     }
   }
   return flags;
 }
 
-function absorbSet(source: unknown, flags: Set<string>): void {
-  if (!isRecord(source) || !Array.isArray(source.set)) {
+function absorb(source: readonly string[] | undefined, flags: Set<string>): void {
+  if (!source) {
     return;
   }
-  for (const flag of source.set) {
-    if (typeof flag === 'string') {
-      flags.add(flag);
-    }
+  for (const flag of source) {
+    flags.add(flag);
   }
 }
 
 function warnRequires(
   nodeId: string,
-  choice: unknown,
+  choice: Choice,
   setFlags: Set<string>,
   errors: ValidationIssue[],
 ): void {
-  if (!isRecord(choice) || !isRecord(choice.requires) || !Array.isArray(choice.requires.flags)) {
+  const required = choice.requires?.flags;
+  if (!required) {
     return;
   }
-  const choiceId = typeof choice.id === 'string' ? choice.id : '?';
-  for (const flag of choice.requires.flags) {
-    if (typeof flag !== 'string' || setFlags.has(flag)) {
+  for (const flag of required) {
+    if (setFlags.has(flag)) {
       continue;
     }
     errors.push({
       code: WARNING,
-      path: `nodes.${nodeId}.choices.${choiceId}.requires.flags.${flag}`,
+      path: `nodes.${nodeId}.choices.${choice.id}.requires.flags.${flag}`,
       message: `флаг ${flag} нигде не ставится`,
     });
   }

@@ -10,6 +10,7 @@ import { z } from 'zod';
 import type { AuthUser } from '../auth/auth-user';
 import { applyScores, weakestCompetencies } from '../cabinet/competencies';
 import {
+  carAtOffset,
   carClassLabel,
   forecastRoute,
   formatHm,
@@ -120,6 +121,7 @@ export class AssignmentsService {
       if (!member) {
         continue;
       }
+      const car = carAtOffset(route.car, index);
       const created = await tx.shiftAssignment.create({
         data: {
           userId: member.id,
@@ -128,8 +130,8 @@ export class AssignmentsService {
           fromStation: route.from,
           toStation: route.to,
           stops: route.stops,
-          car: carNumber(route.car, index),
-          carClass: route.carClass,
+          car: car.car,
+          carClass: car.carClass,
           departureAt: when,
           focus: focusFor(member, body.focus),
           scenarioIds: body.scenarioIds,
@@ -285,8 +287,4 @@ function focusFor(member: Member, focus: Competency[] | undefined): Competency[]
     return focus;
   }
   return weakestCompetencies(applyScores(member.competencyScores), 2);
-}
-
-function carNumber(base: number, index: number): number {
-  return ((base - 1 + index) % 8) + 1;
 }

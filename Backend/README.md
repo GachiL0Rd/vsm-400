@@ -1,8 +1,8 @@
 # Backend «Перегон»
 
-API тренажёра проводника ВСМ. Каркас: NestJS 11 на Fastify, Prisma 7,
-PostgreSQL 18, Valkey 9, Zod 4. Доменная логика смен и прогрессии подключается
-следующими фазами поверх `src/engine`.
+API тренажёра проводника ВСМ. NestJS 11 на Fastify, Prisma 7, PostgreSQL 18,
+Valkey 9, Zod 4. Смены и прогрессия уже в коде: движок `src/engine`, сессии
+`src/sessions`, кабинет `src/cabinet`.
 
 ## Запуск
 
@@ -44,9 +44,9 @@ docker compose --profile app up --build -d
 ## Версии URL
 
 Доменные контроллеры получают префикс `/api/v1` (URI versioning, версия по
-умолчанию `1`). Health и документация без версии: `/api/health`, `/api/docs`.
-Позже внутренний API GameServer встанет на `/internal/v1`, вне публичного
-префикса.
+умолчанию `1`). Health и документация без версии: `/api/health`, `/api/docs`,
+`/api/openapi.json`. Внутренний API GameServer — `/api/internal/v1`, раздел
+ниже. Полная таблица ручек — [docs/api.md](docs/api.md).
 
 ## Переменные окружения
 
@@ -93,6 +93,7 @@ docker compose --profile app up --build -d
 | `npm run prisma:deploy` | `migrate deploy` |
 | `npm run prisma:seed` | Синтетические депо, бригады и рейсы |
 | `npm run smoke` | Сквозной прогон: demo, REST-смена, билет и отчёт. Сервер уже слушает |
+| `npm run openapi:export` | Пишет `dist/openapi.json`. `-- -` печатает JSON в stdout. Файл не коммитится |
 | `npm run verify` | Biome, типы, тесты, сборка |
 
 ## API
@@ -172,9 +173,12 @@ SameSite=Strict). Оба HttpOnly, флаг Secure берётся из `COOKIE_S
 
 `GET /api/v1/me`, `/me/stats`, `/me/next-shift`, `/me/runs`, `/me/runs/:id`,
 `/me/achievements`, `/me/compare`. Имена полей — как у `Frontend/src/model.ts`,
-в профиле дополнительно `grade`. Баллы профиля — несгоревшие начисления.
-Уровень — пожизненная сумма положительных `RUN` и `ACHIEVEMENT`. Сезонный
-рейтинг сюда не входит. `total` в журнале — число всех рейсов («5 из 38»).
+в профиле дополнительно `grade`, у смены — `departureAt` (ISO) рядом с
+`departure` (`HH:mm`). Баллы профиля — несгоревшие `RUN`, `ACHIEVEMENT` и
+`CHALLENGE`. Уровень — пожизненная сумма положительных начислений тех же
+причин. `EXPIRE` и `ADJUST` в оба счёта не входят. Сезонный рейтинг сюда не
+входит. Журнал — `{ total, runs, nextCursor }`, не массив. `total` — число
+всех рейсов («5 из 38»).
 
 ### Аналитика
 

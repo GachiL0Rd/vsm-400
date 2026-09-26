@@ -1,5 +1,5 @@
 import { clampScale } from './scale';
-import { isEndNode, type RunOutcome, type ScenarioGraph } from './schema';
+import type { RunOutcome, ScenarioGraph } from './schema';
 import { copySkills } from './skills';
 import type { EngineState, JournalEntry, RunSummary } from './types';
 import {
@@ -45,11 +45,8 @@ export function summarize(state: EngineState, scenarios: readonly ScenarioGraph[
     timeouts: state.timeouts,
     reactionAvgMs: reactionAvg(state.journal),
     competencyDelta: copySkills(state.skills),
-    decisions: state.journal.map((entry) => {
-      const copy = copyEntry(entry);
-      copy.timerSec = timerSecOf(scenarios, entry);
-      return copy;
-    }),
+    // timerSec уже лежит в журнале: step пишет длину таймера узла. Повторный поиск его затирал.
+    decisions: state.journal.map((entry) => copyEntry(entry)),
     facts: {
       prevented: countPrevented(state, scenarios),
       incidents: countIncidents(state, scenarios),
@@ -84,16 +81,6 @@ function summaryOutcome(state: EngineState, scenarios: readonly ScenarioGraph[])
     return 'incident';
   }
   return 'completed';
-}
-
-/** Секунды таймера узла, на котором сделан ход. Нет узла или таймера — null. */
-function timerSecOf(scenarios: readonly ScenarioGraph[], entry: JournalEntry): number | null {
-  const scenario = scenarios.find((item) => item.id === entry.scenarioId);
-  const node = scenario?.nodes[entry.nodeId];
-  if (!node || isEndNode(node) || typeof node.timer !== 'number') {
-    return null;
-  }
-  return node.timer;
 }
 
 function reactionAvg(journal: readonly JournalEntry[]): number {

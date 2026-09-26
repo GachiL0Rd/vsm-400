@@ -23,7 +23,13 @@ import type {
   RunListResponse,
   StatsResponse,
 } from './dto';
-import { carClassLabel, forecastShift, formatHm, moscowDate, stationGenitive } from './forecast';
+import {
+  carClassLabel,
+  forecastShift,
+  formatHm,
+  stationGenitive,
+  upcomingShiftDate,
+} from './forecast';
 import { activePoints, type LedgerRow, lifetimeLevelPoints, nearestExpiry } from './points';
 import { presentDecision, presentRun, readDelta } from './present';
 import { loadScenarioIndex } from './scenario-index';
@@ -59,7 +65,7 @@ export class CabinetService {
     const scores = applyScores(scoreRows);
     const trend = sumRecentTrend(recent);
     const tagged = await this.tagAll(recent.flatMap((run) => run.decisions));
-    // Уровень — пожизненные RUN/ACHIEVEMENT, баллы — несгоревшие. См. points.ts.
+    // Уровень — пожизненные RUN/ACHIEVEMENT/CHALLENGE, баллы — несгоревшие из тех же причин.
     const band = this.rules.levelFor(lifetimeLevelPoints(ledger));
     return {
       callsign: user.callsign,
@@ -102,7 +108,7 @@ export class CabinetService {
     const planned = await this.nearestPlanned(userId, now);
     if (!planned) {
       const scores = applyScores(await this.scoreRows(userId));
-      return forecastShift(userId, moscowDate(now), weakestCompetencies(scores, 2));
+      return forecastShift(userId, upcomingShiftDate(userId, now), weakestCompetencies(scores, 2));
     }
     return {
       train: planned.train,
@@ -112,6 +118,7 @@ export class CabinetService {
       car: planned.car,
       carClass: carClassLabel(planned.carClass),
       departure: formatHm(planned.departureAt),
+      departureAt: planned.departureAt.toISOString(),
       stops: planned.stops,
       focus: await this.focusOf(userId, planned.focus),
     };
@@ -275,13 +282,8 @@ export class CabinetService {
       where: { userId, status: 'PLANNED', departureAt: { gte: now } },
       orderBy: [{ departureAt: 'asc' }, { id: 'asc' }],
     });
-    if (upcoming) {
-      return upcoming;
-    }
-    return this.prisma.shiftAssignment.findFirst({
-      where: { userId, status: 'PLANNED', departureAt: { lt: now } },
-      orderBy: [{ departureAt: 'desc' }, { id: 'desc' }],
-    });
+    // Прошедший PLANNED уже не следующий рейс: иначе на экране вчерашние часы.
+    return upcoming;
   }
 
   private async focusOf(userId: string, focus: Competency[]): Promise<Competency[]> {

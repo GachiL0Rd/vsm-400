@@ -1,13 +1,22 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { parse } from 'yaml';
+import { RoutesSchema } from '../engine/routes';
 import { applyScores, brigadeRank, weakestCompetencies } from './competencies';
 import {
   addCalendarDays,
+  carAtOffset,
+  carClassLabel,
   forecastShift,
   formatHm,
   moscowDate,
   stationGenitive,
   upcomingShiftDate,
 } from './forecast';
+
+function routesBook() {
+  return RoutesSchema.parse(parse(readFileSync('content/routes.yaml', 'utf8')));
+}
 
 describe('прогноз смены', () => {
   it('userId и дата фиксируют рейс', () => {
@@ -19,6 +28,40 @@ describe('прогноз смены', () => {
     expect(left.train).toMatch(/^ВСМ \d{3}$/);
     expect(left.stops.length).toBeGreaterThan(0);
     expect(['Москвы', 'Санкт-Петербурга']).toContain(left.fromGenitive);
+    expect(left.departureAt).toBe(new Date(`2026-09-26T${left.departure}:00+03:00`).toISOString());
+  });
+
+  it('маршрут, слот и класс вагона берутся из routes.yaml', () => {
+    const book = routesBook();
+    const shift = forecastShift('user-1', '2026-09-26', ['safety']);
+    const direction = book.directions.find((item) => item.from === shift.from);
+    const car = book.cars.find((item) => item.car === shift.car);
+    const number = Number(shift.train.slice(book.trainPrefix.length + 1));
+    expect(book.departures).toContain(shift.departure);
+    expect(direction?.to).toBe(shift.to);
+    expect(direction?.stops).toEqual(shift.stops);
+    expect(car).toBeTruthy();
+    if (!car) {
+      return;
+    }
+    expect(shift.carClass).toBe(carClassLabel(car.class));
+    expect(number).toBeGreaterThanOrEqual(book.trainNumberMin);
+    expect(number).toBeLessThanOrEqual(book.trainNumberMax);
+    expect(shift.stops).toEqual(
+      expect.arrayContaining(['Тверь', 'Вышний Волочёк', 'Бологое', 'Чудово']),
+    );
+  });
+
+  it('соседний вагон назначения берёт класс из той же строки yaml', () => {
+    const book = routesBook();
+    const first = book.cars[0];
+    const second = book.cars[1];
+    expect(first).toBeTruthy();
+    expect(second).toBeTruthy();
+    if (!first || !second) {
+      return;
+    }
+    expect(carAtOffset(first.car, 1)).toEqual({ car: second.car, carClass: second.class });
   });
 
   it('другой день тоже стабилен', () => {
@@ -36,10 +79,13 @@ describe('прогноз смены', () => {
     expect(addCalendarDays('2026-09-30', 1)).toBe('2026-10-01');
   });
 
-  it('если сегодняшний слот уже прошёл, дата прогноза — завтра', () => {
-    const morning = new Date('2026-09-26T02:00:00.000Z');
-    const date = upcomingShiftDate('user-1', morning);
-    expect(date === '2026-09-26' || date === '2026-09-27').toBe(true);
+  it('прогноз на ближайший ещё не наступивший слот, не на прошедший сегодня', () => {
+    const beforeFirst = new Date('2026-09-26T01:00:00.000Z');
+    const afterLast = new Date('2026-09-26T19:00:00.000Z');
+    expect(upcomingShiftDate('user-1', beforeFirst)).toBe('2026-09-26');
+    expect(upcomingShiftDate('user-1', afterLast)).toBe('2026-09-27');
+    const next = forecastShift('user-1', upcomingShiftDate('user-1', afterLast), ['safety']);
+    expect(new Date(next.departureAt).getTime()).toBeGreaterThan(afterLast.getTime());
   });
 });
 

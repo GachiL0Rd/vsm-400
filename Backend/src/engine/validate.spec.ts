@@ -1,20 +1,32 @@
 import { describe, expect, it } from 'vitest';
 import { doorScenario } from '../../test/fixtures/graphs';
+import { type ScenarioGraph, ScenarioGraphSchema } from './schema';
 import { validateScenario } from './validate';
 
-function graph(nodes: Record<string, unknown>, start = 'n1') {
-  return { start, nodes };
-}
+const end = { end: 'completed' as const, text: 'конец' };
 
-const end = { end: 'completed', text: 'конец' };
+function playable(nodes: ScenarioGraph['nodes'], start = 'n1'): ScenarioGraph {
+  return ScenarioGraphSchema.parse({
+    id: 'probe',
+    title: 'Проба',
+    category: 'safety',
+    stage: 'enroute',
+    carClasses: ['ECONOMY'],
+    difficulty: 1,
+    competencies: ['safety'],
+    init: { loyalty: 50, safety: 50 },
+    start,
+    nodes,
+  });
+}
 
 describe('validateScenario', () => {
   it('принимает связный граф фикстуры', () => {
     expect(validateScenario(doorScenario())).toEqual({ ok: true, errors: [] });
   });
 
-  it('ловит битый next, дубль id, таймер без onTimeout и финал с выборами', () => {
-    const broken = graph({
+  it('ловит битый next, дубль id, таймер без onTimeout и недостижимый узел', () => {
+    const broken = playable({
       n1: {
         text: 'узел',
         timer: 5,
@@ -23,7 +35,7 @@ describe('validateScenario', () => {
           { id: 'a', text: 'два', next: 'end' },
         ],
       },
-      end: { end: 'completed', text: 'финиш', choices: [{ id: 'x', text: 'лишнее', next: 'n1' }] },
+      end,
       orphan: { text: 'мимо', choices: [{ id: 'z', text: 'z', next: 'end' }] },
     });
     const result = validateScenario(broken);
@@ -32,21 +44,20 @@ describe('validateScenario', () => {
     expect(codes).toContain('NEXT_MISSING');
     expect(codes).toContain('DUPLICATE_CHOICE_ID');
     expect(codes).toContain('TIMEOUT_WITHOUT_HANDLER');
-    expect(codes).toContain('FINALE_HAS_CHOICES');
     expect(codes).toContain('UNREACHABLE_NODE');
     expect(result.errors.some((issue) => issue.path === 'nodes.orphan')).toBe(true);
   });
 
   it('требует финал и существующий start', () => {
     const loop = validateScenario(
-      graph({
+      playable({
         n1: { text: 'петля', choices: [{ id: 'a', text: 'a', next: 'n1' }] },
       }),
     );
     expect(loop.ok).toBe(false);
     expect(loop.errors.map((issue) => issue.code)).toContain('NO_FINALE');
 
-    const missing = validateScenario(graph({ end }, 'gone'));
+    const missing = validateScenario(playable({ end }, 'gone'));
     expect(missing.errors.map((issue) => issue.code)).toEqual(
       expect.arrayContaining(['START_MISSING', 'UNREACHABLE_NODE']),
     );
@@ -54,7 +65,7 @@ describe('validateScenario', () => {
 
   it('одинаковый id в разных узлах допустим', () => {
     const result = validateScenario(
-      graph({
+      playable({
         n1: { text: 'a', choices: [{ id: 'go', text: 'дальше', next: 'n2' }] },
         n2: { text: 'b', choices: [{ id: 'go', text: 'ещё', next: 'end' }] },
         end,
@@ -65,7 +76,7 @@ describe('validateScenario', () => {
 
   it('requires на флаг, который нигде не set, — предупреждение, граф ещё ok', () => {
     const warned = validateScenario(
-      graph({
+      playable({
         n1: {
           text: 'a',
           choices: [
@@ -88,7 +99,7 @@ describe('validateScenario', () => {
 
   it('флаг, поставленный в onTimeout, предупреждения не даёт', () => {
     const result = validateScenario(
-      graph({
+      playable({
         n1: {
           text: 'a',
           timer: 10,
@@ -103,7 +114,7 @@ describe('validateScenario', () => {
 
   it('onTimeout.next в никуда — ошибка', () => {
     const result = validateScenario(
-      graph({
+      playable({
         n1: {
           text: 'a',
           timer: 3,
@@ -118,7 +129,10 @@ describe('validateScenario', () => {
   });
 
   it('пустой nodes не ok', () => {
-    expect(validateScenario({ start: 'n1' }).ok).toBe(false);
-    expect(validateScenario({ start: 'n1' }).errors[0]?.code).toBe('GRAPH_INVALID');
+    const result = validateScenario(playable({}, 'n1'));
+    expect(result.ok).toBe(false);
+    expect(result.errors.map((issue) => issue.code)).toEqual(
+      expect.arrayContaining(['START_MISSING', 'NO_FINALE']),
+    );
   });
 });

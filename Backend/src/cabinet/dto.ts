@@ -106,7 +106,9 @@ export const NextShiftSchema = z
     to: z.string(),
     car: z.number().int(),
     carClass: z.string(),
+    /** Подпись на экране, часы Москвы. Момент рейса — departureAt. */
     departure: z.string(),
+    departureAt: z.iso.datetime({ offset: true }),
     stops: z.array(z.string()),
     focus: z.array(CompetencySchema),
   })

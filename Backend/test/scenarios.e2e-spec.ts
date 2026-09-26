@@ -108,6 +108,23 @@ describe('сценарии', () => {
     expect(body[0]).not.toHaveProperty('graph');
   });
 
+  it('неизвестный сценарий — 404 NOT_FOUND', async () => {
+    const missing = await inject('GET', '/api/v1/scenarios/no-such-scenario', 'METHODIST');
+    expect(missing.statusCode).toBe(404);
+    expect(missing.json()).toMatchObject({ code: 'NOT_FOUND', detail: 'Сценарий не найден' });
+
+    const status = await inject(
+      'POST',
+      '/api/v1/admin/scenarios/no-such-scenario/status',
+      'ADMIN',
+      {
+        status: 'DRAFT',
+      },
+    );
+    expect(status.statusCode).toBe(404);
+    expect(status.json()).toMatchObject({ code: 'NOT_FOUND', detail: 'Сценарий не найден' });
+  });
+
   it('граф только у методиста и администратора', async () => {
     const list = (await inject('GET', '/api/v1/scenarios', 'CONDUCTOR')).json() as {
       id: string;

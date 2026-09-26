@@ -21,6 +21,7 @@
     "prisma:deploy": "prisma migrate deploy",
     "prisma:seed": "prisma db seed",
     "smoke": "bash scripts/smoke.sh",
+    "openapi:export": "tsx scripts/openapi-export.ts",
     "verify": "npm run check:biome && npm run typecheck && npm run test && npm run build",
     "postinstall": "prisma generate"
   },

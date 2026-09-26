@@ -23,12 +23,25 @@ describe('баллы профиля и уровень', () => {
     row({ amount: -340, reason: 'EXPIRE' }),
   ];
 
-  it('уровень считает пожизненные положительные RUN и ACHIEVEMENT', () => {
-    expect(lifetimeLevelPoints(rows)).toBe(2440);
+  it('уровень и баллы берут одни причины: RUN, ACHIEVEMENT, CHALLENGE', () => {
+    expect(lifetimeLevelPoints(rows)).toBe(2490);
+    expect(activePoints(rows, now)).toBe(2150);
   });
 
-  it('профиль суммирует только несгоревшие гранты, включая CHALLENGE', () => {
-    expect(activePoints(rows, now)).toBe(2150);
+  it('сгоревший CHALLENGE остаётся в уровне и выходит из баллов', () => {
+    const burned = row({ amount: 80, reason: 'CHALLENGE', expiresAt: past, expiredAt: past });
+    expect(lifetimeLevelPoints([burned])).toBe(80);
+    expect(activePoints([burned], now)).toBe(0);
+  });
+
+  it('ADJUST и EXPIRE не двигают ни уровень, ни баллы', () => {
+    const adjust = [
+      row({ amount: 25, reason: 'ADJUST', expiresAt: later }),
+      row({ amount: 10, reason: 'EXPIRE' }),
+    ];
+    expect(lifetimeLevelPoints(adjust)).toBe(0);
+    expect(activePoints(adjust, now)).toBe(0);
+    expect(nearestExpiry(adjust, now)).toBeNull();
   });
 
   it('ближайшее сгорание — сумма одного expiresAt, поздние бакеты не мешает', () => {

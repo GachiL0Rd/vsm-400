@@ -1,22 +1,33 @@
-import { type EndNode, isEndNode, type RunOutcome, type ScenarioGraph } from './schema';
+import {
+  type DecisionNode,
+  type EndNode,
+  isEndNode,
+  type RunOutcome,
+  type ScenarioGraph,
+} from './schema';
 import type { EngineState, JournalEntry } from './types';
+
+export function hasAllFlags(flags: readonly string[], required: readonly string[]): boolean {
+  for (const flag of required) {
+    if (!flags.includes(flag)) {
+      return false;
+    }
+  }
+  return true;
+}
 
 export function actionFlags(
   scenarios: readonly ScenarioGraph[],
   entry: JournalEntry,
 ): readonly string[] {
-  const scenario = scenarios.find((item) => item.id === entry.scenarioId);
-  if (!scenario) {
-    return [];
-  }
-  const node = scenario.nodes[entry.nodeId];
-  if (!node || isEndNode(node)) {
+  const opened = decisionAt(scenarios, entry);
+  if (!opened) {
     return [];
   }
   if (entry.choiceId === 'timeout') {
-    return node.onTimeout?.set ?? [];
+    return opened.node.onTimeout?.set ?? [];
   }
-  const choice = node.choices.find((item) => item.id === entry.choiceId);
+  const choice = opened.node.choices.find((item) => item.id === entry.choiceId);
   return choice?.set ?? [];
 }
 
@@ -24,15 +35,11 @@ export function actionServiceSkill(
   scenarios: readonly ScenarioGraph[],
   entry: JournalEntry,
 ): number {
-  const scenario = scenarios.find((item) => item.id === entry.scenarioId);
-  if (!scenario) {
+  const opened = decisionAt(scenarios, entry);
+  if (!opened || entry.choiceId === 'timeout') {
     return 0;
   }
-  const node = scenario.nodes[entry.nodeId];
-  if (!node || isEndNode(node) || entry.choiceId === 'timeout') {
-    return 0;
-  }
-  const choice = node.choices.find((item) => item.id === entry.choiceId);
+  const choice = opened.node.choices.find((item) => item.id === entry.choiceId);
   return choice?.skills?.service ?? 0;
 }
 
@@ -40,19 +47,15 @@ export function followedEnd(
   scenarios: readonly ScenarioGraph[],
   entry: JournalEntry,
 ): { outcome: RunOutcome; node: EndNode } | null {
-  const scenario = scenarios.find((item) => item.id === entry.scenarioId);
-  if (!scenario) {
+  const opened = decisionAt(scenarios, entry);
+  if (!opened) {
     return null;
   }
-  const node = scenario.nodes[entry.nodeId];
-  if (!node || isEndNode(node)) {
-    return null;
-  }
-  const nextId = nextIdOf(node, entry.choiceId);
+  const nextId = nextIdOf(opened.node, entry.choiceId);
   if (!nextId) {
     return null;
   }
-  const next = scenario.nodes[nextId];
+  const next = opened.scenario.nodes[nextId];
   if (!next || !isEndNode(next)) {
     return null;
   }
@@ -100,27 +103,24 @@ export function nodeTags(node: EndNode): string[] {
   return tags;
 }
 
+/** Копия, чтобы правка итога не меняла журнал живой сессии. */
 export function copyEntry(entry: JournalEntry): JournalEntry {
-  return {
-    idx: entry.idx,
-    gameTime: entry.gameTime,
-    stage: entry.stage,
-    scenarioId: entry.scenarioId,
-    nodeId: entry.nodeId,
-    choiceId: entry.choiceId,
-    situation: entry.situation,
-    action: entry.action,
-    verdict: entry.verdict,
-    loyaltyDelta: entry.loyaltyDelta,
-    safetyDelta: entry.safetyDelta,
-    reactionMs: entry.reactionMs,
-    timerSec: entry.timerSec,
-    consequence: entry.consequence,
-    lucky: entry.lucky,
-    better: entry.better,
-    basis: entry.basis,
-    deviation: entry.deviation,
-  };
+  return { ...entry };
+}
+
+function decisionAt(
+  scenarios: readonly ScenarioGraph[],
+  entry: JournalEntry,
+): { scenario: ScenarioGraph; node: DecisionNode } | null {
+  const scenario = scenarios.find((item) => item.id === entry.scenarioId);
+  if (!scenario) {
+    return null;
+  }
+  const node = scenario.nodes[entry.nodeId];
+  if (!node || isEndNode(node)) {
+    return null;
+  }
+  return { scenario, node };
 }
 
 function nextIdOf(
