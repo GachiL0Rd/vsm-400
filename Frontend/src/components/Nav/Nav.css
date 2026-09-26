@@ -58,6 +58,7 @@
   right: -12px;
   min-width: 18px;
   padding: 0 4px;
+  border-radius: var(--radius-xs);
   background: var(--signal);
   color: var(--ink);
   font-size: 11px;

@@ -5,6 +5,7 @@
   margin: 0;
   padding: 0;
   border: 2px solid var(--ink);
+  border-radius: var(--radius-s);
 }
 
 .segmented__item {
@@ -19,6 +20,15 @@
 
 .segmented__item + .segmented__item {
   border-left: 2px solid var(--ink);
+}
+
+/* Первый ребёнок поля — legend, не кнопка. */
+.segmented__item:first-of-type {
+  border-radius: var(--radius-xs) 0 0 var(--radius-xs);
+}
+
+.segmented__item:last-of-type {
+  border-radius: 0 var(--radius-xs) var(--radius-xs) 0;
 }
 
 .segmented__item:hover {
@@ -95,8 +105,11 @@
 .board__row--me::before {
   content: "";
   position: absolute;
-  inset: 0 auto 0 0;
+  top: 12px;
+  bottom: 12px;
+  left: 0;
   width: 4px;
+  border-radius: var(--radius-pill);
   background: var(--signal);
 }
 
