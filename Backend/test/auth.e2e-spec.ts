@@ -298,7 +298,7 @@ describe('auth e2e', () => {
     expect(problem(denied).code).toBe('FORBIDDEN');
   });
 
-  it('mustChangePassword пускает только auth и me, смена пароля снимает блок', async () => {
+  it('mustChangePassword пускает смену пароля и сессию, кабинет закрыт', async () => {
     const { password } = await makeUser({
       login: 'newbie',
       role: Role.CONDUCTOR,
@@ -312,6 +312,9 @@ describe('auth e2e', () => {
     expect(problem(blocked).code).toBe('PASSWORD_CHANGE_REQUIRED');
     const allowed = await inject('GET', '/api/v1/auth/session', { cookie });
     expect(allowed.statusCode).toBe(200);
+    const cabinet = await inject('GET', '/api/v1/me', { cookie });
+    expect(cabinet.statusCode).toBe(403);
+    expect(problem(cabinet).code).toBe('PASSWORD_CHANGE_REQUIRED');
     const weak = await inject('POST', '/api/v1/auth/password', {
       cookie,
       payload: { current: password, next: 'short' },

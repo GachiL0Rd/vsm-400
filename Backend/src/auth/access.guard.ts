@@ -22,6 +22,7 @@ const claimsSchema = z.object({
 });
 
 type AccessRequest = {
+  method?: string;
   url?: string;
   headers?: Record<string, string | string[] | undefined>;
   cookies?: Record<string, string | undefined>;
@@ -50,7 +51,7 @@ export class AccessGuard implements CanActivate {
       brigadeId: row.brigadeId,
       depotId: row.brigade?.depotId ?? null,
     };
-    if (row.mustChangePassword && !passwordChangeAllows(url)) {
+    if (row.mustChangePassword && !passwordChangeAllows(request.method ?? '', url)) {
       throw new ForbiddenException({
         message: 'Сначала смените пароль',
         code: 'PASSWORD_CHANGE_REQUIRED',

@@ -106,7 +106,7 @@ describe('AccessGuard', () => {
     });
   });
 
-  it('mustChangePassword закрывает всё кроме /auth и /me', async () => {
+  it('mustChangePassword пускает только смену пароля, выход и сессию', async () => {
     findUnique.mockResolvedValue({
       id: userId,
       role: Role.ADMIN,
@@ -116,11 +116,9 @@ describe('AccessGuard', () => {
       brigade: null,
     });
     verifyAsync.mockResolvedValue(claims());
+    const headers = { authorization: 'Bearer t' };
     const blocked = guard.canActivate(
-      context(
-        { url: '/api/v1/org/depots', headers: { authorization: 'Bearer t' } },
-        Probe.prototype.closed,
-      ),
+      context({ method: 'GET', url: '/api/v1/org/depots', headers }, Probe.prototype.closed),
     );
     await expect(blocked).rejects.toBeInstanceOf(ForbiddenException);
     await expect(blocked).rejects.toMatchObject({
@@ -128,20 +126,24 @@ describe('AccessGuard', () => {
     });
     await expect(
       guard.canActivate(
-        context(
-          { url: '/api/v1/auth/password', headers: { authorization: 'Bearer t' } },
-          Probe.prototype.closed,
-        ),
+        context({ method: 'GET', url: '/api/v1/me/stats', headers }, Probe.prototype.closed),
+      ),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(
+      guard.canActivate(
+        context({ method: 'POST', url: '/api/v1/auth/password', headers }, Probe.prototype.closed),
       ),
     ).resolves.toBe(true);
     await expect(
       guard.canActivate(
-        context(
-          { url: '/api/v1/me/stats', headers: { authorization: 'Bearer t' } },
-          Probe.prototype.closed,
-        ),
+        context({ method: 'GET', url: '/api/v1/auth/session', headers }, Probe.prototype.closed),
       ),
     ).resolves.toBe(true);
+    await expect(
+      guard.canActivate(
+        context({ method: 'POST', url: '/api/v1/auth/session', headers }, Probe.prototype.closed),
+      ),
+    ).rejects.toBeInstanceOf(ForbiddenException);
   });
 });
 

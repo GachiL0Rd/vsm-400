@@ -6,10 +6,19 @@ export function requestPath(url: string): string {
   return path;
 }
 
-/** mustChangePassword пускает только смену пароля и кабинет /me. */
-export function passwordChangeAllows(url: string): boolean {
-  const path = `${requestPath(url)}/`;
-  return path.includes('/auth/') || path.includes('/me/');
+/**
+ * Пока пароль временный, кабинет закрыт.
+ * GET /auth/session оставлен: фронт видит живую сессию и флаг смены,
+ * не читая разбор рейса. Сравнение точное — includes('/auth/') пускал любой хвост.
+ */
+const passwordChangePaths = new Set([
+  'POST /api/v1/auth/password',
+  'POST /api/v1/auth/logout',
+  'GET /api/v1/auth/session',
+]);
+
+export function passwordChangeAllows(method: string, url: string): boolean {
+  return passwordChangePaths.has(`${method.toUpperCase()} ${requestPath(url)}`);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
