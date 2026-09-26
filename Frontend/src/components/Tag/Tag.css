@@ -1,37 +1,37 @@
 /*
- * Статусы по принципу «тёмной кабины»: норма не выделяется,
- * отклонение горит сплошной плашкой.
+ * Норма — тихий текст. Отклонение — сплошная плашка.
+ * Жёлтый только у «Новое»: тот же сигнал, что у счётчика в меню.
  */
 .tag {
   display: inline-block;
   color: var(--ink);
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 500;
-  line-height: 1.4;
+  line-height: 1.3;
   white-space: nowrap;
 }
 
 .tag--ok {
-  color: var(--iron);
+  color: var(--mute);
 }
 
 .tag--warn,
 .tag--stop,
 .tag--new {
-  padding: 1px 8px;
-  color: var(--white);
+  padding: 4px 8px;
   font-weight: 700;
 }
 
 .tag--warn {
-  background: var(--warn);
+  background: var(--ink);
+  color: var(--paper);
 }
 
 .tag--stop {
   background: var(--stop);
+  color: var(--paper);
 }
 
-/* Непрочитанное — тот же оранжевый, что у счётчика в меню. Текст графитом: белый на #ff6700 не добирает контраст. */
 .tag--new {
   background: var(--signal);
   color: var(--ink);

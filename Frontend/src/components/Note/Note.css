@@ -1,31 +1,25 @@
 .note {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
   line-height: 1.45;
-}
-
-/* Без заголовка: короткая цветная метка сверху */
-.note--bar::before {
-  content: "";
-  width: 30px;
-  height: 4px;
-  margin-bottom: 10px;
-  background: var(--note-color, var(--line));
-}
-
-.note--ok {
-  --note-color: var(--ok);
-}
-
-.note--warn {
-  --note-color: var(--warn-line);
 }
 
 .note__title {
   color: var(--ink);
+  font-size: 18px;
+  font-weight: 700;
 }
 
-.note--ok .note__title {
-  color: var(--note-color);
+/* Без заголовка: толстая линейка. Предупреждение — красная плашка, белый текст. */
+.note--bar {
+  padding-top: 14px;
+  border-top: var(--strip) solid var(--ink);
+}
+
+.note--warn.note--bar {
+  padding: 16px 18px;
+  border-top: 0;
+  background: var(--stop);
+  color: var(--paper);
 }

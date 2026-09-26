@@ -22,7 +22,7 @@ export function Radar({ values }: { values: Competencies }) {
   return (
     <svg
       className="radar"
-      viewBox="-40 0 420 236"
+      viewBox="-64 -8 468 256"
       role="img"
       aria-label={`Компетенции: ${summary}`}
     >
@@ -31,40 +31,42 @@ export function Radar({ values }: { values: Competencies }) {
           key={k}
           points={polygon(scores.map(() => R * k))}
           fill="none"
-          stroke="var(--cloud)"
-          strokeWidth="1.5"
+          stroke="var(--mute)"
+          strokeWidth="2"
         />
       ))}
       <polygon
         points={polygon(scores.map((v) => (R * v) / 100))}
-        fill="var(--ink-08)"
+        fill="none"
         stroke="var(--ink)"
-        strokeWidth="2.5"
-        strokeLinejoin="round"
+        strokeWidth="3"
+        strokeLinejoin="miter"
       />
       {COMPETENCIES.map((c, i) => {
         const value = values[c.id];
         const weak = value < WEAK_SCORE;
         const [x, y] = point(i, (R * value) / 100);
-        const [lx, ly] = point(i, R + 16);
+        const [lx, ly] = point(i, R + 18);
         const anchor = Math.abs(lx - CX) < 4 ? 'middle' : lx > CX ? 'start' : 'end';
         return (
           <g key={c.id}>
-            <circle
-              cx={x}
-              cy={y}
-              r="4.5"
+            <rect
+              x={x - 5}
+              y={y - 5}
+              width="10"
+              height="10"
               fill={weak ? 'var(--stop)' : 'var(--ink)'}
-              stroke="var(--white)"
+              stroke="var(--paper)"
               strokeWidth="2"
             />
             <text
               x={lx}
               y={ly + 4}
               textAnchor={anchor}
-              fontSize="12"
+              fontFamily="Moscow Sans, sans-serif"
+              fontSize="15"
               fontWeight={weak ? 700 : 500}
-              fill={weak ? 'var(--stop)' : 'var(--iron)'}
+              fill={weak ? 'var(--stop)' : 'var(--mute)'}
             >
               {c.title} {value}
             </text>

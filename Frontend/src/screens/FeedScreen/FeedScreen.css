@@ -2,7 +2,7 @@
   max-width: var(--measure);
   margin: 0;
   padding: 0;
-  border-top: 2px solid var(--ink);
+  border-top: var(--rule-strong) solid var(--ink);
   list-style: none;
 }
 
@@ -10,15 +10,16 @@
   display: flex;
   align-items: flex-start;
   gap: 16px;
+  min-height: var(--hit);
   padding: 16px 0;
-  border-bottom: 1px solid var(--line);
+  border-bottom: var(--rule) solid var(--ink);
   text-decoration: none;
 }
 
 .notice__icon {
   flex: none;
   display: grid;
-  margin-top: 20px;
+  margin-top: 2px;
   color: var(--ink);
 }
 
@@ -27,6 +28,7 @@
   flex-direction: column;
   flex: 1;
   min-width: 0;
+  gap: 2px;
 }
 
 .notice__meta {
@@ -46,9 +48,8 @@
   line-height: 1.3;
 }
 
-/* Непрочитанное: тег «Новое» и жирный заголовок */
 .notice--unread .notice__title {
-  font-size: 18px;
+  font-size: 20px;
   font-weight: 800;
 }
 
@@ -57,12 +58,11 @@
 }
 
 .notice:not(.notice--unread) .notice__icon {
-  color: var(--smoke);
+  color: var(--mute);
 }
 
 .notice__text {
-  margin-top: 2px;
-  color: var(--iron);
-  font-size: 15px;
+  color: var(--mute);
+  font-size: 16px;
   line-height: 1.4;
 }

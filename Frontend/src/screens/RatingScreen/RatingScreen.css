@@ -1,24 +1,25 @@
 .segmented {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  max-width: 480px;
+  max-width: 520px;
   margin: 0;
   padding: 0;
-  border: 2px solid var(--ink);
+  border: var(--rule-strong) solid var(--ink);
 }
 
 .segmented__item {
-  padding: 10px 0;
+  min-height: var(--hit);
+  padding: 12px 8px;
   border: 0;
-  background: var(--white);
+  background: var(--paper);
   color: var(--ink);
-  font-size: 15px;
+  font-size: 18px;
   font-weight: 700;
   cursor: pointer;
 }
 
 .segmented__item + .segmented__item {
-  border-left: 2px solid var(--ink);
+  border-left: var(--rule-strong) solid var(--ink);
 }
 
 .segmented__item:hover {
@@ -27,13 +28,14 @@
 
 .segmented__item--on,
 .segmented__item--on:hover {
-  background: var(--ink);
-  color: var(--white);
+  background: var(--signal);
+  color: var(--ink);
+  text-decoration: none;
 }
 
 .rating__me {
   margin-bottom: calc(var(--stack) * -1);
-  color: var(--iron);
+  color: var(--mute);
 }
 
 .rating__me b {
@@ -46,24 +48,25 @@
   max-width: var(--measure);
   margin: 0;
   padding: 0;
-  border-top: 2px solid var(--ink);
+  border-top: var(--rule-strong) solid var(--ink);
   list-style: none;
 }
 
 .board__row {
   position: relative;
   display: grid;
-  grid-template-columns: 36px 36px 1fr auto;
+  grid-template-columns: 40px 44px 1fr auto;
   gap: 12px;
   align-items: center;
-  padding: 10px 12px 10px 8px;
-  border-bottom: 1px solid var(--line);
+  min-height: 64px;
+  padding: 10px 8px 10px 12px;
+  border-bottom: var(--rule) solid var(--ink);
 }
 
 /* Разрыв между топом и своей позицией */
 .board__row--gap {
-  margin-top: 12px;
-  border-top: 1px dashed var(--smoke);
+  margin-top: 16px;
+  border-top: var(--rule-strong) solid var(--ink);
 }
 
 .board__rank {
@@ -79,7 +82,7 @@
 }
 
 .board__move {
-  font-size: 13px;
+  font-size: 16px;
   font-weight: 700;
 }
 
@@ -87,17 +90,11 @@
   font-weight: 700;
 }
 
-/* «Вы здесь» — тот же оранжевый маркер, что в навигации */
+/* «Вы здесь» — та же жёлтая полоса, что у активного пункта меню */
 .board__row--me {
+  padding-left: 22px;
   font-weight: 800;
-}
-
-.board__row--me::before {
-  content: "";
-  position: absolute;
-  inset: 0 auto 0 0;
-  width: 4px;
-  background: var(--signal);
+  box-shadow: inset var(--strip) 0 0 var(--signal);
 }
 
 .rating__brigade {

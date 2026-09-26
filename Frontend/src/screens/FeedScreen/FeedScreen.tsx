@@ -44,7 +44,7 @@ function NoticeEntry({ notice }: { notice: Notice }) {
   const body = (
     <>
       <span className="notice__icon">
-        <Icon name={kind.icon} size={22} />
+        <Icon name={kind.icon} size={28} />
       </span>
       <span className="notice__body">
         <span className="notice__meta">

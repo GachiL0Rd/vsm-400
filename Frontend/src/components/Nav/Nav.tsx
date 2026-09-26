@@ -51,7 +51,7 @@ export function Nav({ unread, callsign, level }: NavProps) {
                 aria-current={current}
               >
                 <span className="nav__icon">
-                  <Icon name={tab.icon} />
+                  <Icon name={tab.icon} size={28} />
                   {tab.id === 'feed' && unread > 0 && (
                     <span className="nav__count">
                       {unread}

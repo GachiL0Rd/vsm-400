@@ -33,7 +33,7 @@ interface IconProps {
   strokeWidth?: number;
 }
 
-export function Icon({ name, size = 24, strokeWidth = 2 }: IconProps) {
+export function Icon({ name, size = 24, strokeWidth = 2.5 }: IconProps) {
   return (
     <svg
       width={size}

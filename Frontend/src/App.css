@@ -1,11 +1,11 @@
 .app__main {
-  padding: 24px 16px calc(96px + env(safe-area-inset-bottom));
+  padding: 20px 16px calc(112px + env(safe-area-inset-bottom));
 }
 
 .screen {
   display: flex;
   flex-direction: column;
-  gap: 32px;
+  gap: 28px;
   max-width: 960px;
   margin: 0 auto;
 }
@@ -13,22 +13,27 @@
 .screen__head {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 14px;
 }
 
 .screen__title {
-  font-size: 32px;
+  padding-bottom: 12px;
+  border-bottom: var(--strip) solid var(--signal);
+  font-size: 36px;
   font-weight: 800;
-  line-height: 1.1;
-  letter-spacing: -0.01em;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
 }
 
+/* Заголовок получают фокус после перехода. Кольцо здесь не нужно: в таб-порядке его нет. */
 .screen__title:focus {
   outline: none;
+  box-shadow: none;
 }
 
 .screen__sub {
-  color: var(--iron);
+  max-width: 62ch;
+  color: var(--mute);
 }
 
 .screen__action {
@@ -39,10 +44,10 @@
   .app__main {
     /* Порог 900px парный с шириной .nav. */
     margin-left: var(--nav-width);
-    padding: 48px 48px 64px;
+    padding: 48px 40px 72px;
   }
 
   .screen__title {
-    font-size: 44px;
+    font-size: 48px;
   }
 }

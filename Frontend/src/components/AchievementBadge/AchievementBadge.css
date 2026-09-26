@@ -2,16 +2,17 @@
   flex: none;
   display: grid;
   place-items: center;
-  width: 52px;
-  height: 52px;
+  width: 56px;
+  height: 56px;
+  border: var(--rule-strong) solid var(--ink);
 }
 
 .badge--earned {
   background: var(--ink);
-  color: var(--white);
+  color: var(--paper);
 }
 
 .badge--locked {
-  border: 2px dashed var(--line);
-  color: var(--smoke);
+  background: var(--paper);
+  color: var(--mute);
 }
