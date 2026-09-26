@@ -43,4 +43,4 @@ main.ts → GameScene → GameConnection → protocol.ts / state.ts
 
 ## Проверка
 
-Из `Game/`: `npm run verify`; при работающем `npm run dev` — `node scripts/browser-smoke.mjs`, `node scripts/browser-flow.mjs`, `node scripts/browser-lifecycle.mjs`. Последний проверяет мышь, касание, отказ сервера, паузу, два перезапуска сцены и уничтожение игры без накопления DOM-панелей, таймеров, pointer/resize listeners и WebSocket-соединений. Браузерные скриншоты сохраняются в игнорируемом `artifacts/`.
+Из `Game/`: `npm run verify`; при работающем `npm run dev` — `node scripts/browser-smoke.mjs`, `node scripts/browser-flow.mjs`, `node scripts/browser-lifecycle.mjs`. Последний проверяет мышь, касание, отказ сервера, паузу, два перезапуска сцены и уничтожение игры без накопления DOM-панелей, NPC/POI, таймеров, pointer/resize listeners и WebSocket-соединений. Созданный аудиоконтекст закрывается при shutdown. Браузерные скриншоты сохраняются в игнорируемом `artifacts/`.

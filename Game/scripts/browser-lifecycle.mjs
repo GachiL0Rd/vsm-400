@@ -47,6 +47,9 @@ const state = () =>
       openGameSockets: window.__vsmSockets.filter((socket) => socket.readyState === 1).length,
       socketCount: window.__vsmSockets.length,
       playerTile: scene.player.getTile(),
+      npcCount: scene.npcs.shapes.size,
+      poiObjectCount: scene.poi.shapes.length,
+      displayCount: scene.children.list.length,
     };
   });
 
@@ -77,6 +80,13 @@ try {
   await page.waitForTimeout(1200);
   if ((await page.locator('.clock').innerText()) !== pausedClock)
     throw new Error('The displayed server time advanced while paused.');
+  await page.evaluate(async () => {
+    const entry = document.querySelector('script[src*="/src/main.ts"]');
+    const { game } = await import(entry.src);
+    const sound = game.scene.getScene('GameScene').soundManager;
+    sound.beep();
+    window.__oldAudioContext = sound.audio;
+  });
 
   const baseline = await state();
   for (let restart = 1; restart <= 2; restart += 1) {
@@ -102,12 +112,17 @@ try {
       'pointerListeners',
       'clockIntervals',
       'openGameSockets',
+      'npcCount',
+      'poiObjectCount',
+      'displayCount',
     ]) {
       if (current[key] !== baseline[key])
         throw new Error(`${key} changed after scene restart: ${baseline[key]} -> ${current[key]}`);
     }
     if (current.playerTile.x !== 2 || current.playerTile.y !== 2)
       throw new Error('A full snapshot did not reset the local player presentation.');
+    if (restart === 1)
+      await page.waitForFunction(() => window.__oldAudioContext?.state === 'closed');
   }
   await page.evaluate(async () => {
     const entry = document.querySelector('script[src*="/src/main.ts"]');
@@ -139,7 +154,7 @@ try {
   });
   await touchPage.close();
   if (errors.length > 0) throw new Error(errors.join('\n'));
-  console.log('input, reject, pause, touch, two restarts and game destroy passed');
+  console.log('input, reject, pause, touch, scene resources, two restarts and game destroy passed');
 } finally {
   await browser.close();
 }
