@@ -1,0 +1,196 @@
+# Знаки кабинета. Тексты десяти первых совпадают с Frontend demo.ts.
+# Интерпретатор: condition — рейс совпал, count — число решений, streak — streakDays.
+# Половины таймера в RunDecision нет: ориентир 15 с из примера сценария, порог 7500 мс.
+# «full» в choiceId — команда игры inspect full, детальный осмотр.
+# «уши» — формулировка ситуации из демо («закладывает уши»).
+
+achievements:
+  - code: before-boarding
+    title: До посадки
+    description: Найти неисправность на приёмке, до начала посадки
+    bonusPoints: 50
+    rule:
+      on: run.recorded
+      type: condition
+      where:
+        stage: acceptance
+        verdict: best
+        category: technical
+
+  - code: before-complaint
+    title: Раньше жалобы
+    description: Заметить проблему до того, как о ней скажет пассажир
+    bonusPoints: 40
+    rule:
+      on: run.recorded
+      type: condition
+      where:
+        verdict: best
+        categories: [service, conflict]
+        complaintsMax: 0
+
+  - code: clean-sweep
+    title: Чистый обход
+    description: Завершить рейс без пропущенных обязательных проверок
+    bonusPoints: 30
+    rule:
+      on: run.recorded
+      type: condition
+      where:
+        outcome: completed
+        missedMax: 0
+        incidentsMax: 0
+        minDecisions: 1
+
+  - code: first-aid
+    title: Первая помощь
+    description: Помочь пассажиру и доложить, не отходя от регламента
+    bonusPoints: 40
+    rule:
+      on: run.recorded
+      type: condition
+      where:
+        category: medical
+        verdict: best
+        minSafetyDelta: 0
+
+  - code: cold-head
+    title: Холодная голова
+    description: Пять критических решений быстрее половины отведённого времени
+    bonusPoints: 60
+    rule:
+      on: run.recorded
+      type: count
+      total: 5
+      where:
+        categories: [safety, medical, security]
+        verdict: best
+        maxReactionMs: 7500
+
+  - code: streak
+    title: Неделя в строю
+    description: Семь дней подряд хотя бы один рейс
+    bonusPoints: 70
+    rule:
+      on: run.recorded
+      type: streak
+      total: 7
+
+  - code: pressure
+    title: Уши заложило
+    description: Распознать признаки нарушения герметичности и доложить сразу
+    bonusPoints: 50
+    rule:
+      on: run.recorded
+      type: condition
+      where:
+        situationIncludes: уши
+        verdict: best
+        maxReactionMs: 7500
+
+  - code: detail
+    title: Под лупой
+    description: Найти пять неисправностей, видных только при детальном осмотре
+    bonusPoints: 40
+    rule:
+      on: run.recorded
+      type: count
+      total: 5
+      where:
+        stage: acceptance
+        verdict: best
+        choiceIncludes: full
+
+  - code: three-calls
+    title: Три обращения
+    description: Правильно разобрать три одновременных обращения пассажиров
+    bonusPoints: 45
+    rule:
+      on: run.recorded
+      type: condition
+      where:
+        categories: [service, conflict]
+        verdict: best
+        minMatches: 3
+
+  - code: rare
+    title: Редкий случай
+    description: Справиться с событием, которое большинство проводников пропускает
+    bonusPoints: 80
+    rule:
+      on: run.recorded
+      type: condition
+      where:
+        deviation: true
+        verdict: best
+
+  - code: no-delay
+    title: Без просрочки
+    description: Закрыть рейс, не отдав ни одного решения таймеру
+    bonusPoints: 25
+    rule:
+      on: run.recorded
+      type: condition
+      where:
+        outcome: completed
+        timeoutsMax: 0
+        minDecisions: 1
+
+  - code: steady-hand
+    title: Держать порог
+    description: Закончить рейс, удержав безопасность не ниже 80
+    bonusPoints: 30
+    rule:
+      on: run.recorded
+      type: condition
+      where:
+        outcome: completed
+        minSafety: 80
+
+  - code: handover
+    title: Сдал вагон
+    description: Закрыть сдачу вагона лучшим решением
+    bonusPoints: 20
+    rule:
+      on: run.recorded
+      type: condition
+      where:
+        stage: handover
+        verdict: best
+
+  - code: report-in-time
+    title: Доклад вовремя
+    description: Три лучших доклада по конфликту быстрее половины таймера
+    bonusPoints: 35
+    rule:
+      on: run.recorded
+      type: count
+      total: 3
+      where:
+        category: conflict
+        verdict: best
+        maxReactionMs: 7500
+
+  - code: prevented
+    title: Не дошло
+    description: В одном рейсе предупредить не меньше трёх рисков
+    bonusPoints: 35
+    rule:
+      on: run.recorded
+      type: condition
+      where:
+        outcome: completed
+        preventedMin: 3
+
+  - code: seal
+    title: Пломба на месте
+    description: Заметить сорванную пломбу на приёмке
+    hidden: true
+    bonusPoints: 40
+    rule:
+      on: run.recorded
+      type: condition
+      where:
+        situationIncludes: пломб
+        stage: acceptance
+        verdict: best

@@ -76,3 +76,14 @@ health e2e подменяет Prisma и Redis.
 | `npm run prisma:deploy` | `migrate deploy` |
 | `npm run prisma:seed` | Проверка соединения |
 | `npm run verify` | Biome, типы, тесты, сборка |
+
+## API
+
+### Прогрессия
+
+Рейс пишется по событию `run.completed` (одна транзакция, повтор по `sessionId` ничего не делает). После коммита — `run.recorded`.
+
+- `GET /api/v1/promotions?status=PENDING` — очередь рекомендаций. Начальник видит свою бригаду, администратор — все.
+- `POST /api/v1/promotions/:id/decision` — тело `{ "approve": true|false }`. Начальник своей бригады или администратор. Утверждение меняет грейд.
+
+`GET /api/v1/me/achievements` отдаёт кабинет. Здесь список собирает `AchievementsService.listForUser`: `code`, `title`, `description`, `earnedAt` или `null`, для незакрытых счётчиков ещё `progress`.
