@@ -48,6 +48,16 @@
   --warn-line: #f0cf5a;
   --stop: #c62828;
 
+  /* Шкала скругления. Крупнее роль — больше радиус.
+     Пилюля и круг не для панелей: торцы шкал и станции схемы. */
+  --radius-xs: 2px;
+  --radius-day: 3px;
+  --radius-s: 4px;
+  --radius-m: 8px;
+  --radius-l: 16px;
+  --radius-pill: 999px;
+  --radius-round: 50%;
+
   --font: "Moscow Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
 
   /* 232px при min-width: 900px — порог парный в Nav.css и App.css. */
@@ -122,6 +132,7 @@ button {
   padding: 13px 24px;
   border: 0;
   border-bottom: 3px solid var(--signal-press);
+  border-radius: var(--radius-s);
   background: var(--signal);
   color: var(--ink);
   font-size: 17px;
