@@ -300,6 +300,10 @@ describe('auth e2e', () => {
     const anon = await login('nobody', 'wrong-password-1');
     expect(anon.response.statusCode).toBe(401);
     expect(problem(anon.response).code).toBe('INVALID_CREDENTIALS');
+    const failure = await prisma.auditLog.findFirst({ where: { action: 'auth.login.failure' } });
+    expect(failure?.target).toBeNull();
+    expect(failure?.actorId).toBeNull();
+    expect(failure?.ip).toBeTruthy();
 
     const { password } = await makeUser({
       login: 'conductor-role',

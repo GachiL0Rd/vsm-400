@@ -1,6 +1,10 @@
 import { Inject, Injectable } from '@nestjs/common';
+import { Cron, CronExpression } from '@nestjs/schedule';
 import type { ActorType, Prisma } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+
+/** Дольше этого окна ip, userAgent и target аудита не нужны для разбора. */
+export const PRIVACY_RETENTION_MS = 90 * 24 * 60 * 60 * 1000;
 
 export type AuditEntry = {
   actorType: ActorType;
@@ -25,6 +29,28 @@ export class AuditService {
         meta: entry.meta,
         ip: entry.ip ?? null,
       },
+    });
+  }
+
+  @Cron(CronExpression.EVERY_DAY_AT_3AM, { name: 'privacy-retention' })
+  async retainPrivacy(now = new Date()): Promise<void> {
+    const cutoff = new Date(now.getTime() - PRIVACY_RETENTION_MS);
+    await this.prisma.authSession.updateMany({
+      where: {
+        createdAt: { lt: cutoff },
+        OR: [{ ip: { not: null } }, { userAgent: { not: null } }],
+      },
+      data: { ip: null, userAgent: null },
+    });
+    await this.prisma.authSession.deleteMany({
+      where: { expiresAt: { lt: now } },
+    });
+    await this.prisma.auditLog.updateMany({
+      where: {
+        at: { lt: cutoff },
+        OR: [{ ip: { not: null } }, { target: { not: null } }],
+      },
+      data: { ip: null, target: null },
     });
   }
 

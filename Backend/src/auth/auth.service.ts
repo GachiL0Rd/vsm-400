@@ -48,7 +48,7 @@ export class AuthService {
         actorType: ActorType.USER,
         actorId: user?.id ?? null,
         action: 'auth.login.failure',
-        target: login,
+        target: null,
         ip: meta.ip,
       });
       throw invalidCredentials();
