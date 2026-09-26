@@ -42,7 +42,29 @@ try {
   await page.getByRole('button', { name: 'Показать итог смены' }).click();
   await page.getByText('Смена завершена', { exact: true }).waitFor();
   await page.screenshot({ path: 'artifacts/pressure-success.png' });
-  console.log('pressure:', await page.locator('.details').innerText());
+  console.log('pressure:', await page.locator('.debrief').innerText());
+
+  await page.waitForTimeout(1300);
+  await page.evaluate(async () => {
+    const entry = document.querySelector('script[src*="/src/main.ts"]');
+    const { game } = await import(entry.src);
+    const scene = game.scene.getScene('GameScene');
+    window.__signalBeeps = 0;
+    window.__restoreBeep = scene.soundManager.beep;
+    scene.soundManager.beep = () => { window.__signalBeeps += 1; };
+  });
+  await page.getByRole('button', { name: 'Проверить связь' }).click();
+  await page.getByText('Переподключение').waitFor({ timeout: 5000 });
+  await page.getByText('Связь есть').waitFor({ timeout: 10000 });
+  const replay = await page.evaluate(async () => {
+    const entry = document.querySelector('script[src*="/src/main.ts"]');
+    const { game } = await import(entry.src);
+    const scene = game.scene.getScene('GameScene');
+    scene.soundManager.beep = window.__restoreBeep;
+    return { beeps: window.__signalBeeps, effects: scene.vfx.effects.size };
+  });
+  if (replay.beeps !== 0 || replay.effects !== 0)
+    throw new Error(`A full snapshot replayed an observed signal: ${JSON.stringify(replay)}`);
 
   await page.getByRole('button', { name: 'Пожар', exact: true }).click();
   await page.getByRole('button', { name: '×3' }).click();
@@ -58,7 +80,7 @@ try {
   await page.getByRole('button', { name: 'Показать итог смены' }).click();
   await page.getByText('Очаг потушен.', { exact: false }).first().waitFor();
   await page.screenshot({ path: 'artifacts/fire-success.png' });
-  console.log('fire success:', await page.locator('.details').innerText());
+  console.log('fire success:', await page.locator('.debrief').innerText());
 
   await page.getByRole('button', { name: 'Пожар', exact: true }).click();
   await page.getByRole('button', { name: '×3' }).click();
@@ -66,7 +88,7 @@ try {
   await page.getByRole('button', { name: 'Показать итог смены' }).click();
   await page.getByText('Очаг остался активным.').waitFor();
   await page.screenshot({ path: 'artifacts/fire-failure.png' });
-  console.log('fire failure:', await page.locator('.details').innerText());
+  console.log('fire failure:', await page.locator('.debrief').innerText());
 
   await page.getByRole('button', { name: 'Сервис', exact: true }).click();
   await page.getByRole('button', { name: '×3' }).click();
@@ -82,7 +104,7 @@ try {
   await page.getByRole('button', { name: 'Завершить задачу' }).click();
   await page.getByRole('button', { name: 'Показать итог смены' }).click();
   await page.screenshot({ path: 'artifacts/service-success.png' });
-  console.log('service:', await page.locator('.details').innerText());
+  console.log('service:', await page.locator('.debrief').innerText());
 
   await page.getByRole('button', { name: 'Конфликт', exact: true }).click();
   await page.getByRole('button', { name: '×3' }).click();
@@ -95,7 +117,7 @@ try {
   await page.getByRole('button', { name: 'Спокойно сверить билеты' }).click();
   await page.getByRole('button', { name: 'Показать итог смены' }).click();
   await page.screenshot({ path: 'artifacts/conflict-success.png' });
-  console.log('conflict:', await page.locator('.details').innerText());
+  console.log('conflict:', await page.locator('.debrief').innerText());
   await page.getByRole('button', { name: 'Проверить связь' }).click();
   await page.getByText('Переподключение').waitFor({ timeout: 5000 });
   await page.getByText('Связь есть').waitFor({ timeout: 10000 });
