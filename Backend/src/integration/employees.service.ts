@@ -1,7 +1,7 @@
 import { ConflictException, Inject, Injectable } from '@nestjs/common';
 import { APP_CONFIG, type AppConfig } from '../config/env';
 import type { Prisma } from '../generated/prisma/client';
-import { Competency, RunOutcome } from '../generated/prisma/client';
+import { Competency, type Grade, type Role, RunOutcome } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { RulesService } from '../rules/rules.service';
 import { UsersService } from '../users/users.service';
@@ -248,27 +248,73 @@ async function brigadeOf(db: PlaceDb, input: UpsertEmployee): Promise<string> {
   return brigade.id;
 }
 
+type EmployeeRow = { id: string; login: string; callsign: string; role: Role };
+
+type EmployeeWrite = {
+  user: {
+    findUnique(args: {
+      where: { id: string };
+      select: { id: true; login: true; callsign: true; role: true };
+    }): Promise<EmployeeRow | null>;
+    updateMany(args: {
+      where: { id: string; role: Role };
+      data: { role: Role; position: string; grade: Grade; brigadeId: string };
+    }): Promise<{ count: number }>;
+  };
+};
+
+/**
+ * Кадры не поднимают роль и не трогают METHODIST/ADMIN.
+ * CHIEF → CONDUCTOR можно: это не повышение.
+ */
+export function hrMaySetRole(current: Role, next: Role): boolean {
+  if (next !== 'CONDUCTOR' && next !== 'CHIEF') {
+    return false;
+  }
+  if (current !== 'CONDUCTOR' && current !== 'CHIEF') {
+    return false;
+  }
+  if (next === 'CHIEF') {
+    return current === 'CHIEF';
+  }
+  return true;
+}
+
 async function updateEmployee(
-  db: {
-    user: {
-      update(args: Prisma.UserUpdateArgs): Promise<{ id: string; login: string; callsign: string }>;
-    };
-  },
+  db: EmployeeWrite,
   id: string,
   brigadeId: string,
   input: UpsertEmployee,
 ): Promise<UpsertResult> {
-  const user = await db.user.update({
+  const existing = await db.user.findUnique({
     where: { id },
+    select: { id: true, login: true, callsign: true, role: true },
+  });
+  if (!existing) {
+    throw httpError(404, 'Сотрудник не найден', 'EMPLOYEE_NOT_FOUND');
+  }
+  if (!hrMaySetRole(existing.role, input.role)) {
+    throw httpError(403, 'Кадровый ключ не повышает роль', 'ROLE_ESCALATION');
+  }
+  // where.role отсекает гонку: между чтением и записью роль могла вырасти.
+  const updated = await db.user.updateMany({
+    where: { id, role: existing.role },
     data: {
       role: input.role,
       position: input.position,
       grade: input.grade,
-      brigade: { connect: { id: brigadeId } },
+      brigadeId,
     },
-    select: { id: true, login: true, callsign: true },
   });
-  return { userId: user.id, login: user.login, callsign: user.callsign, created: false };
+  if (updated.count !== 1) {
+    throw httpError(403, 'Кадровый ключ не повышает роль', 'ROLE_ESCALATION');
+  }
+  return {
+    userId: existing.id,
+    login: existing.login,
+    callsign: existing.callsign,
+    created: false,
+  };
 }
 
 function isLoginTaken(error: unknown): boolean {

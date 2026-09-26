@@ -194,7 +194,7 @@ describe('API интеграции HR', { concurrent: false }, () => {
       'PUT',
       url,
       {
-        role: 'CHIEF',
+        role: 'CONDUCTOR',
         brigadeCode: '12',
         depotCode: 'MSK',
         position: 'Бригадир',
@@ -216,7 +216,7 @@ describe('API интеграции HR', { concurrent: false }, () => {
     expect(memory.users).toHaveLength(1);
     expect(memory.users[0]?.passwordHash).toBe(stored?.passwordHash);
     expect(memory.users[0]?.position).toBe('Бригадир');
-    expect(memory.users[0]?.role).toBe('CHIEF');
+    expect(memory.users[0]?.role).toBe('CONDUCTOR');
   });
 
   it('не принимает ФИО и неизвестное депо', async () => {
@@ -304,6 +304,107 @@ describe('API интеграции HR', { concurrent: false }, () => {
       key,
     );
     expect(unknown.json()).toMatchObject({ status: 404, code: 'EMPLOYEE_NOT_FOUND' });
+  });
+
+  it('не создаёт ADMIN/METHODIST и не повышает проводника', async () => {
+    const adminRole = await call(
+      app,
+      'PUT',
+      '/api/integration/v1/employees/tab-admin-try',
+      {
+        role: 'ADMIN',
+        brigadeCode: '12',
+        depotCode: 'MSK',
+        position: 'Проводник',
+        grade: 'TRAINEE',
+      },
+      key,
+    );
+    expect(adminRole.statusCode).toBe(422);
+    expect(adminRole.json()).toMatchObject({ code: 'VALIDATION' });
+    const methodistRole = await call(
+      app,
+      'PUT',
+      '/api/integration/v1/employees/tab-methodist-try',
+      {
+        role: 'METHODIST',
+        brigadeCode: '12',
+        depotCode: 'MSK',
+        position: 'Проводник',
+        grade: 'TRAINEE',
+      },
+      key,
+    );
+    expect(methodistRole.statusCode).toBe(422);
+
+    const hired = await call(
+      app,
+      'PUT',
+      '/api/integration/v1/employees/tab-chief-new',
+      {
+        role: 'CHIEF',
+        brigadeCode: '12',
+        depotCode: 'MSK',
+        position: 'Начальник поезда',
+        grade: 'CONDUCTOR',
+      },
+      key,
+    );
+    expect(hired.statusCode).toBe(200);
+    expect((hired.json() as { created: boolean }).created).toBe(true);
+
+    const raised = await call(
+      app,
+      'PUT',
+      `/api/integration/v1/employees/${extId}`,
+      {
+        role: 'CHIEF',
+        brigadeCode: '12',
+        depotCode: 'MSK',
+        position: 'Проводник',
+        grade: 'CONDUCTOR',
+      },
+      key,
+    );
+    expect(raised.statusCode).toBe(403);
+    expect(raised.json()).toMatchObject({ code: 'ROLE_ESCALATION' });
+    expect(memory.users.find((user) => user.extHash === extHashOf(extId, pepper))?.role).toBe(
+      'CONDUCTOR',
+    );
+
+    const methodistExt = 'tab-methodist-kept';
+    const methodistHash = extHashOf(methodistExt, pepper);
+    memory.users.push({
+      id: randomUUID(),
+      login: loginFromExtHash(methodistHash),
+      passwordHash: 'hash',
+      role: 'METHODIST',
+      callsign: 'MM01',
+      extHash: methodistHash,
+      position: 'Методист',
+      grade: 'INSTRUCTOR',
+      brigadeId: memory.brigades[0]?.id ?? null,
+      mustChangePassword: false,
+      disabledAt: null,
+      createdAt: new Date(),
+      lastRunAt: null,
+      streakDays: 0,
+    });
+    const touched = await call(
+      app,
+      'PUT',
+      `/api/integration/v1/employees/${methodistExt}`,
+      {
+        role: 'CONDUCTOR',
+        brigadeCode: '12',
+        depotCode: 'MSK',
+        position: 'Проводник',
+        grade: 'TRAINEE',
+      },
+      key,
+    );
+    expect(touched.statusCode).toBe(403);
+    expect(memory.users.find((user) => user.extHash === methodistHash)?.role).toBe('METHODIST');
   });
 
   it('подписывает вебхук один раз и не дублирует доставку', async () => {
