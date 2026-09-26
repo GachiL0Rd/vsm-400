@@ -1,26 +1,11 @@
 import { createHash } from 'node:crypto';
+import { existsSync, readFileSync } from 'node:fs';
+import path from 'node:path';
+import { parse } from 'yaml';
+import { type Routes, RoutesSchema } from '../engine/routes';
 import type { CarClass, Competency } from '../engine/schema';
 
 const MOSCOW = 'Europe/Moscow';
-
-const ROUTES = [
-  {
-    trains: ['701', '703', '705', '707'],
-    from: 'Москва',
-    to: 'Санкт-Петербург',
-    stops: ['Тверь', 'Бологое'],
-  },
-  {
-    trains: ['702', '704', '708', '712'],
-    from: 'Санкт-Петербург',
-    to: 'Москва',
-    stops: ['Бологое', 'Тверь'],
-  },
-] as const;
-
-const CLASSES: readonly CarClass[] = ['ECONOMY', 'FAMILY', 'BUSINESS', 'FIRST'];
-
-const DEPARTURES = ['06:40', '09:30', '12:15', '15:48', '18:20', '21:05'] as const;
 
 /**
  * Нет формы в справочнике — отдаём название как есть:
@@ -30,7 +15,9 @@ const GENITIVE: Record<string, string> = {
   Москва: 'Москвы',
   'Санкт-Петербург': 'Санкт-Петербурга',
   Тверь: 'Твери',
+  'Вышний Волочёк': 'Вышнего Волочка',
   Бологое: 'Бологого',
+  Чудово: 'Чудова',
 };
 
 export const CAR_CLASS_LABEL: Record<CarClass, string> = {
@@ -53,8 +40,22 @@ export type RouteDraft = {
 
 export type ForecastShift = Omit<RouteDraft, 'carClass'> & {
   carClass: string;
+  departureAt: string;
   focus: Competency[];
 };
+
+let cachedRoutes: Routes | undefined;
+
+/** Один yaml на процесс: прогноз и назначение не держат второй список рейсов. */
+export function shiftRoutes(): Routes {
+  if (cachedRoutes) {
+    return cachedRoutes;
+  }
+  const beside = path.join(__dirname, '..', '..', 'content', 'routes.yaml');
+  const filePath = existsSync(beside) ? beside : path.join(process.cwd(), 'content', 'routes.yaml');
+  cachedRoutes = RoutesSchema.parse(parse(readFileSync(filePath, 'utf8')));
+  return cachedRoutes;
+}
 
 export function stationGenitive(name: string): string {
   return GENITIVE[name] ?? name;
@@ -94,22 +95,26 @@ export function addCalendarDays(date: string, days: number): string {
 
 /**
  * Один digest на userId и московскую дату.
- * Поля читаются из разных четвёрок байт, чтобы вагон не повторял класс.
+ * Поля читаются из разных четвёрок байт, чтобы вагон не повторял направление.
+ * Класс берётся из вагона в routes.yaml, отдельно его не крутим.
  */
 export function forecastRoute(userId: string, date: string): RouteDraft {
+  const routes = shiftRoutes();
   const digest = createHash('sha256').update(`vsm-shift:${userId}:${date}`).digest();
-  const route = ROUTES[take(digest, 0, ROUTES.length)] ?? ROUTES[0];
-  const trainNumber = route.trains[take(digest, 4, route.trains.length)] ?? route.trains[0];
-  const carClass = CLASSES[take(digest, 12, CLASSES.length)] ?? 'ECONOMY';
+  const direction = pick(routes.directions, digest, 0);
+  const span = routes.trainNumberMax - routes.trainNumberMin + 1;
+  const number = routes.trainNumberMin + take(digest, 4, span);
+  const car = pick(routes.cars, digest, 8);
+  const departure = pick(routes.departures, digest, 16);
   return {
-    train: `ВСМ ${trainNumber}`,
-    from: route.from,
-    fromGenitive: stationGenitive(route.from),
-    to: route.to,
-    stops: [...route.stops],
-    car: 1 + take(digest, 8, 8),
-    carClass,
-    departure: DEPARTURES[take(digest, 16, DEPARTURES.length)] ?? '09:30',
+    train: `${routes.trainPrefix} ${number}`,
+    from: direction.from,
+    fromGenitive: stationGenitive(direction.from),
+    to: direction.to,
+    stops: [...direction.stops],
+    car: car.car,
+    carClass: car.class,
+    departure,
   };
 }
 
@@ -128,11 +133,15 @@ export function forecastShift(
     car: route.car,
     carClass: carClassLabel(route.carClass),
     departure: route.departure,
+    departureAt: moscowDateTime(date, route.departure).toISOString(),
     focus: [...focus],
   };
 }
 
-/** Сегодня, если слот ещё впереди, иначе завтра. Дата кормит forecastRoute. */
+/**
+ * Сегодня, если слот этого userId ещё впереди, иначе завтра.
+ * Дата кормит forecastRoute: прогноз не остаётся на уже прошедшем сегодняшнем слоте.
+ */
 export function upcomingShiftDate(userId: string, now: Date): string {
   const today = moscowDate(now);
   const slot = forecastRoute(userId, today).departure;
@@ -140,6 +149,26 @@ export function upcomingShiftDate(userId: string, now: Date): string {
     return today;
   }
   return addCalendarDays(today, 1);
+}
+
+/** Следующие сотрудники в одном назначении получают соседние вагоны и их класс из yaml. */
+export function carAtOffset(baseCar: number, index: number): { car: number; carClass: CarClass } {
+  const cars = shiftRoutes().cars;
+  const start = cars.findIndex((item) => item.car === baseCar);
+  const origin = start >= 0 ? start : 0;
+  const picked = cars[(origin + index) % cars.length];
+  if (!picked) {
+    throw new Error('в справочнике нет вагонов');
+  }
+  return { car: picked.car, carClass: picked.class };
+}
+
+function pick<T>(items: readonly T[], digest: Buffer, offset: number): T {
+  const item = items[take(digest, offset, items.length)];
+  if (item === undefined) {
+    throw new Error('пустой справочник рейсов');
+  }
+  return item;
 }
 
 function take(digest: Buffer, offset: number, size: number): number {
