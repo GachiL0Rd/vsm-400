@@ -33,6 +33,26 @@ describe('loadConfig', () => {
     expect(() => loadConfig({ ...valid, SEED_ENC_KEY: 'abcd' })).toThrow(/SEED_ENC_KEY/);
   });
 
+  it('не принимает BOOTSTRAP_ADMIN_PASSWORD короче 10 и в production', () => {
+    expect(() => loadConfig({ ...valid, BOOTSTRAP_ADMIN_PASSWORD: 'short' })).toThrow(/10/);
+    expect(() =>
+      loadConfig({
+        ...valid,
+        NODE_ENV: 'production',
+        COOKIE_SECURE: 'true',
+        BOOTSTRAP_ADMIN_PASSWORD: 'long-enough-password',
+      }),
+    ).toThrow(/production/);
+    expect(
+      loadConfig({
+        ...valid,
+        NODE_ENV: 'production',
+        COOKIE_SECURE: 'true',
+        BOOTSTRAP_ADMIN_PASSWORD: '   ',
+      }).nodeEnv,
+    ).toBe('production');
+  });
+
   it('берёт число хопов прокси и не доверяет заголовок при нуле', () => {
     expect(loadConfig(valid).trustProxy).toBe(0);
     expect(fastifyTrustProxy(0)).toBe(false);

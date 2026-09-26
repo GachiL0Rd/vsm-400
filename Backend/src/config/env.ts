@@ -125,15 +125,15 @@ function formatEnvError(error: z.ZodError): string {
   return `Некорректное окружение:\n${lines.join('\n')}`;
 }
 
-/**
- * Падает с понятным текстом, если env не совпал со схемой.
- * Явный source нужен тестам: .env с диска при этом не читается.
- */
 /** 0 — не верить X-Forwarded-For. Иначе число прокси перед приложением. */
 export function fastifyTrustProxy(hops: number): number | false {
   return hops > 0 ? hops : false;
 }
 
+/**
+ * Падает с понятным текстом, если env не совпал со схемой.
+ * Явный source нужен тестам: .env с диска при этом не читается.
+ */
 export function loadConfig(source?: NodeJS.ProcessEnv): AppConfig {
   if (!source) {
     loadLocalEnv();
@@ -142,5 +142,19 @@ export function loadConfig(source?: NodeJS.ProcessEnv): AppConfig {
   if (!parsed.success) {
     throw new EnvConfigError(formatEnvError(parsed.error));
   }
+  assertBootstrapPassword(source ?? process.env, parsed.data.nodeEnv);
   return parsed.data;
+}
+
+function assertBootstrapPassword(source: NodeJS.ProcessEnv, nodeEnv: AppConfig['nodeEnv']): void {
+  const raw = source.BOOTSTRAP_ADMIN_PASSWORD;
+  if (typeof raw !== 'string' || raw.trim() === '') {
+    return;
+  }
+  if (nodeEnv === 'production') {
+    throw new EnvConfigError('BOOTSTRAP_ADMIN_PASSWORD запрещён в production');
+  }
+  if (raw.trim().length < 10) {
+    throw new EnvConfigError('BOOTSTRAP_ADMIN_PASSWORD короче 10 символов');
+  }
 }
