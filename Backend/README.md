@@ -76,3 +76,16 @@ health e2e подменяет Prisma и Redis.
 | `npm run prisma:deploy` | `migrate deploy` |
 | `npm run prisma:seed` | Проверка соединения |
 | `npm run verify` | Biome, типы, тесты, сборка |
+
+## Сценарии
+
+`content/scenarios/*.yaml` при старте пишется в `Scenario` и `ScenarioVersion`.
+Контрольная сумма — sha256 канонического JSON. Новая версия появляется только
+если файл изменился. Сценарии с диска получают статус `PUBLISHED`.
+
+| Метод | Путь | Кто |
+| --- | --- | --- |
+| GET | `/api/v1/scenarios` | любой залогиненный, без графа |
+| GET | `/api/v1/scenarios/:id` | методист и администратор, с графом |
+| PUT | `/api/v1/admin/scenarios/:id` | методист и администратор, новая версия |
+| POST | `/api/v1/admin/scenarios/:id/status` | методист и администратор, тело `{status}` |

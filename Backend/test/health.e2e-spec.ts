@@ -1,11 +1,16 @@
-import type { NestFastifyApplication } from '@nestjs/platform-fastify';
+import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import { Test } from '@nestjs/testing';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/configure-app';
-import { createFastifyAdapter } from '../src/main';
+
 import { PrismaService } from '../src/prisma/prisma.service';
 import { RedisService } from '../src/redis/redis.service';
+import { ScenariosService } from '../src/scenarios/scenarios.service';
+
+function createFastifyAdapter(): FastifyAdapter {
+  return new FastifyAdapter({ bodyLimit: 1_048_576 });
+}
 
 describe('GET /api/health', () => {
   let app: NestFastifyApplication;
@@ -24,6 +29,8 @@ describe('GET /api/health', () => {
         quit: vi.fn(),
         connect: vi.fn(),
       })
+      .overrideProvider(ScenariosService)
+      .useValue({ onApplicationBootstrap: () => undefined })
       .compile();
 
     app = moduleRef.createNestApplication(createFastifyAdapter(), { logger: false });
