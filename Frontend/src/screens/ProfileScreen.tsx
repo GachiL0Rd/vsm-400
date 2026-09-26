@@ -34,7 +34,9 @@ function ProfileHeader() {
     <header className="me">
       <Avatar callsign={profile.callsign} size="lg" />
       <div>
-        <h1 className="screen__title">#{profile.callsign}</h1>
+        <h1 className="screen__title" tabIndex={-1}>
+          #{profile.callsign}
+        </h1>
         <p className="screen__sub">{profile.position}</p>
       </div>
     </header>

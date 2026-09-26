@@ -22,7 +22,9 @@ export function FeedScreen({ unread }: { unread: number }) {
   return (
     <div className="screen">
       <header className="screen__head">
-        <h1 className="screen__title">Лента</h1>
+        <h1 className="screen__title" tabIndex={-1}>
+          Лента
+        </h1>
         <p className="screen__sub">{unread > 0 ? `Непрочитанных: ${unread}` : 'Всё прочитано'}</p>
       </header>
 

@@ -21,7 +21,9 @@ export function RatingScreen() {
   return (
     <div className="screen">
       <header className="screen__head">
-        <h1 className="screen__title">Рейтинг</h1>
+        <h1 className="screen__title" tabIndex={-1}>
+          Рейтинг
+        </h1>
         <p className="screen__sub">
           {board.season} закончится {formatIn(board.endsAt)}. В зачёт идут баллы за неделю.
         </p>

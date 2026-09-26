@@ -39,7 +39,9 @@ export function RunScreen() {
         <div>
           <OutcomeTag outcome={run.outcome} />
         </div>
-        <h1 className="screen__title">{run.outcomeNote}</h1>
+        <h1 className="screen__title" tabIndex={-1}>
+          {run.outcomeNote}
+        </h1>
       </header>
 
       <dl className="facts">

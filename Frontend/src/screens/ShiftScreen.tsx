@@ -20,7 +20,9 @@ export function ShiftScreen() {
 
   return (
     <div className="screen">
-      <h1 className="screen__title">Смена</h1>
+      <h1 className="screen__title" tabIndex={-1}>
+        Смена
+      </h1>
 
       <section className="departure" aria-labelledby="next-title">
         <p className="departure__label">Следующий рейс</p>
