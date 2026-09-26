@@ -1,6 +1,7 @@
 .track {
-  height: 8px;
-  background: var(--cloud);
+  height: 10px;
+  background: var(--white);
+  border: 1px solid var(--ink);
   overflow: hidden;
 }
 
@@ -11,7 +12,7 @@
 .track__fill {
   display: block;
   height: 100%;
-  background: var(--ink);
+  background: var(--signal);
 }
 
 .track__fill--stop {

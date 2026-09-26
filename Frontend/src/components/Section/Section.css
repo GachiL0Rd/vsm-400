@@ -5,16 +5,33 @@
 }
 
 .section__head {
+  position: relative;
   display: flex;
   justify-content: space-between;
   align-items: baseline;
   gap: 12px;
-  padding-bottom: 10px;
-  border-bottom: 2px solid var(--ink);
+  padding-bottom: 22px;
+  border-bottom: 1px solid var(--ink);
+}
+
+/* Линейка заканчивается ступенькой из двух квадратов, ступенька уходит вверх в поле заголовка. */
+.section__head::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  bottom: -4px;
+  width: var(--stair);
+  height: var(--stair);
+  background: var(--signal);
+  box-shadow: -10px -10px 0 var(--signal);
+  pointer-events: none;
 }
 
 .section__title {
-  font-size: 20px;
-  font-weight: 800;
-  line-height: 1.2;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: 0.12em;
+  /* Разрядка добавляет пустое поле после последней буквы. */
+  margin-right: -0.12em;
 }

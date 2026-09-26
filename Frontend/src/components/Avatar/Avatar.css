@@ -4,9 +4,8 @@
   place-items: center;
   width: 40px;
   height: 40px;
-  border: 2px solid var(--ink);
-  background: var(--white);
-  color: var(--ink);
+  background: var(--ink);
+  color: var(--white);
   font-size: 14px;
   font-weight: 800;
 }

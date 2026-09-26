@@ -5,12 +5,12 @@
   line-height: 1.45;
 }
 
-/* Без заголовка: короткая цветная метка сверху */
+/* Без заголовка: квадратная метка тона, не полоса. */
 .note--bar::before {
   content: "";
-  width: 30px;
-  height: 4px;
-  margin-bottom: 10px;
+  width: var(--stair);
+  height: var(--stair);
+  margin-bottom: 8px;
   background: var(--note-color, var(--line));
 }
 
@@ -19,7 +19,7 @@
 }
 
 .note--warn {
-  --note-color: var(--warn-line);
+  --note-color: var(--warn);
 }
 
 .note__title {

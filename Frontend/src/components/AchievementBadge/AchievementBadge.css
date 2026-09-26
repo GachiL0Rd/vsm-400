@@ -12,6 +12,7 @@
 }
 
 .badge--locked {
-  border: 2px dashed var(--line);
-  color: var(--smoke);
+  border: 1px dashed var(--line);
+  background: var(--white);
+  color: var(--iron);
 }

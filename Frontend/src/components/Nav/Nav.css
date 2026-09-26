@@ -3,7 +3,7 @@
   position: fixed;
   inset: auto 0 0;
   z-index: 10;
-  border-top: 1px solid var(--line);
+  border-top: 1px solid var(--ink);
   background: var(--white);
   padding-bottom: env(safe-area-inset-bottom);
 }
@@ -26,9 +26,9 @@
   flex-direction: column;
   align-items: center;
   gap: 2px;
-  padding: 10px 0;
+  padding: 10px 0 8px;
   color: var(--iron);
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 700;
   text-decoration: none;
 }
@@ -37,9 +37,11 @@
   color: var(--ink);
 }
 
-.nav__item--active {
-  color: var(--ink);
+.nav__item--active,
+.nav__item--active:hover {
+  color: var(--signal);
   font-weight: 800;
+  box-shadow: inset 0 -3px 0 var(--signal);
 }
 
 /* Кольцо внутрь: бренд и пункты прижаты к краю окна, внешний offset обрезается. */
@@ -59,41 +61,68 @@
   min-width: 18px;
   padding: 0 4px;
   background: var(--signal);
-  color: var(--ink);
+  color: var(--on-signal);
   font-size: 11px;
   font-weight: 800;
   line-height: 16px;
   text-align: center;
 }
 
-/* Десктоп: боковая панель */
+/* Десктоп: боковая панель, марка — синяя плашка со ступенькой */
 @media (min-width: 900px) {
   .nav {
     inset: 0 auto 0 0;
     display: flex;
     flex-direction: column;
-    gap: 32px;
+    gap: 12px;
     /* Порог 900px парный с отступом .app__main. */
     width: var(--nav-width);
-    padding: 32px 0 24px;
+    padding: 0 0 24px;
     border-top: 0;
-    border-right: 1px solid var(--line);
+    border-right: 1px solid var(--ink);
     background: var(--white);
   }
 
   .nav__brand {
+    position: relative;
     display: block;
-    padding: 0 24px;
-    color: var(--ink);
-    font-size: 26px;
+    padding: 28px 24px 22px;
+    background: var(--signal);
+    color: var(--on-signal);
+    font-size: 28px;
     font-weight: 800;
-    letter-spacing: -0.02em;
+    letter-spacing: -0.04em;
+    line-height: 1;
     text-decoration: none;
+  }
+
+  .nav__brand::after {
+    content: "";
+    position: absolute;
+    top: 14px;
+    right: 14px;
+    width: var(--stair);
+    height: var(--stair);
+    background: var(--on-signal);
+    box-shadow:
+      -12px 12px 0 var(--on-signal),
+      -24px 24px 0 var(--on-signal);
+    pointer-events: none;
+  }
+
+  .nav__brand:hover {
+    background: var(--signal-hover);
+  }
+
+  .nav__brand:focus-visible {
+    outline-color: var(--on-signal);
+    outline-offset: -6px;
   }
 
   .nav__list {
     display: flex;
     flex-direction: column;
+    padding-top: 8px;
   }
 
   .nav__item {
@@ -101,6 +130,11 @@
     gap: 14px;
     padding: 12px 24px;
     font-size: 16px;
+  }
+
+  .nav__item--active,
+  .nav__item--active:hover {
+    box-shadow: inset 3px 0 0 var(--signal);
   }
 
   .nav__me {

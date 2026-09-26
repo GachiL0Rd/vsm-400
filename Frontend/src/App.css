@@ -1,11 +1,11 @@
 .app__main {
-  padding: 24px 16px calc(96px + env(safe-area-inset-bottom));
+  padding: 28px 16px calc(96px + env(safe-area-inset-bottom));
 }
 
 .screen {
   display: flex;
   flex-direction: column;
-  gap: 32px;
+  gap: 36px;
   max-width: 960px;
   margin: 0 auto;
 }
@@ -13,14 +13,15 @@
 .screen__head {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
 }
 
 .screen__title {
-  font-size: 32px;
+  font-size: 40px;
   font-weight: 800;
-  line-height: 1.1;
-  letter-spacing: -0.01em;
+  line-height: 1.02;
+  letter-spacing: -0.035em;
+  overflow-wrap: break-word;
 }
 
 .screen__title:focus {
@@ -28,7 +29,10 @@
 }
 
 .screen__sub {
+  max-width: 42em;
   color: var(--iron);
+  font-size: 17px;
+  line-height: 1.4;
 }
 
 .screen__action {
@@ -39,10 +43,11 @@
   .app__main {
     /* Порог 900px парный с шириной .nav. */
     margin-left: var(--nav-width);
-    padding: 48px 48px 64px;
+    padding: 48px 48px 72px;
   }
 
   .screen__title {
-    font-size: 44px;
+    font-size: 56px;
+    letter-spacing: -0.04em;
   }
 }
