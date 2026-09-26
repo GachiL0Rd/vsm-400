@@ -1,8 +1,10 @@
 import { Link } from 'react-router';
 import { Icon, type IconName } from '../components/Icon';
+import { Tag } from '../components/Tag';
 import { notices } from '../demo';
 import { formatAgo } from '../format';
 import type { Notice, NoticeKind } from '../model';
+import { usePageTitle } from '../usePageTitle';
 import './FeedScreen.css';
 
 const KINDS: Record<NoticeKind, { icon: IconName; title: string }> = {
@@ -15,6 +17,8 @@ const KINDS: Record<NoticeKind, { icon: IconName; title: string }> = {
 };
 
 export function FeedScreen({ unread }: { unread: number }) {
+  usePageTitle('Лента');
+
   return (
     <div className="screen">
       <header className="screen__head">
@@ -43,7 +47,7 @@ function NoticeEntry({ notice }: { notice: Notice }) {
       <span className="notice__body">
         <span className="notice__meta">
           <span className="notice__kind">
-            {notice.unread && <span className="tag tag--new">Новое</span>}
+            {notice.unread && <Tag tone="new">Новое</Tag>}
             <span className="label">{kind.title}</span>
           </span>
           <span className="label">{formatAgo(notice.at)}</span>

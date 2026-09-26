@@ -1,15 +1,17 @@
 import { Link } from 'react-router';
 import { OutcomeTag } from '../components/OutcomeTag';
+import { Section } from '../components/Section';
 import { nextShift, runs, stats } from '../demo';
 import { formatDate } from '../format';
-import { COMPETENCIES, type Run } from '../model';
+import { COMPETENCIES, FAIL_SCORE, type Run } from '../model';
 import { paths } from '../paths';
+import { usePageTitle } from '../usePageTitle';
 import './ShiftScreen.css';
 
 const gameUrl = import.meta.env.VITE_GAME_URL;
-const FAIL_SCORE = 30;
 
 export function ShiftScreen() {
+  usePageTitle('Смена');
   const stations = [nextShift.from, ...nextShift.stops, nextShift.to];
   const [first, ...rest] = nextShift.focus.map(
     (id) => COMPETENCIES.find((c) => c.id === id)?.title ?? id,
@@ -68,15 +70,15 @@ export function ShiftScreen() {
         )}
       </section>
 
-      <section className="section" aria-labelledby="runs-title">
-        <div className="section__head">
-          <h2 className="section__title" id="runs-title">
-            Журнал рейсов
-          </h2>
+      <Section
+        id="runs-title"
+        title="Журнал рейсов"
+        aside={
           <span className="label">
             {runs.length} из {stats.runs}
           </span>
-        </div>
+        }
+      >
         <table className="journal">
           <thead>
             <tr>
@@ -100,7 +102,7 @@ export function ShiftScreen() {
             ))}
           </tbody>
         </table>
-      </section>
+      </Section>
     </div>
   );
 }
@@ -113,7 +115,7 @@ function JournalRow({ run }: { run: Run }) {
         <Link className="journal__link" to={paths.run(run.id)}>
           {run.route}
         </Link>
-        <span className="label">
+        <span className="label journal__train">
           {run.train}, вагон {run.car}
         </span>
       </td>

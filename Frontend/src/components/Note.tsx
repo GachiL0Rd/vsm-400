@@ -12,8 +12,9 @@ interface NoteProps {
 }
 
 export function Note({ tone = 'neutral', title, source, children }: NoteProps) {
+  const toneClass = tone === 'neutral' ? '' : ` note--${tone}`;
   return (
-    <div className={`note note--${tone}${title ? '' : ' note--bar'}`}>
+    <div className={`note${toneClass}${title ? '' : ' note--bar'}`}>
       {title && <b className="note__title">{title}</b>}
       <p>{children}</p>
       {source && <span className="label">{source}</span>}

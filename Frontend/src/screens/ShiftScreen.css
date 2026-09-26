@@ -133,7 +133,7 @@
 .journal {
   width: 100%;
   border-collapse: collapse;
-  margin-top: -16px;
+  margin-top: calc(var(--stack) * -1);
 }
 
 .journal thead {
@@ -147,10 +147,6 @@
   gap: 4px 12px;
   padding: 14px 0;
   border-bottom: 1px solid var(--line);
-}
-
-.journal__row:hover .journal__link {
-  text-decoration: underline;
 }
 
 .journal td {
@@ -175,7 +171,11 @@
   text-decoration: none;
 }
 
-.journal__run .label {
+.journal__row:hover .journal__link {
+  text-decoration: underline;
+}
+
+.journal__train {
   display: block;
 }
 
@@ -236,13 +236,10 @@
   }
 
   .journal td {
+    display: table-cell;
     padding: 14px 8px;
     border-bottom: 1px solid var(--line);
     vertical-align: top;
-  }
-
-  .journal td {
-    display: table-cell;
   }
 
   .journal__row .journal__num[data-label] {

@@ -1,26 +1,29 @@
 import { Link, useParams } from 'react-router';
 import { Icon } from '../components/Icon';
+import { Meter } from '../components/Meter';
 import { Note } from '../components/Note';
 import { NotFound } from '../components/NotFound';
 import { OutcomeTag } from '../components/OutcomeTag';
+import { Section } from '../components/Section';
+import { Tag, type TagTone } from '../components/Tag';
 import { findRun } from '../demo';
 import { formatDate, formatDelta, plural } from '../format';
-import { COMPETENCIES, type Decision, STAGE_TITLES, type Verdict } from '../model';
+import { COMPETENCIES, type Decision, FAIL_SCORE, STAGE_TITLES, type Verdict } from '../model';
 import { paths } from '../paths';
+import { usePageTitle } from '../usePageTitle';
 import './RunScreen.css';
 
-const VERDICTS: Record<Verdict, { title: string; tone: string }> = {
-  best: { title: 'Верно', tone: 'tag--ok' },
-  ok: { title: 'Допустимо', tone: 'tag--warn' },
-  worse: { title: 'Ошибка', tone: 'tag--stop' },
-  missed: { title: 'Пропущено', tone: 'tag--stop' },
+const VERDICTS: Record<Verdict, { title: string; tone: TagTone }> = {
+  best: { title: 'Верно', tone: 'ok' },
+  ok: { title: 'Допустимо', tone: 'warn' },
+  worse: { title: 'Ошибка', tone: 'stop' },
+  missed: { title: 'Пропущено', tone: 'stop' },
 };
-
-const FAIL_SCORE = 30;
 
 export function RunScreen() {
   const { id } = useParams();
   const run = id ? findRun(id) : undefined;
+  usePageTitle(run?.outcomeNote ?? 'Рейс не найден');
   if (!run) return <NotFound title="Рейс не найден" />;
 
   const lucky = run.decisions.filter((d) => d.lucky).length;
@@ -70,12 +73,7 @@ export function RunScreen() {
       </div>
 
       <div className="report">
-        <section className="section" aria-labelledby="work-title">
-          <div className="section__head">
-            <h2 className="section__title" id="work-title">
-              Работа проводника
-            </h2>
-          </div>
+        <Section id="work-title" title="Работа проводника">
           <dl className="ledger">
             {COMPETENCIES.filter((c) => run.competencyDelta[c.id] !== undefined).map((c) => {
               const delta = run.competencyDelta[c.id] ?? 0;
@@ -87,14 +85,9 @@ export function RunScreen() {
               );
             })}
           </dl>
-        </section>
+        </Section>
 
-        <section className="section" aria-labelledby="facts-title">
-          <div className="section__head">
-            <h2 className="section__title" id="facts-title">
-              Фактический результат
-            </h2>
-          </div>
+        <Section id="facts-title" title="Фактический результат">
           <dl className="ledger">
             <div className="ledger__row">
               <dt>Предотвращено ситуаций</dt>
@@ -115,7 +108,7 @@ export function RunScreen() {
               </dd>
             </div>
           </dl>
-        </section>
+        </Section>
       </div>
 
       {lucky > 0 && (
@@ -127,21 +120,21 @@ export function RunScreen() {
         </Note>
       )}
 
-      <section className="section" aria-labelledby="decisions-title">
-        <div className="section__head">
-          <h2 className="section__title" id="decisions-title">
-            Разбор решений
-          </h2>
+      <Section
+        id="decisions-title"
+        title="Разбор решений"
+        aside={
           <span className="label">
             {run.decisions.length} {plural(run.decisions.length, ['решение', 'решения', 'решений'])}
           </span>
-        </div>
+        }
+      >
         <ol className="log">
           {run.decisions.map((decision) => (
             <DecisionEntry decision={decision} key={decision.id} />
           ))}
         </ol>
-      </section>
+      </Section>
     </div>
   );
 }
@@ -154,12 +147,7 @@ function Scale({ title, value }: { title: string; value: number }) {
         <span className="label">{title}</span>
         <b className={`scale__value num${failed ? ' down' : ''}`}>{value}</b>
       </div>
-      <div className="track">
-        <span
-          className={`track__fill${failed ? ' track__fill--stop' : ''}`}
-          style={{ width: `${value}%` }}
-        />
-      </div>
+      <Meter percent={value} stop={failed} />
     </div>
   );
 }
@@ -179,7 +167,7 @@ function DecisionEntry({ decision }: { decision: Decision }) {
         <p className="log__action">{decision.action}</p>
 
         <div className="log__result">
-          <span className={`tag ${verdict.tone}`}>{verdict.title}</span>
+          <Tag tone={verdict.tone}>{verdict.title}</Tag>
           <dl className="metrics">
             <Delta title="Безопасность" value={decision.safety} />
             <Delta title="Лояльность" value={decision.loyalty} />

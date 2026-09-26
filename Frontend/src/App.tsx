@@ -2,8 +2,8 @@ import { useEffect } from 'react';
 import { Route, Routes, useLocation } from 'react-router';
 import { Nav } from './components/Nav';
 import { NotFound } from './components/NotFound';
-import { findRun, notices, profile } from './demo';
-import { paths, runId } from './paths';
+import { notices, profile } from './demo';
+import { paths } from './paths';
 import { FeedScreen } from './screens/FeedScreen';
 import { ProfileScreen } from './screens/ProfileScreen';
 import { RatingScreen } from './screens/RatingScreen';
@@ -11,23 +11,14 @@ import { RunScreen } from './screens/RunScreen';
 import { ShiftScreen } from './screens/ShiftScreen';
 import './App.css';
 
-function titleFor(pathname: string): string {
-  if (pathname === paths.shift) return 'Смена';
-  if (pathname === paths.profile) return 'Профиль';
-  if (pathname === paths.rating) return 'Рейтинг';
-  if (pathname === paths.feed) return 'Лента';
-  const id = runId(pathname);
-  if (id !== null) return findRun(id)?.outcomeNote ?? 'Рейс не найден';
-  return 'Нет страницы';
-}
-
 function App() {
   const { pathname } = useLocation();
   const unread = notices.filter((notice) => notice.unread).length;
 
   // Смена пути, а не текста заголовка: рейс → рейс тоже начинается сверху.
+  // pathname читается, иначе линтер снимет зависимость и прокрутка залипнет.
   useEffect(() => {
-    document.title = titleFor(pathname);
+    void pathname;
     window.scrollTo(0, 0);
   }, [pathname]);
 

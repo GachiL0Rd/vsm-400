@@ -4,22 +4,9 @@
   gap: 18px;
 }
 
-.me__avatar {
-  width: 72px;
-  height: 72px;
-  font-size: 24px;
-}
-
 .progress {
   display: grid;
   gap: 32px;
-}
-
-@media (min-width: 760px) {
-  .progress {
-    grid-template-columns: 1fr 1fr;
-    gap: 40px;
-  }
 }
 
 .streak {
@@ -46,15 +33,7 @@
 }
 
 .stats {
-  margin-top: -16px;
-}
-
-@media (min-width: 760px) {
-  .stats {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    column-gap: 40px;
-  }
+  margin-top: calc(var(--stack) * -1);
 }
 
 /* ---------- Компетенции ---------- */
@@ -62,13 +41,6 @@
 .skills {
   display: grid;
   gap: 24px;
-}
-
-.radar {
-  display: block;
-  width: 100%;
-  max-width: 420px;
-  margin: 0 auto;
 }
 
 @media (min-width: 800px) {
@@ -131,16 +103,9 @@
 
 .insignia {
   display: grid;
-  margin: -16px 0 0;
+  margin: calc(var(--stack) * -1) 0 0;
   padding: 0;
   list-style: none;
-}
-
-@media (min-width: 760px) {
-  .insignia {
-    grid-template-columns: 1fr 1fr;
-    column-gap: 40px;
-  }
 }
 
 .insignia__item {
@@ -175,6 +140,20 @@
   margin-top: 6px;
 }
 
-.insignia__progress .track {
-  flex: 1;
+@media (min-width: 760px) {
+  .progress {
+    grid-template-columns: 1fr 1fr;
+    gap: 40px;
+  }
+
+  .stats {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    column-gap: 40px;
+  }
+
+  .insignia {
+    grid-template-columns: 1fr 1fr;
+    column-gap: 40px;
+  }
 }

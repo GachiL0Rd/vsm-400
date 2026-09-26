@@ -68,7 +68,8 @@
     display: flex;
     flex-direction: column;
     gap: 32px;
-    width: 232px;
+    /* Порог 900px парный с отступом .app__main. */
+    width: var(--nav-width);
     padding: 32px 0 24px;
     border-top: 0;
     border-right: 1px solid var(--line);

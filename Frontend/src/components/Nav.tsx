@@ -1,5 +1,6 @@
 import { Link, useLocation } from 'react-router';
 import { paths, runId } from '../paths';
+import { Avatar } from './Avatar';
 import { Icon, type IconName } from './Icon';
 import './Nav.css';
 
@@ -69,7 +70,7 @@ export function Nav({ unread, callsign, level }: NavProps) {
         to={paths.profile}
         aria-current={pathname === paths.profile ? 'page' : undefined}
       >
-        <span className="avatar">{callsign.slice(0, 2)}</span>
+        <Avatar callsign={callsign} />
         <span>
           <b>#{callsign}</b>
           <span className="nav__level">Уровень {level}</span>

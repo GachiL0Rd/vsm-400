@@ -32,7 +32,7 @@
 }
 
 .rating__me {
-  margin-bottom: -16px;
+  margin-bottom: calc(var(--stack) * -1);
   color: var(--iron);
 }
 
@@ -43,7 +43,7 @@
 .board {
   display: flex;
   flex-direction: column;
-  max-width: 640px;
+  max-width: var(--measure);
   margin: 0;
   padding: 0;
   border-top: 2px solid var(--ink);
@@ -69,12 +69,6 @@
 .board__rank {
   font-weight: 800;
   text-align: center;
-}
-
-.board__avatar {
-  width: 36px;
-  height: 36px;
-  font-size: 13px;
 }
 
 .board__name {
@@ -107,5 +101,5 @@
 }
 
 .rating__brigade {
-  max-width: 640px;
+  max-width: var(--measure);
 }

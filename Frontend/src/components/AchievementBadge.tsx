@@ -1,4 +1,3 @@
-import type { Achievement } from '../model';
 import { Icon, type IconName } from './Icon';
 import './AchievementBadge.css';
 
@@ -15,11 +14,10 @@ const glyphs: Record<string, IconName> = {
   rare: 'star',
 };
 
-export function AchievementBadge({ achievement }: { achievement: Achievement }) {
-  const earned = achievement.earnedAt !== null;
+export function AchievementBadge({ code, earned }: { code: string; earned: boolean }) {
   return (
     <span className={`badge ${earned ? 'badge--earned' : 'badge--locked'}`}>
-      <Icon name={glyphs[achievement.code] ?? 'medal'} size={26} />
+      <Icon name={glyphs[code] ?? 'medal'} size={26} />
     </span>
   );
 }

@@ -1,7 +1,9 @@
 import { useState } from 'react';
+import { Avatar } from '../components/Avatar';
 import { brigadeInDepot, leaderboards, profile } from '../demo';
 import { formatIn, formatNumber } from '../format';
 import type { LeaderRow, Scope } from '../model';
+import { usePageTitle } from '../usePageTitle';
 import './RatingScreen.css';
 
 const SCOPES: { id: Scope; title: string }[] = [
@@ -11,6 +13,7 @@ const SCOPES: { id: Scope; title: string }[] = [
 ];
 
 export function RatingScreen() {
+  usePageTitle('Рейтинг');
   const [scope, setScope] = useState<Scope>('brigade');
   const board = leaderboards[scope];
   const me = board.rows.find((r) => r.me);
@@ -74,7 +77,7 @@ function BoardRow({ row, gapBefore }: { row: LeaderRow; gapBefore: boolean }) {
       value={row.rank}
     >
       <span className="board__rank num">{row.rank}</span>
-      <span className="avatar board__avatar">{row.callsign.slice(0, 2)}</span>
+      <Avatar callsign={row.callsign} size="sm" />
       <span className="board__name">
         {row.me ? <b>Вы</b> : `#${row.callsign}`}
         {row.move !== 0 && (

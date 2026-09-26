@@ -35,9 +35,11 @@
   --iron: #6b6e73;
   /* Основной цвет текста и контуров — графит, как ливрея поездов ВСМ. */
   --ink: #25282c;
+  --ink-08: rgb(37 40 44 / 8%);
 
   /* Единственный акцент — сигнальный оранжевый. Только действие и «вы здесь». */
   --signal: #ff6700;
+  --signal-hover: #ff7a1f;
   --signal-press: #e65c00;
 
   /* Статусы по логике светофора */
@@ -47,6 +49,11 @@
   --stop: #c62828;
 
   --font: "Moscow Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+
+  /* 232px при min-width: 900px — порог парный в Nav.css и App.css. */
+  --nav-width: 232px;
+  --stack: 16px;
+  --measure: 640px;
 }
 
 * {
@@ -90,27 +97,6 @@ button {
 
 /* ---------- Общие элементы ---------- */
 
-.section {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.section__head {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 12px;
-  padding-bottom: 10px;
-  border-bottom: 2px solid var(--ink);
-}
-
-.section__title {
-  font-size: 20px;
-  font-weight: 800;
-  line-height: 1.2;
-}
-
 .label {
   font-size: 13px;
   font-weight: 500;
@@ -145,7 +131,7 @@ button {
 }
 
 .btn:hover {
-  background: #ff7a1f;
+  background: var(--signal-hover);
 }
 
 .btn:active {
@@ -172,68 +158,6 @@ button {
   background: var(--cloud);
   color: var(--iron);
   cursor: not-allowed;
-}
-
-/*
- * Статусы по принципу «тёмной кабины»: норма не выделяется,
- * отклонение горит сплошной плашкой.
- */
-.tag {
-  display: inline-block;
-  color: var(--ink);
-  font-size: 14px;
-  font-weight: 500;
-  line-height: 1.4;
-  white-space: nowrap;
-}
-
-.tag--ok {
-  color: var(--iron);
-}
-
-.tag--warn,
-.tag--stop,
-.tag--new {
-  padding: 1px 8px;
-  color: var(--white);
-  font-weight: 700;
-}
-
-.tag--warn {
-  background: var(--warn);
-}
-
-.tag--stop {
-  background: var(--stop);
-}
-
-/* Непрочитанное — тот же оранжевый, что у счётчика в меню */
-.tag--new {
-  background: var(--signal);
-}
-
-/* Показатели в строку: серая подпись, жирное значение */
-.metrics {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 20px;
-  margin: 0;
-  font-size: 15px;
-}
-
-.metrics div {
-  display: flex;
-  gap: 6px;
-}
-
-.metrics dt {
-  color: var(--iron);
-}
-
-.metrics dd {
-  margin: 0;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
 }
 
 /* Пары «подпись — значение» в строку */
@@ -276,25 +200,6 @@ button {
 
 .ledger__note {
   display: block;
-  color: var(--iron);
-  font-size: 13px;
-  font-weight: 500;
-}
-
-.track {
-  height: 8px;
-  background: var(--cloud);
-  overflow: hidden;
-}
-
-.track__fill {
-  display: block;
-  height: 100%;
-  background: var(--ink);
-}
-
-.track__fill--stop {
-  background: var(--stop);
 }
 
 .up {
@@ -312,17 +217,4 @@ button {
   overflow: hidden;
   clip-path: inset(50%);
   white-space: nowrap;
-}
-
-.avatar {
-  flex: none;
-  display: grid;
-  place-items: center;
-  width: 40px;
-  height: 40px;
-  border: 2px solid var(--ink);
-  background: var(--white);
-  color: var(--ink);
-  font-size: 14px;
-  font-weight: 800;
 }

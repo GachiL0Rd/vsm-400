@@ -33,7 +33,8 @@
 
 @media (min-width: 900px) {
   .app__main {
-    margin-left: 232px;
+    /* Порог 900px парный с шириной .nav. */
+    margin-left: var(--nav-width);
     padding: 48px 48px 64px;
   }
 

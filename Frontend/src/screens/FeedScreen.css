@@ -1,5 +1,5 @@
 .feed {
-  max-width: 640px;
+  max-width: var(--measure);
   margin: 0;
   padding: 0;
   border-top: 2px solid var(--ink);
@@ -13,10 +13,6 @@
   padding: 16px 0;
   border-bottom: 1px solid var(--line);
   text-decoration: none;
-}
-
-.notice--link:hover .notice__title {
-  text-decoration: underline;
 }
 
 .notice__icon {
@@ -54,6 +50,10 @@
 .notice--unread .notice__title {
   font-size: 18px;
   font-weight: 800;
+}
+
+.notice--link:hover .notice__title {
+  text-decoration: underline;
 }
 
 .notice:not(.notice--unread) .notice__icon {

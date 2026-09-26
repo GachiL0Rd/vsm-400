@@ -3,7 +3,7 @@
   align-items: center;
   gap: 4px;
   align-self: flex-start;
-  margin-bottom: -16px;
+  margin-bottom: calc(var(--stack) * -1);
   color: var(--iron);
   font-weight: 700;
   text-decoration: none;
@@ -45,29 +45,51 @@
   font-size: 20px;
 }
 
-@media (min-width: 700px) {
-  .scores {
-    grid-template-columns: 1fr 1fr 160px;
-    gap: 40px;
-  }
-}
-
 .report {
   display: grid;
   gap: 32px;
 }
 
 @media (min-width: 700px) {
+  .scores {
+    grid-template-columns: 1fr 1fr 160px;
+    gap: 40px;
+  }
+
   .report {
     grid-template-columns: 1fr 1fr;
     gap: 40px;
   }
 }
 
+/* Показатели в строку: серая подпись, жирное значение */
+.metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 20px;
+  margin: 0;
+  font-size: 15px;
+}
+
+.metrics div {
+  display: flex;
+  gap: 6px;
+}
+
+.metrics dt {
+  color: var(--iron);
+}
+
+.metrics dd {
+  margin: 0;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
 /* ---------- Лента решений ---------- */
 
 .log {
-  margin: -16px 0 0;
+  margin: calc(var(--stack) * -1) 0 0;
   padding: 0;
   list-style: none;
 }

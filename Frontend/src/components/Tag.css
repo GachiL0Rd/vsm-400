@@ -1,0 +1,37 @@
+/*
+ * Статусы по принципу «тёмной кабины»: норма не выделяется,
+ * отклонение горит сплошной плашкой.
+ */
+.tag {
+  display: inline-block;
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.tag--ok {
+  color: var(--iron);
+}
+
+.tag--warn,
+.tag--stop,
+.tag--new {
+  padding: 1px 8px;
+  color: var(--white);
+  font-weight: 700;
+}
+
+.tag--warn {
+  background: var(--warn);
+}
+
+.tag--stop {
+  background: var(--stop);
+}
+
+/* Непрочитанное — тот же оранжевый, что у счётчика в меню */
+.tag--new {
+  background: var(--signal);
+}
