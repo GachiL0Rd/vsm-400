@@ -92,6 +92,7 @@ docker compose --profile app up --build -d
 | `npm run prisma:migrate` | `migrate dev` |
 | `npm run prisma:deploy` | `migrate deploy` |
 | `npm run prisma:seed` | Синтетические депо, бригады и рейсы |
+| `npm run smoke` | Сквозной прогон: demo, REST-смена, билет и отчёт. Сервер уже слушает |
 | `npm run verify` | Biome, типы, тесты, сборка |
 
 ## API
