@@ -64,4 +64,4 @@ node scripts/browser-lifecycle.mjs
 `just dev` и `just check`. `just` не является обязательной зависимостью.
 
 Перед изменением прочитайте `AGENTS.md` и актуальный baseline в
-`../docs/user/vsm_baseline_vertical_slice.md`.
+`docs/vsm-docs-iteration-07/vsm_baseline_vertical_slice.md`.

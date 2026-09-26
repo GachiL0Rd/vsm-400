@@ -8,12 +8,13 @@
 
 Перед изменением прочитайте:
 
-- `../docs/user/README.md` — индекс действующих требований;
-- `../docs/user/vsm_baseline_vertical_slice.md` — первый целевой срез;
-- `../docs/user/project_direction.md` — границы модулей и переносимой логики.
+- `docs/vsm-docs-iteration-07/README.md` — индекс действующих требований;
+- `docs/vsm-docs-iteration-07/vsm_baseline_vertical_slice.md` — первый целевой срез;
+- `docs/vsm-docs-iteration-07/project_direction.md` — границы модулей и переносимой логики.
 
-В ветке `feature/mechanics-playground` первичная реализация ведётся по
-[`docs/agent/mechanics-playground-plan.md`](docs/agent/mechanics-playground-plan.md).
+Для текущей реализации приоритет имеют документы
+[`docs/vsm-docs-iteration-07/`](docs/vsm-docs-iteration-07/README.md).
+Материалы `docs/agent/` сохраняются как исторический контекст.
 
 Необязательные локальные инструменты и их параметры описаны в
 `docs/agent/tools.md`.
