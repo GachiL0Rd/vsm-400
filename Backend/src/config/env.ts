@@ -125,9 +125,14 @@ function formatEnvError(error: z.ZodError): string {
   return `Некорректное окружение:\n${lines.join('\n')}`;
 }
 
-/** 0 — не верить X-Forwarded-For. Иначе число прокси перед приложением. */
-export function fastifyTrustProxy(hops: number): number | false {
-  return hops > 0 ? hops : false;
+/**
+ * В адаптер всегда `false`. fastify 5.12.1 (GHSA-3m5p-2c4r-xxw2) убрал число
+ * хопов из `trustProxy`: такое значение в рантайме не читает `X-Forwarded-*`.
+ * Адреса прокси в env нет, подставлять hop-count обратно нельзя. Целое 0..32
+ * остаётся в `AppConfig`, старый `TRUST_PROXY` не роняет старт.
+ */
+export function fastifyTrustProxy(_hops: number): false {
+  return false;
 }
 
 /**

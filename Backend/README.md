@@ -68,7 +68,7 @@ docker compose --profile app up --build -d
 | `CORS_ORIGINS` | Список origin через запятую, хотя бы один |
 | `PUBLIC_GAME_WS_URL` | `ws://` или `wss://`, адрес GameServer для клиента |
 | `COOKIE_SECURE` | `true` или `false`. По умолчанию `false`. В `production` только `true`, иначе старт падает |
-| `TRUST_PROXY` | Целое 0..32. По умолчанию `0`: не верить `X-Forwarded-For`. Иначе число прокси перед приложением |
+| `TRUST_PROXY` | Целое 0..32, по умолчанию `0`. Значение читается, но в Fastify уходит `false`: с 5.12.1 число хопов не включает доверие к `X-Forwarded-For`. Лимит считает адрес сокета |
 | `WEBHOOK_ALLOWED_HOSTS` | Hostname через запятую. Пусто — пустой список, фильтр хоста не включается. Непустое значение — только эти хосты. URL сводится к hostname |
 | `BOOTSTRAP_ADMIN_PASSWORD` | Не поле zod-объекта, проверяет `loadConfig`. Пусто — случайный пароль. Иначе минимум 10 символов. В `production` любое значение роняет старт |
 
@@ -110,8 +110,8 @@ SameSite=Strict). Оба HttpOnly, флаг Secure берётся из `COOKIE_S
 Неверный логин и неверный пароль отвечают одинаково: 401 `INVALID_CREDENTIALS`.
 На логин — 20 попыток за 60 с на IP (IPv6 до /64) и 5 за 60 с на логин
 после trim и обрезки до 64 символов. `POST /api/v1/auth/password` — 5 за 60 с
-на пользователя. Число хопов `X-Forwarded-For` задаёт `TRUST_PROXY`. Счётчик
-лежит в Redis (`auth:throttle:*`, база из `REDIS_URL`).
+на пользователя. `X-Forwarded-For` не учитывается: в адаптер уходит `false`.
+Счётчик лежит в Redis (`auth:throttle:*`, база из `REDIS_URL`).
 
 `POST /api/v1/auth/refresh` вращает refresh. Повтор уже заменённого токена
 отзывает все сессии пользователя и пишет аудит. `POST /api/v1/auth/logout`

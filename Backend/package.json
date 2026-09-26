@@ -62,5 +62,10 @@
     "typescript": "5.9.3",
     "unplugin-swc": "2.0.0",
     "vitest": "5.0.2"
+  },
+  "overrides": {
+    "deepmerge-ts": "8.0.2",
+    "fastify": "5.12.5",
+    "mysql2": "3.24.4"
   }
 }

@@ -53,11 +53,11 @@ describe('loadConfig', () => {
     ).toBe('production');
   });
 
-  it('берёт число хопов прокси и не доверяет заголовок при нуле', () => {
+  it('хранит число хопов, в Fastify заголовок не доверяет', () => {
     expect(loadConfig(valid).trustProxy).toBe(0);
     expect(fastifyTrustProxy(0)).toBe(false);
     expect(loadConfig({ ...valid, TRUST_PROXY: '2' }).trustProxy).toBe(2);
-    expect(fastifyTrustProxy(2)).toBe(2);
+    expect(fastifyTrustProxy(2)).toBe(false);
     expect(() => loadConfig({ ...valid, TRUST_PROXY: '-1' })).toThrow(/TRUST_PROXY/);
   });
 
