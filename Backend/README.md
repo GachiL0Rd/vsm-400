@@ -76,3 +76,12 @@ health e2e подменяет Prisma и Redis.
 | `npm run prisma:deploy` | `migrate deploy` |
 | `npm run prisma:seed` | Проверка соединения |
 | `npm run verify` | Biome, типы, тесты, сборка |
+
+## API
+
+### Интеграция HR/LMS
+
+Ключ `X-API-Key` выпускает ADMIN: `POST /api/v1/admin/api-clients`.
+Внешний контур — `/api/integration/v1`: сотрудник по табельному номеру (хранится
+только HMAC), прогресс, оргструктура, вебхуки. Curl и проверка подписи —
+в [docs/integration.md](docs/integration.md).
