@@ -15,10 +15,9 @@ function App() {
   const { pathname } = useLocation();
   const unread = notices.filter((notice) => notice.unread).length;
 
-  // Смена пути, а не текста заголовка: рейс → рейс тоже начинается сверху.
-  // pathname читается, иначе линтер снимет зависимость и прокрутка залипнет.
+  // Каждый новый путь, включая рейс → рейс, начинается сверху.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: эффект запускается сменой пути
   useEffect(() => {
-    void pathname;
     window.scrollTo(0, 0);
   }, [pathname]);
 

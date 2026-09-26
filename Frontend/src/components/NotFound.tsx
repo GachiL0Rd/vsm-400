@@ -2,12 +2,8 @@ import { Link } from 'react-router';
 import { paths } from '../paths';
 import { usePageTitle } from '../usePageTitle';
 
-const TAB_TITLES: Record<string, string> = {
-  'Такой страницы нет': 'Нет страницы',
-};
-
 export function NotFound({ title = 'Такой страницы нет' }: { title?: string }) {
-  usePageTitle(TAB_TITLES[title] ?? title);
+  usePageTitle(title);
 
   return (
     <div className="screen">

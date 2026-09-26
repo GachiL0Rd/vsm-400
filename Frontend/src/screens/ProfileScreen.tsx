@@ -70,7 +70,7 @@ function LevelBlock() {
   return (
     <Section
       id="level-title"
-      title={`До ${profile.level + 1}-го уровня`}
+      title={<>До {profile.level + 1}-го уровня</>}
       aside={
         <span className="label num">{formatNumber(profile.levelTo - profile.points)} баллов</span>
       }
@@ -228,7 +228,7 @@ function InsigniaBlock() {
               <span className="insignia__text">{a.description}</span>
               {a.earnedAt && <span className="label">Получен {formatDate(a.earnedAt)}</span>}
               {!a.earnedAt && a.progress && (
-                <span className="insignia__progress">
+                <div className="insignia__progress">
                   <Meter
                     percent={(a.progress.value / a.progress.total) * 100}
                     className="track--grow"
@@ -236,7 +236,7 @@ function InsigniaBlock() {
                   <span className="label num">
                     {a.progress.value} из {a.progress.total}
                   </span>
-                </span>
+                </div>
               )}
             </div>
           </li>
