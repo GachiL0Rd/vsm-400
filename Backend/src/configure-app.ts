@@ -39,6 +39,7 @@ export async function configureApp(app: NestFastifyApplication): Promise<void> {
     .addApiKey({ type: 'apiKey', in: 'header', name: 'X-Service-Token' }, 'service-token')
     .build();
   const document = SwaggerModule.createDocument(app, documentConfig);
+  // Swagger вешается на Fastify мимо Nest, поэтому guard его не видит и @Public не нужен.
   SwaggerModule.setup('docs', app, document, {
     useGlobalPrefix: true,
     // useGlobalPrefix уже дописывает /api, поэтому здесь путь без префикса.

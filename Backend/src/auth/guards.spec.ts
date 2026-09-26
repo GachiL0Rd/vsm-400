@@ -63,16 +63,13 @@ describe('AccessGuard', () => {
     { user: { findUnique } } as unknown as PrismaService,
   );
 
-  it('пропускает @Public и служебные пути без токена', async () => {
+  it('пропускает @Public без токена и не смотрит на URL', async () => {
     await expect(
       guard.canActivate(context({ url: '/api/v1/auth/login' }, Probe.prototype.open)),
     ).resolves.toBe(true);
     await expect(
-      guard.canActivate(context({ url: '/api/health' }, Probe.prototype.closed)),
-    ).resolves.toBe(true);
-    await expect(
-      guard.canActivate(context({ url: '/api/docs/swagger-ui.css' }, Probe.prototype.closed)),
-    ).resolves.toBe(true);
+      guard.canActivate(context({ url: '/api/health', headers: {} }, Probe.prototype.closed)),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
     expect(verifyAsync).not.toHaveBeenCalled();
   });
 

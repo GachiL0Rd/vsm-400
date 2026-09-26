@@ -12,7 +12,7 @@ import { z } from 'zod';
 import { PrismaService } from '../prisma/prisma.service';
 import type { AuthUser } from './auth-user';
 import { IS_PUBLIC_KEY } from './public.decorator';
-import { isOpenPath, passwordChangeAllows, readAccessToken } from './request';
+import { passwordChangeAllows, readAccessToken } from './request';
 
 const claimsSchema = z.object({
   sub: z.string().min(1),
@@ -39,7 +39,7 @@ export class AccessGuard implements CanActivate {
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<AccessRequest>();
     const url = request.url ?? '';
-    if (isOpenPath(url) || this.isPublic(context)) {
+    if (this.isPublic(context)) {
       return true;
     }
     const claims = await this.readClaims(request);

@@ -1,20 +1,9 @@
-const OPEN_PREFIXES = ['/api/health', '/api/docs', '/api/openapi.json'];
-
 export function requestPath(url: string): string {
   const path = url.split('?')[0] ?? url;
   if (path.length > 1 && path.endsWith('/')) {
     return path.slice(0, -1);
   }
   return path;
-}
-
-/**
- * Health и Swagger не помечены @Public(): эти файлы чужие.
- * Иначе глобальный guard превратит их в 401 и сломает уже зелёный e2e.
- */
-export function isOpenPath(url: string): boolean {
-  const path = requestPath(url);
-  return OPEN_PREFIXES.some((prefix) => path === prefix || path.startsWith(`${prefix}/`));
 }
 
 /** mustChangePassword пускает только смену пароля и кабинет /me. */
