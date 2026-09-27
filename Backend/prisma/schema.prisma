@@ -95,6 +95,16 @@ enum TextVariantStatus {
   @@map("text_variant_status")
 }
 
+// Откуда строка пула: добор, ротация, живая сессия или ручка методиста.
+enum TextVariantReason {
+  SEED
+  REFILL
+  LIVE
+  MANUAL
+
+  @@map("text_variant_reason")
+}
+
 enum ShiftStatus {
   PLANNED
   STARTED
@@ -347,12 +357,17 @@ model ScenarioTextVariant {
   reviewedById  String?           @db.Uuid
   reviewedAt    DateTime?
   rejectReason  String?
+  // Живой вариант держится за сессию, пока она не кончилась и текст не прошёл проверки.
+  sessionId     String?           @db.Uuid
+  reason        TextVariantReason @default(SEED)
 
   scenarioVersion ScenarioVersion @relation(fields: [scenarioId, version], references: [scenarioId, version])
   reviewedBy      User?           @relation("TextVariantReview", fields: [reviewedById], references: [id])
+  session         GameSession?    @relation(fields: [sessionId], references: [id], onDelete: SetNull)
 
   @@index([scenarioId, version, nodeId, status])
   @@index([reviewedById])
+  @@index([sessionId])
   @@map("scenario_text_variant")
 }
 
@@ -405,6 +420,7 @@ model GameSession {
   shift  ShiftAssignment? @relation(fields: [shiftId], references: [id])
   events GameEvent[]
   run    Run?
+  textVariants ScenarioTextVariant[]
 
   @@index([userId, status])
   @@index([shiftId])
