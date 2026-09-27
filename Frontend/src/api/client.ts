@@ -6,7 +6,7 @@ const AUTH_PREFIX = '/api/v1/auth/';
 // истёкший access. Остальные, включая /auth/session, пробуют refresh.
 const SESSION_PATH = `${AUTH_PREFIX}session`;
 const NO_REFRESH = new Set(['login', 'refresh', 'logout', 'password'].map((p) => AUTH_PREFIX + p));
-const baseUrl = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '');
+export const apiBaseUrl = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '');
 
 export class ApiError extends Error {
   readonly status: number;
@@ -67,7 +67,7 @@ export async function authFetch(request: Request): Promise<Response> {
 }
 
 export const client = createClient<paths>({
-  baseUrl,
+  baseUrl: apiBaseUrl,
   credentials: 'include',
   fetch: authFetch,
 });
@@ -75,7 +75,7 @@ export const client = createClient<paths>({
 /** Выход: в OpenAPI у 200 нет тела, читаем только статус. */
 export async function postLogout(): Promise<void> {
   try {
-    const response = await fetch(`${baseUrl}${AUTH_PREFIX}logout`, {
+    const response = await fetch(`${apiBaseUrl}${AUTH_PREFIX}logout`, {
       method: 'POST',
       credentials: 'include',
     });
@@ -115,7 +115,7 @@ function refreshAccess(): Promise<boolean> {
 
 async function postRefresh(): Promise<boolean> {
   try {
-    const response = await fetch(`${baseUrl}${AUTH_PREFIX}refresh`, {
+    const response = await fetch(`${apiBaseUrl}${AUTH_PREFIX}refresh`, {
       method: 'POST',
       credentials: 'include',
     });

@@ -4,9 +4,9 @@
 достижения, рейтинг и лента уведомлений. React 19, TypeScript, Vite, шрифт
 Moscow Sans.
 
-Вход и сессия идут в Backend (`POST /api/v1/auth/login`, cookie `vsm_access` /
-`vsm_refresh`). Экраны кабинета пока читают синтетику из `src/demo.ts`:
-позывные вместо ФИО, реальных персональных данных нет.
+Вход, сессия и экраны кабинета идут в Backend (`POST /api/v1/auth/login`,
+cookie `vsm_access` / `vsm_refresh`, TanStack Query в `src/api/`). В кабинете
+позывной, не ФИО.
 
 ## Требования
 
@@ -15,12 +15,20 @@ Moscow Sans.
 
 ## Запуск
 
-Из каталога `Frontend/`:
+Локально против Backend:
+
+1. Поднять API по [`Backend/README.md`](../Backend/README.md) на
+   `http://127.0.0.1:3000`.
+2. Из каталога `Frontend/`:
 
 ```powershell
 npm ci --include=dev
 npm run dev
 ```
+
+3. Войти `demo` / `demo` — учётка из сида Backend.
+
+Без живого Backend форма входа ответит «Нет связи с сервером».
 
 Кнопка «Начать смену» ведёт на адрес игры из `VITE_GAME_URL`
 (см. `.env.example`). Пустое или отсутствующее значение — на кнопке

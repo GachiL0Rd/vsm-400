@@ -1,18 +1,21 @@
 import { Link, useParams } from 'react-router';
+import { useRun } from '../../api/cabinet';
+import { ApiError } from '../../api/client';
 import { Icon } from '../../components/Icon/Icon';
 import { Meter } from '../../components/Meter/Meter';
 import { Note } from '../../components/Note/Note';
 import { NotFound } from '../../components/NotFound/NotFound';
 import { OutcomeTag } from '../../components/OutcomeTag/OutcomeTag';
+import { QueryState } from '../../components/QueryState/QueryState';
 import { Section } from '../../components/Section/Section';
 import { Tag, type TagTone } from '../../components/Tag/Tag';
-import { findRun } from '../../demo';
 import { formatDate, formatDelta, plural } from '../../format';
 import { usePageTitle } from '../../hooks/usePageTitle';
 import {
   COMPETENCIES,
   type Decision,
   FAIL_SCORE,
+  type Run,
   STAGE_TITLES,
   scoreGrade,
   type Verdict,
@@ -27,13 +30,17 @@ const VERDICTS: Record<Verdict, { title: string; tone: TagTone }> = {
   missed: { title: 'Пропущено', tone: 'stop' },
 };
 
-export function RunScreen() {
-  const { id } = useParams();
-  const run = id ? findRun(id) : undefined;
-  usePageTitle(run?.outcomeNote ?? 'Рейс не найден');
-  if (!run) return <NotFound title="Рейс не найден" />;
+function missingRun(error: unknown): boolean {
+  return error instanceof ApiError && (error.status === 404 || error.status === 422);
+}
 
-  const lucky = run.decisions.filter((d) => d.lucky).length;
+export function RunScreen() {
+  const { id = '' } = useParams();
+  const run = useRun(id);
+  const missing = !id || (run.isError && missingRun(run.error));
+  usePageTitle(missing ? 'Рейс не найден' : (run.data?.outcomeNote ?? 'Рейс'));
+
+  if (missing) return <NotFound title="Рейс не найден" />;
 
   return (
     <div className="screen">
@@ -41,7 +48,16 @@ export function RunScreen() {
         <Icon name="back" size={20} />
         Журнал рейсов
       </Link>
+      <QueryState query={run}>{run.data && <RunBody run={run.data} />}</QueryState>
+    </div>
+  );
+}
 
+function RunBody({ run }: { run: Run }) {
+  const lucky = run.decisions.filter((decision) => decision.lucky).length;
+
+  return (
+    <>
       <header className="screen__head">
         <div>
           <OutcomeTag outcome={run.outcome} />
@@ -84,15 +100,17 @@ export function RunScreen() {
       <div className="report">
         <Section id="work-title" title="Работа проводника">
           <dl className="ledger">
-            {COMPETENCIES.filter((c) => run.competencyDelta[c.id] !== undefined).map((c) => {
-              const delta = run.competencyDelta[c.id] ?? 0;
-              return (
-                <div className="ledger__row" key={c.id}>
-                  <dt>{c.title}</dt>
-                  <dd className={delta > 0 ? 'up' : 'down'}>{formatDelta(delta)}</dd>
-                </div>
-              );
-            })}
+            {COMPETENCIES.filter((item) => run.competencyDelta[item.id] !== undefined).map(
+              (item) => {
+                const delta = run.competencyDelta[item.id] ?? 0;
+                return (
+                  <div className="ledger__row" key={item.id}>
+                    <dt>{item.title}</dt>
+                    <dd className={delta > 0 ? 'up' : 'down'}>{formatDelta(delta)}</dd>
+                  </div>
+                );
+              },
+            )}
           </dl>
         </Section>
 
@@ -144,7 +162,7 @@ export function RunScreen() {
           ))}
         </ol>
       </Section>
-    </div>
+    </>
   );
 }
 

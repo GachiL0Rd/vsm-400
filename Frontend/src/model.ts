@@ -1,5 +1,5 @@
-// Модель данных кабинета. Контракт API ещё не зафиксирован: поля Run и
-// Achievement расширены тем, что нужно экранам.
+// Модель экранов. Страницы журнала и ленты собирает src/api/cabinet.ts:
+// в ответе не массив, а обёртка с cursor.
 
 export type CompetencyId =
   | 'safety'
@@ -47,6 +47,8 @@ export function scoreGrade(value: number): ScoreGrade {
   return 'poor';
 }
 
+export type Grade = 'TRAINEE' | 'CONDUCTOR' | 'CONDUCTOR_SENIOR' | 'INSTRUCTOR';
+
 export interface Profile {
   callsign: string;
   position: string;
@@ -63,6 +65,7 @@ export interface Profile {
   trend: Competencies;
   /** Заметка по компетенции — вывод по истории рейсов. */
   weakNote: Partial<Record<CompetencyId, string>>;
+  grade: Grade;
 }
 
 export interface Stats {
@@ -136,6 +139,9 @@ export interface Run {
   decisions: Decision[];
 }
 
+/** Строка журнала: тот же рейс, без разбора решений. */
+export type RunSummary = Omit<Run, 'decisions'>;
+
 export interface NextShift {
   train: string;
   from: string;
@@ -145,6 +151,8 @@ export interface NextShift {
   car: number;
   carClass: string;
   departure: string;
+  /** ISO-момент. departure — подпись HH:mm по Москве. */
+  departureAt: string;
   stops: string[];
   focus: CompetencyId[];
 }
@@ -181,7 +189,9 @@ export type NoticeKind =
   | 'challenge'
   | 'overtaken'
   | 'advice'
-  | 'achievement';
+  | 'achievement'
+  | 'promotion'
+  | 'assignment';
 
 export interface Notice {
   id: string;

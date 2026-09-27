@@ -30,7 +30,7 @@ function tabState(
 interface NavProps {
   unread: number;
   callsign: string;
-  level: number;
+  level: number | null;
 }
 
 export function Nav({ unread, callsign, level }: NavProps) {
@@ -74,10 +74,10 @@ export function Nav({ unread, callsign, level }: NavProps) {
           to={paths.profile}
           aria-current={pathname === paths.profile ? 'page' : undefined}
         >
-          <Avatar callsign={callsign} />
+          <Avatar callsign={callsign || '—'} />
           <span>
-            <b>#{callsign}</b>
-            <span className="nav__level">Уровень {level}</span>
+            <b>{callsign ? `#${callsign}` : '…'}</b>
+            {level !== null && <span className="nav__level">Уровень {level}</span>}
           </span>
         </Link>
         <button type="button" className="nav__logout" onClick={() => logout.mutate()}>
