@@ -624,6 +624,19 @@ describe('API интеграции HR', { concurrent: false }, () => {
     expect(memory.deliveries).toHaveLength(1);
     expect(JSON.stringify(memory.deliveries[0]?.payload)).not.toContain(extId);
 
+    // Одобренный разбор: тот же рейс, но уже с очками — LMS должна узнать.
+    const reviewedRun = randomUUID();
+    await dispatch.onRunRecorded({ ...payload, runId: reviewedRun, points: 0, suspicious: true });
+    await dispatch.onRunRecorded({ ...payload, runId: reviewedRun, points: 30 });
+    await dispatch.onRunRecorded({ ...payload, runId: reviewedRun, points: 30 });
+    const reviewed = memory.deliveries.filter((row) =>
+      JSON.stringify(row.payload).includes(reviewedRun),
+    );
+    expect(
+      reviewed.map((row) => (row.payload as { data: { points: number } }).data.points),
+    ).toEqual([0, 30]);
+    memory.deliveries.splice(1);
+
     webhookCalls.length = 0;
     await app.get(WebhookDispatchService).dispatch(new Date());
     const sent = webhookCalls[0];

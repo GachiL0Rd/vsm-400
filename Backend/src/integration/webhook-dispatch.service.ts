@@ -66,25 +66,30 @@ export class WebhookDispatchService {
 
   /**
    * run.recorded, не сырой run.completed: к этому моменту очки уже в леджере,
-   * и LMS получает ту же сумму, что кабинет.
+   * и LMS получает ту же сумму, что кабинет. Ошибка не глотается: без неё
+   * RunRecorder не поставит effectsAt, и минутная сверка повторит постановку.
+   * Ключ повтора — рейс и suspicious: одобренный разбор шлёт второе событие с очками.
    */
-  @OnEvent(RUN_RECORDED, { async: true })
+  @OnEvent(RUN_RECORDED, { async: true, promisify: true, suppressErrors: false })
   async onRunRecorded(payload: RunRecordedPayload): Promise<void> {
-    await this.safely(RUN_RECORDED, async () => {
-      const callsign = await this.callsignOf(payload.userId);
-      await this.enqueue(
-        RUN_RECORDED,
-        {
-          userId: payload.userId,
-          callsign,
-          runId: payload.runId,
-          points: payload.points,
-          outcome: payload.outcome,
-          suspicious: payload.suspicious,
-        },
-        { payload: { path: ['data', 'runId'], equals: payload.runId } },
-      );
-    });
+    const callsign = await this.callsignOf(payload.userId);
+    await this.enqueue(
+      RUN_RECORDED,
+      {
+        userId: payload.userId,
+        callsign,
+        runId: payload.runId,
+        points: payload.points,
+        outcome: payload.outcome,
+        suspicious: payload.suspicious,
+      },
+      {
+        AND: [
+          { payload: { path: ['data', 'runId'], equals: payload.runId } },
+          { payload: { path: ['data', 'suspicious'], equals: payload.suspicious } },
+        ],
+      },
+    );
   }
 
   @OnEvent(ACHIEVEMENT_GRANTED, { async: true })
