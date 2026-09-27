@@ -140,6 +140,10 @@ class WsConnection implements GameProtocolConnection {
     this.socket.once('close', listener);
   }
 
+  send(data: string | Uint8Array): void {
+    this.socket.send(data);
+  }
+
   close(code: number, reason: string): void {
     this.socket.close(code, reason);
   }

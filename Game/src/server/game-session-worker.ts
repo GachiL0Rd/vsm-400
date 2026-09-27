@@ -1,3 +1,8 @@
+import type { PublicClockView } from '../common/game-wire.ts';
+import type {
+  PublicGameProjection,
+  RecordedGameplayCommand,
+} from '../projection/public-game-session.ts';
 import type { GameAttemptSnapshot } from '../simulation/game-attempt.ts';
 import type { ResolvedGameContent } from './content-registry.ts';
 import type { ResumeTokenRegistry } from './resume-token-registry.ts';
@@ -47,6 +52,7 @@ export interface GameSessionWorkerOptions {
   readonly mode: SessionMode;
   readonly content: ResolvedGameContent;
   readonly attempt: GameAttemptPort;
+  readonly projection: PublicGameProjection;
   readonly platformGateway: PlatformGateway;
   readonly resumeTokens: ResumeTokenRegistry;
   readonly disconnectDebounceMs: number;
@@ -73,6 +79,10 @@ export class GameSessionWorker {
   private abortTimer: WorkerTimer | null = null;
   private finishPromise: Promise<FinishSessionResponse> | null = null;
   private finishReceipt: FinishSessionResponse | null = null;
+  private readonly userInputs: Array<{
+    readonly at: number;
+    readonly command: RecordedGameplayCommand;
+  }> = [];
 
   constructor(private readonly options: GameSessionWorkerOptions) {
     this.clock = options.clock ?? systemWorkerClock;
@@ -89,6 +99,22 @@ export class GameSessionWorker {
 
   get connectionLifecycle(): ConnectionLifecycle {
     return this.connectionState;
+  }
+
+  get projection(): PublicGameProjection {
+    return this.options.projection;
+  }
+
+  isAttachedConnection(connectionId: string): boolean {
+    return this.connectionState === 'attached' && this.connectionId === connectionId;
+  }
+
+  publicClock(): PublicClockView {
+    return { timeScale: 1, paused: this.lifecycleState === 'paused' };
+  }
+
+  recordUserInput(command: RecordedGameplayCommand): void {
+    this.userInputs.push({ at: this.options.attempt.snapshot().time, command });
   }
 
   attach(connectionId: string): SessionAttachment {
@@ -189,7 +215,7 @@ export class GameSessionWorker {
         simulationCompatibilityVersion: this.options.content.simulationCompatibilityVersion,
       },
       rootSeed: String(snapshot.rootSeed),
-      userInputs: [],
+      userInputs: [...this.userInputs],
       achievements: { setVersion: 'unimplemented', ids: [] },
       termination: {
         kind: termination.kind,

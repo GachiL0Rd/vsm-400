@@ -1,4 +1,6 @@
 import { randomBytes } from 'node:crypto';
+import type { SessionModeView } from '../common/game-wire.ts';
+import { PublicGameProjection } from '../projection/public-game-session.ts';
 import type { GameContentRegistry } from './content-registry.ts';
 import {
   GameSessionWorker,
@@ -7,7 +9,7 @@ import {
   type WorkerScheduler,
 } from './game-session-worker.ts';
 import type { ResumeTokenRegistry } from './resume-token-registry.ts';
-import type { PlatformGateway } from './types.ts';
+import type { PlatformGateway, SessionMode } from './types.ts';
 
 export interface GameSessionHostOptions {
   readonly platformGateway: PlatformGateway;
@@ -33,11 +35,17 @@ export class GameSessionHost {
       const seed = rootSeed(
         resolved.mode.kind === 'replay' ? resolved.mode.source.rootSeed : undefined,
       );
+      const attempt = content.createAttempt(seed, resolved.mode);
       worker = new GameSessionWorker({
         attemptId: resolved.attemptId,
         mode: resolved.mode,
         content,
-        attempt: content.createAttempt(seed, resolved.mode),
+        attempt,
+        projection: new PublicGameProjection({
+          attemptId: resolved.attemptId,
+          attempt,
+          mode: publicMode(resolved.mode),
+        }),
         platformGateway: this.options.platformGateway,
         resumeTokens: this.options.resumeTokens,
         disconnectDebounceMs: this.options.disconnectDebounceMs,
@@ -51,14 +59,10 @@ export class GameSessionHost {
     return worker.attach(connectionId);
   }
 
-  attachWithResumeToken(
-    attemptId: string,
-    resumeToken: string,
-    connectionId: string,
-  ): SessionAttachment {
+  attachWithResumeToken(resumeToken: string, connectionId: string): SessionAttachment {
     const nowMs = this.options.clock?.nowMs() ?? Date.now();
-    if (!this.options.resumeTokens.validate(resumeToken, attemptId, nowMs))
-      throw new Error('Invalid or expired resume token');
+    const attemptId = this.options.resumeTokens.resolve(resumeToken, nowMs);
+    if (attemptId === null) throw new Error('Invalid or expired resume token');
     const worker = this.workers.get(attemptId);
     if (worker === undefined) throw new Error('Attempt is not available for resume');
     return worker.attach(connectionId);
@@ -80,4 +84,33 @@ function rootSeed(replaySeed: string | undefined): number {
     throw new RangeError('Replay root seed must be a non-negative safe integer');
   }
   return randomBytes(4).readUInt32BE(0);
+}
+
+function publicMode(mode: SessionMode): SessionModeView {
+  switch (mode.kind) {
+    case 'live':
+      return { kind: 'live' };
+    case 'guided':
+      return {
+        kind: 'guided',
+        hints: {
+          immediateFeedback: mode.hints.immediateFeedback,
+          suggestions: mode.hints.suggestions,
+          objectHighlights: mode.hints.highlights,
+          explanations: mode.hints.explanations,
+        },
+      };
+    case 'replay':
+      return {
+        kind: 'replay',
+        capabilities: {
+          seek: true,
+          speeds: [0.25, 0.5, 1, 2, 4, 8],
+          entityInspection: true,
+          revealTraits: mode.reveal.traits,
+          revealActionScores: mode.reveal.actionLogits,
+          revealAssessment: mode.reveal.assessment,
+        },
+      };
+  }
 }

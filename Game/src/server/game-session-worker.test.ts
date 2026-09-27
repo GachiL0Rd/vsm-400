@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { PublicGameProjection } from '../projection/public-game-session.ts';
 import { GameAttempt } from '../simulation/game-attempt.ts';
 import { BaselineContentRegistry } from './content-registry.ts';
 import {
@@ -49,6 +50,7 @@ function worker(scheduler: FakeScheduler, attempt = new GameAttempt({ rootSeed: 
       mode: mockMode('live'),
       content: new BaselineContentRegistry().resolve('vsm-baseline-01'),
       attempt,
+      projection: new PublicGameProjection({ attemptId: 'attempt-1', attempt }),
       platformGateway: gateway,
       resumeTokens: registry,
       disconnectDebounceMs: 10,
@@ -65,9 +67,11 @@ describe('GameSessionWorker', () => {
     const token = registry.issue('attempt-1', 10);
 
     expect(registry.validate(token, 'attempt-1', 10)).toBe(true);
+    expect(registry.resolve(token, 10)).toBe('attempt-1');
     expect(registry.validate(token, 'attempt-1', 10)).toBe(true);
     expect(registry.validate(token, 'another-attempt', 10)).toBe(false);
     expect(registry.validate(token, 'attempt-1', 11)).toBe(false);
+    expect(registry.resolve(token, 11)).toBeNull();
   });
 
   it('pauses only after disconnect debounce and resumes before grace expires', () => {
