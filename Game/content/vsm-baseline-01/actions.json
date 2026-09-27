@@ -12,6 +12,7 @@
       "id": "request-drink",
       "handler": "request-item",
       "baseLogit": -2,
+      "speech": "Можно воды?",
       "params": {
         "itemKind": "drink",
         "waitingTrait": "waiting-drink",
@@ -24,6 +25,7 @@
       "id": "request-food",
       "handler": "request-item",
       "baseLogit": -2,
+      "speech": "Можно что-нибудь поесть?",
       "params": {
         "itemKind": "food",
         "waitingTrait": "waiting-food",
@@ -186,13 +188,16 @@
       ]
     },
     {
-      "id": "annoyed"
+      "id": "annoyed",
+      "speech": "Сколько можно ждать?"
     },
     {
-      "id": "pressure-whistle"
+      "id": "pressure-whistle",
+      "speech": "Что это свистит?"
     },
     {
-      "id": "ears-blocked"
+      "id": "ears-blocked",
+      "speech": "Уши закладывает…"
     }
   ],
   "baseActions": {

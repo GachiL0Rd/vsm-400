@@ -536,7 +536,13 @@ An offer is bound to its `revision`. Any revision change invalidates it, and inv
 
 ## 9. Presentation events
 
-Protocol v1 reserves `presentation-event` for transient presentation effects that do not by themselves define durable authoritative state. The release `0.1.0` server does not currently emit this message type; the client may support the envelope ahead of server-side producers:
+`presentation-event` is a transient effect. It is not durable authoritative state: it is absent from `snapshot` and `delta`, it is not written into `userInputs`, and it does not change assessment. Reconnect and `resync` establish a new durable snapshot and do not replay presentation events already emitted. Replay mode re-derives the same list by executing the same simulation path; it does not read a stored event log.
+
+`at` is the authoritative simulation time of the fact. `sequence` starts at 0 for the attempt and increases by 1 for every emitted event. The same root seed and gameplay inputs produce the same list. When a fact also changes public revision, the server sends that `delta` first and the presentation events for that step after it.
+
+Within one simulation step the order is: action `speech`, trait `speech`, phase `notification`, termination `notification`, then `achievement-unlocked`. Passengers are ordered by id. Hidden trait ids, action ids, and other non-public state are not copied into the event.
+
+Release `0.1.0` emits `speech`, `notification`, and `achievement-unlocked`. `hint` and `effect` stay in the schema and are not generated; guided coaching remains deferred. A separate fire notification is not emitted: active fire is already a public world object. A pressure-field notification is not emitted either: cabin pressure is not part of the durable snapshot.
 
 ```json
 {
@@ -554,17 +560,21 @@ Protocol v1 reserves `presentation-event` for transient presentation effects tha
 }
 ```
 
-Current payload kinds:
+Payload kinds:
 
-- `hint` — optional text/target and presentation style `message | toast | highlight`;
-- `speech` — entity text and visibility;
-- `notification`;
-- `achievement-unlocked`;
-- `effect` — public `visualId` with optional target.
+- `speech` — passenger line from content. Optional `speech` on an NPC action is emitted when that action starts (`request-drink` → «Можно воды?», `request-food` → «Можно что-нибудь поесть?»). Optional `speech` on a trait is emitted when a passenger gains that trait (`annoyed` → «Сколько можно ждать?», `ears-blocked` → «Уши закладывает…», `pressure-whistle` → «Что это свистит?»). The payload is `entityId`, `text`, and `visible`.
+- `notification` — a public phase change already visible on `phase`:
+  - `pre-departure` → `origin-stop`: `phase:origin-stop`, «Посадка пассажиров открыта»;
+  - `origin-stop` → `travel`: `phase:travel`, «Поезд отправился»;
+  - `travel` → `stop`: `phase:stop:<index>`, «Прибытие: остановка N» (`N` is the 1-based stop index);
+  - `stop` → `travel`: `phase:depart:<index>`, «Отправление»;
+  - route completion: `termination:route-completed`, «Рейс завершён»;
+  - terminal rule: `termination:terminal-rule`, «Рейс прерван».
+- `achievement-unlocked` — once per unlocked achievement id, at the termination time, after the termination notification and before `session-state` `finishing`.
+- `hint` — optional text/target and presentation style `message | toast | highlight`. Not emitted in release `0.1.0`.
+- `effect` — public `visualId` with optional target. Not emitted in release `0.1.0`.
 
-An event may also contain mode-specific `extensions: [{ type, data }]`.
-
-`at` and `sequence` provide ordering metadata. The current contract does not promise replay of transient presentation events after reconnect; reconnect establishes a new durable snapshot.
+An event may also contain mode-specific `extensions: [{ type, data }]`. Live and guided sessions do not attach hidden-state extensions.
 
 ## 10. Session state
 

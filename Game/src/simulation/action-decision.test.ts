@@ -257,6 +257,17 @@ describe('action decision', () => {
         content([{ id: 'basic' }], [action('bad', 'move', 0, { params: { level: Number.NaN } })]),
       ),
     ).toThrow(RangeError);
+    expect(() => loadActionContent(content([{ id: 'basic', speech: '  ' }]))).toThrow(RangeError);
+    expect(() =>
+      loadActionContent(content([{ id: 'basic' }], [action('shout', 'wait', 0, { speech: '' })])),
+    ).toThrow(RangeError);
+    const spoken = loadActionContent(
+      content([{ id: 'basic', speech: 'Алло' }], [action('shout', 'wait', 1, { speech: 'Эй' })]),
+    );
+    expect(spoken.traitSpeech('basic')).toBe('Алло');
+    expect(spoken.actionSpeech('shout')).toBe('Эй');
+    expect(spoken.actionSpeech('missing')).toBeUndefined();
+    expect(spoken.traitSpeech('missing')).toBeUndefined();
     expect(() =>
       loadActionContent(
         content([

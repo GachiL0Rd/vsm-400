@@ -136,6 +136,7 @@ export class GameAttempt {
 
   private readonly assessmentRuntime: AssessmentRuntime;
   private playerMoveTargetCellId: string | null = null;
+  private stepObserver: ((at: SimTimeUs) => void) | null = null;
 
   private readonly queue = new EventQueue<AttemptEvent>();
   private readonly activeRegions = new Set<string>();
@@ -268,6 +269,14 @@ export class GameAttempt {
       })),
       termination: this.terminationState,
     };
+  }
+
+  /** Projection hook. Fires after each applied queue event, at that event's time. */
+  observeSteps(observer: (at: SimTimeUs) => void): void {
+    if (this.stepObserver !== null) {
+      throw new Error('Attempt step observer is already registered');
+    }
+    this.stepObserver = observer;
   }
 
   advanceTo(target: SimTimeUs): void {
@@ -539,6 +548,11 @@ export class GameAttempt {
 
   private apply(scheduled: ScheduledEvent<AttemptEvent>): void {
     if (this.terminationState !== null) return;
+    this.dispatchScheduled(scheduled);
+    this.stepObserver?.(this.time);
+  }
+
+  private dispatchScheduled(scheduled: ScheduledEvent<AttemptEvent>): void {
     const event = scheduled.payload;
     switch (event.kind) {
       case 'action': {

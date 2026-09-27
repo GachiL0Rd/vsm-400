@@ -1,6 +1,6 @@
 # Actions: переходы состояния и цикл поведения
 
-**Версия документа:** 0.4.0  
+**Версия документа:** 0.4.1  
 **Статус:** Draft / implementation baseline  
 **Дата редакции:** 2026-09-27
 
@@ -82,8 +82,11 @@ interface ActionDefinition<P> {
   handler: string;
   baseLogit: number;
   params: P;
+  speech?: string;
 }
 ```
+
+`speech`, если задан, — непустая публичная реплика. Это не параметр handler, не logit и не поле simulation state. Проекция отправляет `presentation-event` `speech`, когда этот NPC action стартует.
 
 Пример:
 
@@ -91,6 +94,7 @@ interface ActionDefinition<P> {
 id: request-drink
 handler: request-item
 baseLogit: -2.0
+speech: "Можно воды?"
 params:
   itemKind: drink
   waitingTrait: waiting-drink
@@ -366,7 +370,7 @@ currentAction = request-drink / waiting
 timeoutAt = now + 120s
 ```
 
-Публичная проекция может показать реплику/запрос пассажира.
+Публичная реплика запроса берётся из `speech` этого action (`request-drink`: «Можно воды?», `request-food`: «Можно что-нибудь поесть?»). В событие не попадают id action или trait.
 
 ### 11.3. Доступность действия игрока
 
@@ -518,11 +522,13 @@ waiting-drink:
 
 Trait runtime остаётся обычной строкой в `entity.traits`.
 
+У trait может быть необязательное непустое поле `speech`. Когда пассажир получает такой trait, проекция эмитит публичную реплику и не раскрывает id trait. Baseline: `annoyed` — «Сколько можно ждать?», `ears-blocked` — «Уши закладывает…», `pressure-whistle` — «Что это свистит?».
+
 ## 16. Dialogue
 
 Dialogue не является отдельной state machine.
 
-NPC action может породить публичную реплику или interaction state. Player-facing dialogue option является представлением обычного доступного action.
+NPC action или полученный trait порождает публичную реплику только если в content заполнено `speech`. Player-facing dialogue option является представлением обычного доступного action. Реплика транзиентна: её нет в snapshot, она не входит в user input и не влияет на assessment. Replay получает тот же текст повторным прогоном simulation, а не из журнала событий.
 
 ```text
 simulation action
@@ -544,7 +550,8 @@ server action handler
 - соответствует ли `params` schema handler-а;
 - существуют ли action IDs, на которые ссылаются traits;
 - корректны ли base logits;
-- существуют ли referenced traits/items/object IDs, если handler schema требует статическую ссылку.
+- существуют ли referenced traits/items/object IDs, если handler schema требует статическую ссылку;
+- `speech` у action или trait, если поле есть, является непустой строкой.
 
 State-dependent validation выполняется повторно непосредственно перед `start`.
 
@@ -573,4 +580,6 @@ State-dependent validation выполняется повторно непоср�
 - какие interrupt classes окажутся реально необходимыми после первых сценариев;
 - потребуется ли action-specific runtime data кроме `target` и стандартной phase;
 - нужен ли waiting-action без timeout как постоянный режим;
-- понадобится ли впоследствии общий сериализуемый effect layer для authoring tools.
+- понадобится ли впоследствии общий сериализуемый effect layer для authoring tools;
+- нужен ли отдельный notification или effect для пожара: огонь уже виден как public object `fire:<cellId>`;
+- нужен ли notification числового pressure: поле не входит в durable public snapshot, наблюдаемый симптом идёт репликой trait `pressure-whistle` / `ears-blocked`.

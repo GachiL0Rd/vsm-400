@@ -45,7 +45,7 @@ Release candidate должен обеспечивать следующий ра�
 
 Следующие возможности остаются частью целевого baseline или следующего этапа, но не блокируют текущий release:
 
-- полноценные guided coaching/hint events;
+- полноценные guided coaching/hint events (сервер при этом выпускает наблюдаемые `speech`, phase `notification` и `achievement-unlocked`; генерация hints остаётся вне release);
 - replay seek/checkpoints, hidden-state inspection, assessment/logit reveal и расширенный replay UI;
 - gameplay-взаимодействие со связью с машинистом;
 - отдельное spatial sanitation state с public overlays и сравнением наблюдаемого состояния с журналом;
@@ -77,7 +77,7 @@ runtime
   исполняет generic mechanics и authoritative transitions
 ```
 
-Код должен предоставлять переиспользуемые traits/actions/events для типовых запросов и реакций. Конкретный рейс определяет их время, пассажиров и последовательность через Scenario/content.
+Код должен предоставлять переиспользуемые traits/actions/events для типовых запросов и реакций. Конкретный рейс определяет их время, пассажиров и последовательность через Scenario/content. Публичная реплика пассажира — необязательное поле `speech` у action или trait в content, а не текст, зашитый в simulation.
 
 `servicePlan.windows` следует рассматривать как declarative scenario/content data и контекст для orchestration/assessment/coaching, а не как основание для отдельной жёстко зашитой business-логики Game Server.
 
