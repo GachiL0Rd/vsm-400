@@ -2,7 +2,7 @@ import { EngineError } from '../engine/errors';
 import type { ScenarioGraph } from '../engine/schema';
 import { step } from '../engine/step';
 import { summarize } from '../engine/summarize';
-import type { EngineState, NodeView, RunSummary, ShiftPlan } from '../engine/types';
+import type { EngineState, NodeView, RunSummary, ShiftPlan, TextVariant } from '../engine/types';
 import { view } from '../engine/view';
 import { isPastDeadline, mergeFlags, reactionFlag, timingFlags } from './anti-cheat';
 import type { StoredState } from './state-json';
@@ -30,6 +30,8 @@ export function computeNext(input: {
   deadline: Date | null;
   now: Date;
   flags: readonly string[];
+  /** Перефраз узла, который игрок уже видит. Журнал пишет его тексты. */
+  textVariant?: TextVariant;
 }): NextStep {
   const graph = currentGraph(input.state, input.graphs);
   const nowMs = input.now.getTime();
@@ -40,7 +42,12 @@ export function computeNext(input: {
     input.state,
     graph,
     applied === 'timeout' ? 'timeout' : { choiceId: input.choiceId },
-    { elapsedMs: elapsed, plan: input.plan, scenarios: input.graphs },
+    {
+      elapsedMs: elapsed,
+      plan: input.plan,
+      scenarios: input.graphs,
+      textVariant: input.textVariant,
+    },
   );
   const timing = timingFlags({
     clientTs: input.clientTs,

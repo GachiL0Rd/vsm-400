@@ -1,4 +1,5 @@
-import type { EngineState, ScenarioGraph } from '../engine';
+import type { EngineState, ScenarioGraph, TextVariant } from '../engine';
+import type { Rng } from '../engine/rng';
 import { view } from '../engine/view';
 import type { NextStep } from './compute-next';
 import type { DecisionView, SessionView } from './dto';
@@ -13,9 +14,14 @@ export function presentView(input: {
   deadline: Date | null;
   graph: Graph;
   now: Date;
+  textVariant?: TextVariant;
+  rng?: Rng;
 }): SessionView {
   const elapsed = elapsedMs(input.shownAt, input.now);
-  const nodeView = view(input.state, input.graph, elapsed);
+  const nodeView = view(input.state, input.graph, elapsed, {
+    textVariant: input.textVariant,
+    rng: input.rng,
+  });
   return {
     status: input.status,
     seq: input.state.seq,

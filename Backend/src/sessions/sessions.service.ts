@@ -4,15 +4,21 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { AuditService } from '../audit/audit.service';
 import type { AuthUser } from '../auth/auth-user';
 import { Clock } from '../common/clock';
-import { RUN_COMPLETED, type RunCompletedPayload } from '../common/events';
+import {
+  RUN_COMPLETED,
+  type RunCompletedPayload,
+  SESSION_TEXT_REQUESTED,
+  type SessionTextRequestItem,
+} from '../common/events';
 import { APP_CONFIG, type AppConfig } from '../config/env';
 import { EngineError } from '../engine/errors';
 import type { CatalogEntry } from '../engine/generator';
 import { generateShift } from '../engine/generator';
-import { commitOf, createRng, newSeed } from '../engine/rng';
+import { commitOf, createRng, newSeed, type Rng } from '../engine/rng';
 import type { ScenarioGraph } from '../engine/schema';
 import { createState } from '../engine/step';
-import type { RunSummary, ShiftPlan } from '../engine/types';
+import type { EngineState, RunSummary, ShiftPlan, TextVariant } from '../engine/types';
+import { view } from '../engine/view';
 import { ActorType, type GameSession, type Prisma } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
@@ -53,7 +59,7 @@ import { decisionBody, presentView, readReplay } from './present';
 import { reportToSummary } from './report-map';
 import { loadRoutesFile } from './routes-file';
 import { decryptSeed, encryptSeed } from './seed-box';
-import { lockUserSessions } from './session-lock';
+import { lockSession, lockUserSessions } from './session-lock';
 import {
   attachShown,
   currentGraph,
@@ -65,6 +71,19 @@ import {
   toJson,
   toPublicPlan,
 } from './state-json';
+import {
+  buildTextPlan,
+  claimVariant,
+  livePinTarget,
+  llmMode,
+  orderRng,
+  payloadVariant,
+  personaOf,
+  pinLiveNode,
+  readTextPlan,
+  selectedVariantIds,
+  textPlanKey,
+} from './text-plan';
 import type { TicketClaims } from './ticket.service';
 import { TicketService } from './ticket.service';
 
@@ -99,6 +118,8 @@ type Draft = {
   titles: string[];
   assignmentId: string | null;
   now: Date;
+  textPlan: Record<string, string | null> | null;
+  live: SessionTextRequestItem[];
 };
 
 type StoredRun = {
@@ -131,6 +152,12 @@ export class SessionsService {
     );
     if (saved.kind === 'existing') {
       return this.reissue(saved.row, ip);
+    }
+    if (draft.live.length > 0) {
+      await this.events.emitAsync(SESSION_TEXT_REQUESTED, {
+        sessionId: saved.row.id,
+        items: draft.live,
+      });
     }
     const ticket = await this.tickets.sign(user.id, saved.row.id);
     return this.opened(saved.row, ticket, draft.plan, draft.titles);
@@ -176,6 +203,8 @@ export class SessionsService {
     const plan = readPlan(session.plan);
     const graphs = await this.graphsFor(plan);
     const split = splitState(session.state);
+    const graph = currentGraph(split.state, graphs);
+    const currentText = await this.presentation(session, split.state, graph);
     const next = this.safeNext({
       state: split.state,
       shownAt: split.shownAt,
@@ -186,6 +215,13 @@ export class SessionsService {
       deadline: session.nodeDeadlineAt,
       now,
       flags: session.flags,
+      textVariant: currentText.variant,
+    });
+    const nextGraph = currentGraph(next.state, graphs);
+    const nextText = await this.presentation(session, next.state, nextGraph);
+    next.nodeView = view(next.state, nextGraph, 0, {
+      textVariant: nextText.variant,
+      rng: nextText.rng,
     });
     const status = next.finished ? 'COMPLETED' : 'ACTIVE';
     const response = decisionBody(status, next);
@@ -371,6 +407,7 @@ export class SessionsService {
     if (!node) {
       throw fromEngine(new EngineError('NODE_MISSING'));
     }
+    const assembly = await buildTextPlan(this.prisma, createRng(seed), plan, graphs);
     return {
       seedEnc: encryptSeed(seed, this.config.seedEncKey),
       seedCommit: commitOf(seed),
@@ -380,6 +417,8 @@ export class SessionsService {
       titles: await this.titlesFor(plan),
       assignmentId: assignment?.id ?? null,
       now,
+      textPlan: assembly.textPlan,
+      live: assembly.live,
     };
   }
 
@@ -428,6 +467,7 @@ export class SessionsService {
         status: transport === 'REST' ? 'ACTIVE' : 'PENDING',
         transport,
         plan: toJson(draft.plan),
+        ...(draft.textPlan ? { textPlan: toJson(draft.textPlan) } : {}),
         seedCommit: draft.seedCommit,
         seedEnc: draft.seedEnc,
         state: toJson(draft.state),
@@ -438,6 +478,11 @@ export class SessionsService {
         flags: [],
       },
     });
+    if (draft.textPlan) {
+      for (const id of selectedVariantIds(draft.textPlan)) {
+        await claimVariant(tx, id);
+      }
+    }
     await tx.auditLog.create({
       data: {
         actorType: ActorType.USER,
@@ -588,14 +633,95 @@ export class SessionsService {
     const plan = readPlan(session.plan);
     const graphs = await this.graphsFor(plan);
     const split = splitState(session.state);
+    const graph = currentGraph(split.state, graphs);
+    const shown = await this.presentation(session, split.state, graph);
     return presentView({
       status: session.status,
       state: split.state,
       shownAt: split.shownAt,
       deadline: session.nodeDeadlineAt,
-      graph: currentGraph(split.state, graphs),
+      graph,
       now: this.clock.now(),
+      textVariant: shown.variant,
+      rng: shown.rng,
     });
+  }
+
+  /**
+   * До показа живого узла с пустым слотом закрепляем свежий APPROVED.
+   * Без варианта rng не передаём: порядок выборов остаётся авторским.
+   */
+  private async presentation(
+    session: GameSession,
+    state: EngineState,
+    graph: ScenarioGraph,
+  ): Promise<{ variant?: TextVariant; rng?: Rng }> {
+    if (session.textPlan == null) {
+      return {};
+    }
+    const row = await this.prisma.gameSession.findUnique({
+      where: { id: session.id },
+      select: { textPlan: true, seedEnc: true, plan: true },
+    });
+    if (!row) {
+      return {};
+    }
+    let stored = readTextPlan(row.textPlan);
+    const key = textPlanKey(state.scenarioId, state.nodeId);
+    const mode = llmMode(graph);
+    if (stored && livePinTarget(stored, key, mode)) {
+      const shift = readPlan(row.plan);
+      const planned = shift.scenarios.find((item) => item.scenarioId === state.scenarioId);
+      if (planned) {
+        const seed = this.decrypt(row.seedEnc);
+        const pinned = await this.prisma.$transaction(async (tx) => {
+          await lockSession(tx, session.id);
+          const locked = await tx.gameSession.findUnique({
+            where: { id: session.id },
+            select: { textPlan: true },
+          });
+          const current = readTextPlan(locked?.textPlan);
+          if (!current || !livePinTarget(current, key, mode)) {
+            return current;
+          }
+          return pinLiveNode(tx, {
+            sessionId: session.id,
+            plan: current,
+            scenarioId: state.scenarioId,
+            version: planned.version,
+            nodeId: state.nodeId,
+            persona: personaOf(createRng(seed), graph),
+          });
+        });
+        if (pinned) {
+          stored = pinned;
+        }
+      }
+    }
+    const variantId = stored?.nodes[key];
+    const variant = await this.loadVariant(typeof variantId === 'string' ? variantId : null);
+    if (!variant) {
+      return {};
+    }
+    const seed = this.decrypt(row.seedEnc);
+    return {
+      variant,
+      rng: orderRng(createRng(seed), state.scenarioId, state.nodeId, state.seq),
+    };
+  }
+
+  private async loadVariant(id: string | null): Promise<TextVariant | undefined> {
+    if (id === null) {
+      return undefined;
+    }
+    const row = await this.prisma.scenarioTextVariant.findUnique({
+      where: { id },
+      select: { payload: true },
+    });
+    if (!row) {
+      return undefined;
+    }
+    return payloadVariant(row.payload);
   }
 
   private async activatePending(session: GameSession, now: Date): Promise<GameSession['status']> {
