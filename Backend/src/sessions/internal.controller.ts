@@ -41,7 +41,7 @@ export class InternalSessionsController {
 
   @Post('game-sessions/:id/decisions')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Ход от GameServer. Тот же движок, что у REST' })
+  @ApiOperation({ summary: 'Ход WS-смены от GameServer. Тот же движок, что у REST' })
   @ApiBody({ type: DecisionDto })
   @ApiOkResponse({ type: DecisionViewDto })
   decide(@Param('id') id: string, @Body(new ZodValidationPipe(DecisionDto)) body: DecisionDto) {
@@ -51,13 +51,14 @@ export class InternalSessionsController {
       choiceId: body.choiceId,
       clientTs: body.clientTs,
       ownerId: null,
+      transport: 'WS',
       actor: { type: ActorType.GAME_SERVER, id: null, ip: null },
     });
   }
 
   @Post('game-sessions/:id/events')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Пакет телеметрии. Повтор seq не создаёт вторую строку' })
+  @ApiOperation({ summary: 'Пакет телеметрии. seq свой, повтор не создаёт вторую строку' })
   @ApiBody({ type: EventsDto })
   @ApiOkResponse({ type: EventsResultDto })
   events(@Param('id') id: string, @Body(new ZodValidationPipe(EventsDto)) body: EventsDto) {

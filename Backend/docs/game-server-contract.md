@@ -119,21 +119,29 @@ Secure при `COOKIE_SECURE=true`. Access-JWT кабинета в сокет н
 | Метод и путь | Зачем |
 | --- | --- |
 | `POST /api/internal/v1/tickets/verify` | Подпись и погашение билета. Тело `{ticket}`. |
-| `POST /api/internal/v1/game-sessions/:id/decisions` | Ход диалогового перегона. То же тело, что у REST. |
-| `POST /api/internal/v1/game-sessions/:id/events` | Пачка телеметрии в `GameEvent`. |
+| `POST /api/internal/v1/game-sessions/:id/decisions` | Ход смены `transport=WS`. REST-смена — 409 `WRONG_TRANSPORT`. |
+| `POST /api/internal/v1/game-sessions/:id/events` | Пачка телеметрии в `game_telemetry`. `seq` не общий с ходами. |
 | `POST /api/internal/v1/game-sessions/:id/complete` | Финал диалогового движка, если отчёта симуляции нет. |
 | `POST /api/internal/v1/game-sessions/:id/report` | `RunReport` v1 пространственной симуляции. |
 
-`decisions`: `{seq, choiceId, clientTs?}`. `seq` равен ожидаемому.
-Повтор того же `seq` возвращает прежний ответ и `step()` не вызывает.
-Иной `seq` — 409. Сервер сравнивает свои часы с `nodeDeadlineAt`, допуск
-500 мс. Позже — вход `timeout`, не HTTP-ошибка. Выбор с невыполненным
-`requires` — 422 `CHOICE_NOT_AVAILABLE`. В ответе `view`: текст, доступные
-ходы, таймер, шкалы. Эффектов, вердикта и `better` нет.
+`decisions`: `{seq, choiceId, clientTs?}`. Ручка internal принимает только
+смену `transport=WS`. Смена `REST` — 409 `WRONG_TRANSPORT`. Ход кабинета
+`POST /api/v1/game-sessions/:id/decisions` — только `transport=REST`, иначе
+тот же 409. `seq` равен ожидаемому ходу, не номеру телеметрии. Повтор того
+же `seq` и `choiceId` возвращает прежний ответ и `step()` не вызывает. Иной
+`seq` — 409 `SEQ_MISMATCH` и информационный флаг `seq-jump`. Сервер сравнивает
+свои часы с `nodeDeadlineAt`, допуск 500 мс. Позже — вход `timeout`, не
+HTTP-ошибка. `clientTs` — метка журнала; больше 8.64e15 мс — 422. Выбор с
+невыполненным `requires` — 422 `CHOICE_NOT_AVAILABLE`. В ответе `view`: текст,
+доступные ходы, таймер, шкалы. Эффектов, вердикта и `better` нет. Просроченный
+дедлайн на `GET /api/v1/game-sessions/:id` сервер закрывает сам только у
+`REST`. У `WS` GET показывает узел, timeout присылает GameServer ходом.
 
-`events`: массив `{seq, type, payload, clientAt?}`. Уникальность
-`(sessionId, seq)` как у таблицы `game_event`. `serverAt` ставит Backend.
-Это журнал, не начисление очков.
+`events`: массив `{seq, type, payload, clientAt?}`. Пишется в `game_telemetry`.
+Уникальность `(sessionId, seq)` внутри телеметрии, не вместе с ходами.
+Нумерация своя: событие `seq=1` и ход `seq=1` — разные ряды, телеметрия
+не даёт ходу 409 `SEQ_MISMATCH`. `serverAt` ставит Backend. Журнал решений
+остаётся в `game_event` (`type=decision`). Это не начисление очков.
 
 `complete` и `report` принимаются для сессии `ACTIVE`, один раз.
 Повтор по тому же `sessionId` — тот же результат, без второго
@@ -227,9 +235,10 @@ GameServer. Пока HTTP не ответил успехом, отчёт не с
 `command` клиент не шлёт заново.
 
 Если процесс GameServer перезапущен, память мира пропала. Погашенный билет
-verify не примет. Отдельной ручки «перевыпустить билет на ту же ACTIVE-сессию»
-SPEC не задаёт. Повторный `POST /api/v1/game-sessions` создаёт новую сессию.
-Это дыра реконнекта после рестарта, не повод делать jti многоразовым.
+verify не примет. Повторный `POST /api/v1/game-sessions` вторую смену не
+открывает: возвращается уже открытая и подписывается новый билет. В аудит
+пишется `session.resumed`, флаг античита не ставится. Старый jti остаётся
+погашенным.
 
 Диалоговый дедлайн — часы Backend. Дедлайны задач симуляции (`softDeadline`,
 `hardDeadline`) — игровые секунды GameServer, клиент их не администрирует.

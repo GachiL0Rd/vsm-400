@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
+  CRITICAL_FLAGS,
   FLAG_AFTER_DEADLINE,
-  FLAG_BEFORE_SHOW,
   FLAG_REACTION_FAST,
+  INFO_FLAGS,
   isPastDeadline,
   isSuspicious,
   median,
@@ -23,22 +24,10 @@ describe('античит', () => {
     expect(reactionFlag([100, 200, 300, 400])).toBeNull();
   });
 
-  it('ранний clientTs и ход после дедлайна — разные флаги', () => {
-    const shownAt = 10_000;
+  it('опоздание — информационный флаг, timeout и допуск 500 мс — нет', () => {
     const deadlineAt = 20_000;
     expect(
       timingFlags({
-        clientTs: shownAt - SKEW_MS - 1,
-        shownAt,
-        deadlineAt,
-        now: shownAt + 1000,
-        choiceId: 'ask',
-      }),
-    ).toEqual([FLAG_BEFORE_SHOW]);
-    expect(
-      timingFlags({
-        clientTs: shownAt - SKEW_MS,
-        shownAt,
         deadlineAt,
         now: deadlineAt + SKEW_MS,
         choiceId: 'ask',
@@ -46,8 +35,6 @@ describe('античит', () => {
     ).toEqual([]);
     expect(
       timingFlags({
-        clientTs: null,
-        shownAt,
         deadlineAt,
         now: deadlineAt + SKEW_MS + 1,
         choiceId: 'ask',
@@ -55,8 +42,6 @@ describe('античит', () => {
     ).toEqual([FLAG_AFTER_DEADLINE]);
     expect(
       timingFlags({
-        clientTs: null,
-        shownAt,
         deadlineAt,
         now: deadlineAt + SKEW_MS + 1,
         choiceId: 'timeout',
@@ -67,10 +52,15 @@ describe('античит', () => {
     expect(isPastDeadline(deadlineAt, deadlineAt + SKEW_MS + 1)).toBe(true);
   });
 
-  it('критичный флаг помечает рейс', () => {
+  it('подозрение только у критических флагов', () => {
+    expect([...CRITICAL_FLAGS]).toEqual(['reaction-fast', 'ticket-reused']);
+    expect([...INFO_FLAGS]).toEqual(['decision-after-deadline', 'seq-jump']);
     expect(isSuspicious([])).toBe(false);
     expect(isSuspicious(['reaction-fast'])).toBe(true);
     expect(isSuspicious(['ticket-reused'])).toBe(true);
-    expect(isSuspicious(['multi-session'])).toBe(true);
+    expect(isSuspicious(['decision-after-deadline'])).toBe(false);
+    expect(isSuspicious(['seq-jump'])).toBe(false);
+    expect(isSuspicious(['decision-after-deadline', 'seq-jump'])).toBe(false);
+    expect(isSuspicious(['seq-jump', 'ticket-reused'])).toBe(true);
   });
 });

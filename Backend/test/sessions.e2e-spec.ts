@@ -508,11 +508,42 @@ describe('игровые сессии', () => {
     expect(second.body.sessionId).toBe(first.body.sessionId);
     expect(second.body.seedCommit).toBe(first.body.seedCommit);
     const flagged = await prisma.gameSession.findUniqueOrThrow({ where: { id: row.id } });
-    expect(flagged.flags).toContain('multi-session');
-    const audits = await prisma.auditLog.count({
-      where: { target: row.id, action: 'anticheat.multi-session' },
+    expect(flagged.flags).not.toContain('multi-session');
+    const resumed = await prisma.auditLog.count({
+      where: { target: row.id, action: 'session.resumed' },
     });
-    expect(audits).toBe(1);
+    expect(resumed).toBe(1);
+    expect(
+      await prisma.auditLog.count({
+        where: { target: row.id, action: 'anticheat.multi-session' },
+      }),
+    ).toBe(0);
+  });
+
+  it('повторный open не метит рейс', async () => {
+    const user = await makeUser('resume');
+    const opened = await open(user.id);
+    const again = await open(user.id);
+    expect(again.body.sessionId).toBe(opened.body.sessionId);
+    const reported = await inject(
+      'POST',
+      `/api/internal/v1/game-sessions/${opened.body.sessionId}/report`,
+      undefined,
+      reportBody(),
+      { 'x-service-token': serviceToken },
+    );
+    expect(reported.statusCode).toBe(200);
+    const mine = completed.filter((event) => event.sessionId === opened.body.sessionId);
+    expect(mine).toHaveLength(1);
+    expect(mine[0]?.suspicious).toBe(false);
+    const run = await prisma.run.findUniqueOrThrow({
+      where: { sessionId: opened.body.sessionId },
+    });
+    expect(run.suspicious).toBe(false);
+    const row = await prisma.gameSession.findUniqueOrThrow({
+      where: { id: opened.body.sessionId },
+    });
+    expect(row.flags).toEqual([]);
   });
 
   it('чужая смена — 404', async () => {
@@ -567,6 +598,63 @@ describe('игровые сессии', () => {
     expect(events).toBe(1);
   });
 
+  it('телеметрия seq=1 не блокирует ход seq=1', async () => {
+    const user = await makeUser('telemetry');
+    const opened = await open(user.id);
+    const id = opened.body.sessionId;
+    const headers = { 'x-service-token': serviceToken };
+    const current = (
+      await inject('GET', `/api/v1/game-sessions/${id}`, user.id)
+    ).json() as SessionView;
+    const posted = await inject(
+      'POST',
+      `/api/internal/v1/game-sessions/${id}/events`,
+      undefined,
+      { events: [{ seq: 1, type: 'focus', payload: { zone: 'door' } }] },
+      headers,
+    );
+    expect(posted.statusCode).toBe(200);
+    expect(posted.json()).toEqual({ accepted: 1, duplicates: 0 });
+
+    let seq = current.seq;
+    let choices = current.view.choices;
+    let guard = 0;
+    while (seq < 1 && guard < 8) {
+      const choice = choices[0];
+      expect(choice).toBeTruthy();
+      clock.advance(1000);
+      const response = await inject('POST', `/api/v1/game-sessions/${id}/decisions`, user.id, {
+        seq,
+        choiceId: choice?.id,
+      });
+      expect(response.statusCode, response.body).toBe(200);
+      const body = response.json() as DecisionView;
+      seq = body.seq;
+      choices = body.view.choices;
+      guard += 1;
+      if (body.finished) {
+        break;
+      }
+    }
+    expect(seq).toBe(1);
+    const choice = choices[0];
+    expect(choice).toBeTruthy();
+    clock.advance(1000);
+    const move = await inject('POST', `/api/v1/game-sessions/${id}/decisions`, user.id, {
+      seq: 1,
+      choiceId: choice?.id,
+    });
+    expect(move.statusCode, move.body).toBe(200);
+    const decision = await prisma.gameEvent.findUnique({
+      where: { sessionId_seq: { sessionId: id, seq: 1 } },
+    });
+    expect(decision?.type).toBe('decision');
+    const telemetry = await prisma.gameTelemetry.findUnique({
+      where: { sessionId_seq: { sessionId: id, seq: 1 } },
+    });
+    expect(telemetry?.type).toBe('focus');
+  });
+
   it('ход после дедлайна становится timeout', async () => {
     const user = await makeUser('late');
     const opened = await open(user.id);
@@ -592,6 +680,20 @@ describe('игровые сессии', () => {
     const state = row.state as { journal: { choiceId: string }[] };
     expect(state.journal.at(-1)?.choiceId).toBe('timeout');
     expect(row.flags).toContain('decision-after-deadline');
+    const reported = await inject(
+      'POST',
+      `/api/internal/v1/game-sessions/${opened.body.sessionId}/report`,
+      undefined,
+      reportBody(),
+      { 'x-service-token': serviceToken },
+    );
+    expect(reported.statusCode).toBe(200);
+    const mine = completed.filter((event) => event.sessionId === opened.body.sessionId);
+    expect(mine[0]?.suspicious).toBe(false);
+    const run = await prisma.run.findUniqueOrThrow({
+      where: { sessionId: opened.body.sessionId },
+    });
+    expect(run.suspicious).toBe(false);
   });
 
   it('GET сам применяет timeout, когда дедлайн прошёл', async () => {
@@ -611,6 +713,101 @@ describe('игровые сессии', () => {
     const state = row.state as { journal: { choiceId: string }[] };
     expect(state.journal.at(-1)?.choiceId).toBe('timeout');
     expect(row.flags).not.toContain('decision-after-deadline');
+  });
+
+  it('clientTs на минуту раньше не ставит флаг', async () => {
+    const user = await makeUser('skew');
+    const opened = await open(user.id);
+    const id = opened.body.sessionId;
+    const view = (
+      await inject('GET', `/api/v1/game-sessions/${id}`, user.id)
+    ).json() as SessionView;
+    const choice = view.view.choices[0];
+    expect(choice).toBeTruthy();
+    clock.advance(1000);
+    const clientTs = clock.current.getTime() - 60_000;
+    const response = await inject('POST', `/api/v1/game-sessions/${id}/decisions`, user.id, {
+      seq: view.seq,
+      choiceId: choice?.id,
+      clientTs,
+    });
+    expect(response.statusCode, response.body).toBe(200);
+    const row = await prisma.gameSession.findUniqueOrThrow({ where: { id } });
+    expect(row.flags).not.toContain('decision-before-show');
+    const event = await prisma.gameEvent.findFirst({
+      where: { sessionId: id, type: 'decision' },
+    });
+    expect(event?.clientAt?.getTime()).toBe(clientTs);
+  });
+
+  it('clientTs за пределом Date — 422', async () => {
+    const user = await makeUser('clock');
+    const opened = await open(user.id);
+    const id = opened.body.sessionId;
+    const view = (
+      await inject('GET', `/api/v1/game-sessions/${id}`, user.id)
+    ).json() as SessionView;
+    const response = await inject('POST', `/api/v1/game-sessions/${id}/decisions`, user.id, {
+      seq: view.seq,
+      choiceId: view.view.choices[0]?.id,
+      clientTs: 9e15,
+    });
+    expect(response.statusCode).toBe(422);
+    expect(await prisma.gameEvent.count({ where: { sessionId: id } })).toBe(0);
+  });
+
+  it('ход REST и WS не подменяют канал друг друга', async () => {
+    const user = await makeUser('channel');
+    const ws = await open(user.id, { transport: 'WS' });
+    const wsId = ws.body.sessionId;
+    const screen = (
+      await inject('GET', `/api/v1/game-sessions/${wsId}`, user.id)
+    ).json() as SessionView;
+    const choice = screen.view.choices[0];
+    expect(choice).toBeTruthy();
+    const restMove = await inject('POST', `/api/v1/game-sessions/${wsId}/decisions`, user.id, {
+      seq: screen.seq,
+      choiceId: choice?.id,
+    });
+    expect(restMove.statusCode).toBe(409);
+    expect(restMove.json()).toMatchObject({ code: 'WRONG_TRANSPORT' });
+    clock.current = new Date(new Date(screen.deadlineAt ?? 0).getTime() + 600);
+    const later = (
+      await inject('GET', `/api/v1/game-sessions/${wsId}`, user.id)
+    ).json() as SessionView;
+    expect(later.seq).toBe(screen.seq);
+    const headers = { 'x-service-token': serviceToken };
+    const internal = await inject(
+      'POST',
+      `/api/internal/v1/game-sessions/${wsId}/decisions`,
+      undefined,
+      { seq: screen.seq, choiceId: choice?.id },
+      headers,
+    );
+    expect(internal.statusCode, internal.body).toBe(200);
+
+    const other = await makeUser('channel-rest');
+    const rest = await open(other.id);
+    const restView = (
+      await inject('GET', `/api/v1/game-sessions/${rest.body.sessionId}`, other.id)
+    ).json() as SessionView;
+    const wrong = await inject(
+      'POST',
+      `/api/internal/v1/game-sessions/${rest.body.sessionId}/decisions`,
+      undefined,
+      { seq: restView.seq, choiceId: restView.view.choices[0]?.id },
+      headers,
+    );
+    expect(wrong.statusCode).toBe(409);
+    expect(wrong.json()).toMatchObject({ code: 'WRONG_TRANSPORT' });
+    clock.advance(1000);
+    const ok = await inject(
+      'POST',
+      `/api/v1/game-sessions/${rest.body.sessionId}/decisions`,
+      other.id,
+      { seq: restView.seq, choiceId: restView.view.choices[0]?.id },
+    );
+    expect(ok.statusCode, ok.body).toBe(200);
   });
 
   it('REST-прогон доходит до финала и раскрывает seed', async () => {
@@ -648,6 +845,31 @@ describe('игровые сессии', () => {
     expect(mine[0]?.suspicious).toBe(false);
     const run = await prisma.run.findUnique({ where: { sessionId: id } });
     expect(run?.id).toBe(mine[0]?.runId);
+    const stored = await prisma.gameSession.findUniqueOrThrow({ where: { id } });
+    const result = stored.result as {
+      runId: string;
+      suspicious: boolean;
+      summary: { outcome: string };
+    };
+    expect(result).toMatchObject({ runId: mine[0]?.runId, suspicious: false });
+    expect(result.summary.outcome).toEqual(expect.any(String));
+    const completedAudit = await prisma.auditLog.findFirst({
+      where: { action: 'session.completed', target: id },
+    });
+    expect(completedAudit?.meta).toEqual({ runId: result.runId, suspicious: false });
+    const last = await prisma.gameEvent.findFirst({
+      where: { sessionId: id, type: 'decision' },
+      orderBy: { seq: 'desc' },
+    });
+    const replayPayload = last?.payload as { choiceId?: string } | null;
+    expect(typeof replayPayload?.choiceId).toBe('string');
+    await prisma.auditLog.deleteMany({ where: { action: 'session.completed', target: id } });
+    const replay = await inject('POST', `/api/v1/game-sessions/${id}/decisions`, user.id, {
+      seq: last?.seq,
+      choiceId: replayPayload?.choiceId,
+    });
+    expect(replay.statusCode, replay.body).toBe(200);
+    expect(completed.filter((event) => event.sessionId === id)).toHaveLength(1);
 
     const reveal = await inject('GET', `/api/v1/game-sessions/${id}/reveal`, user.id);
     expect(reveal.statusCode).toBe(200);
@@ -767,6 +989,29 @@ describe('игровые сессии', () => {
     expect(completed.filter((event) => event.sessionId === id)).toHaveLength(1);
     const still = await prisma.run.findUniqueOrThrow({ where: { id: runId } });
     expect(still.loyalty).toBe(87);
+    const stored = await prisma.gameSession.findUniqueOrThrow({ where: { id } });
+    const result = stored.result as {
+      runId: string;
+      suspicious: boolean;
+      summary: { loyalty: number };
+    };
+    expect(result).toMatchObject({ runId, suspicious: false });
+    expect(result.summary.loyalty).toBe(87);
+    const completedAudit = await prisma.auditLog.findFirst({
+      where: { action: 'session.completed', target: id },
+    });
+    expect(completedAudit?.meta).toEqual({ runId, suspicious: false });
+    await prisma.auditLog.deleteMany({ where: { action: 'session.completed', target: id } });
+    const third = await inject(
+      'POST',
+      `/api/internal/v1/game-sessions/${id}/report`,
+      undefined,
+      reportBody(),
+      headers,
+    );
+    expect(third.statusCode).toBe(200);
+    expect((third.json() as { runId: string }).runId).toBe(runId);
+    expect(completed.filter((event) => event.sessionId === id)).toHaveLength(1);
 
     const batch = {
       events: [
@@ -1188,6 +1433,7 @@ async function wipe(prisma: PrismaService, ids: string[]): Promise<void> {
   await prisma.runDecision.deleteMany({ where: { run: { userId: { in: ids } } } });
   await prisma.run.deleteMany({ where: { userId: { in: ids } } });
   if (sessionIds.length > 0) {
+    await prisma.gameTelemetry.deleteMany({ where: { sessionId: { in: sessionIds } } });
     await prisma.gameEvent.deleteMany({ where: { sessionId: { in: sessionIds } } });
     await prisma.gameSession.deleteMany({ where: { id: { in: sessionIds } } });
   }
