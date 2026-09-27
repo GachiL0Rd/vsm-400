@@ -45,9 +45,17 @@ type ScenarioMeta = {
   currentVersion: number;
 };
 
+/** Пара (сценарий, версия) неизменна. Хвост длиннее вытесняет самые старые чтения. */
+export const VERSION_CACHE_LIMIT = 64;
+
+/** Чужая реплика могла опубликовать сценарий: этот процесс дольше не держит каталог. */
+export const CATALOG_TTL_MS = 30_000;
+
 @Injectable()
 export class ScenariosService implements OnApplicationBootstrap {
   private readonly logger = new Logger(ScenariosService.name);
+  private readonly versions = new LruCache<ScenarioVersionView>(VERSION_CACHE_LIMIT);
+  private catalog: { at: number; items: CatalogItem[] } | null = null;
 
   constructor(
     @Inject(PrismaService) private readonly prisma: PrismaService,
@@ -64,6 +72,7 @@ export class ScenariosService implements OnApplicationBootstrap {
     for (const graph of graphs) {
       assertPlayableGraph(graph);
     }
+    this.forgetCatalog();
     let createdVersions = 0;
     const published: ScenarioPublishedPayload[] = [];
     const keptByHuman: string[] = [];
@@ -80,6 +89,7 @@ export class ScenariosService implements OnApplicationBootstrap {
         }
       }
     });
+    this.forgetCatalog();
     for (const id of keptByHuman) {
       this.logger.warn(`сценарий ${id} правится в админке, файл пропущен`);
     }
@@ -90,7 +100,13 @@ export class ScenariosService implements OnApplicationBootstrap {
   }
 
   async getCatalog(): Promise<CatalogItem[]> {
-    return this.loadCatalog();
+    const cached = this.catalog;
+    if (cached && Date.now() - cached.at < CATALOG_TTL_MS) {
+      return cached.items;
+    }
+    const items = deepFreeze(await this.loadCatalog());
+    this.catalog = { at: Date.now(), items };
+    return items;
   }
 
   async getById(id: string): Promise<ScenarioDetail> {
@@ -153,6 +169,7 @@ export class ScenariosService implements OnApplicationBootstrap {
         },
       });
     });
+    this.forgetCatalog();
     if (announced !== null) {
       await this.emitPublished({ scenarioId: id, version: announced });
     }
@@ -166,6 +183,7 @@ export class ScenariosService implements OnApplicationBootstrap {
         data: { status },
         select: { id: true, status: true, currentVersion: true },
       });
+      this.forgetCatalog();
       if (updated.status === 'PUBLISHED') {
         await this.emitPublished({ scenarioId: updated.id, version: updated.currentVersion });
       }
@@ -201,19 +219,31 @@ export class ScenariosService implements OnApplicationBootstrap {
     return items;
   }
 
+  private forgetCatalog(): void {
+    this.catalog = null;
+  }
+
   private async readVersion(id: string, version: number): Promise<ScenarioVersionView> {
+    const key = `${id}:${version}`;
+    const hit = this.versions.get(key);
+    if (hit) {
+      return hit;
+    }
     const row = await this.prisma.scenarioVersion.findUnique({
       where: { scenarioId_version: { scenarioId: id, version } },
     });
     if (!row) {
       throw new NotFoundException({ message: 'Версия сценария не найдена', code: 'NOT_FOUND' });
     }
-    return {
+    // Шаг клонирует состояние и граф не пишет. Заморозка дешевле копии на каждый ход.
+    const view = deepFreeze({
       scenarioId: row.scenarioId,
       version: row.version,
       checksum: row.checksum,
       graph: parseStoredGraph(row.graph),
-    };
+    });
+    this.versions.set(key, view);
+    return view;
   }
 }
 
@@ -308,6 +338,46 @@ async function syncGraph(tx: SyncClient, graph: ScenarioGraph): Promise<SyncOutc
     version: plan.version,
     public: fileVersionIsPublic(existing?.status ?? null),
   };
+}
+
+class LruCache<T> {
+  private readonly items = new Map<string, T>();
+
+  constructor(private readonly limit: number) {}
+
+  get(key: string): T | undefined {
+    const value = this.items.get(key);
+    if (value === undefined) {
+      return undefined;
+    }
+    this.items.delete(key);
+    this.items.set(key, value);
+    return value;
+  }
+
+  set(key: string, value: T): void {
+    if (this.items.has(key)) {
+      this.items.delete(key);
+    }
+    this.items.set(key, value);
+    while (this.items.size > this.limit) {
+      const oldest = this.items.keys().next().value;
+      if (oldest === undefined) {
+        return;
+      }
+      this.items.delete(oldest);
+    }
+  }
+}
+
+function deepFreeze<T>(value: T): T {
+  if (value === null || typeof value !== 'object' || Object.isFrozen(value)) {
+    return value;
+  }
+  for (const nested of Object.values(value as Record<string, unknown>)) {
+    deepFreeze(nested);
+  }
+  return Object.freeze(value);
 }
 
 function isMissingRow(error: unknown): boolean {

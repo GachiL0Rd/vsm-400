@@ -71,6 +71,8 @@ npm run openapi:export
 | POST | `/api/integration/v1/webhooks` | X-API-Key `webhooks:manage` | CreateWebhookDto | 201, 401, 422 object |
 | DELETE | `/api/integration/v1/webhooks/{id}` | X-API-Key `webhooks:manage` | — | 204, 404 object |
 
+`GET /api/v1/scenarios` на одном процессе может отдать каталог не старше 30 секунд. Запись сценария на этом же процессе кэш сбрасывает. Чужая реплика за эти 30 секунд может ещё держать старый список.
+
 Чего в OpenAPI нет, хотя ручка это принимает:
 
 - `GET /api/v1/me/runs` — query `limit`, `cursor`.
