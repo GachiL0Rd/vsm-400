@@ -49,6 +49,8 @@ npm run openapi:export
 | DELETE | `/api/v1/assignments/{id}` | CHIEF своей бригады, METHODIST, ADMIN | — | default AssignmentDto_Output |
 | GET | `/api/v1/promotions` | CHIEF своей бригады, ADMIN | query `status` | 200 object[] |
 | POST | `/api/v1/promotions/{id}/decision` | CHIEF своей бригады, ADMIN | object | 200 object |
+| GET | `/api/v1/runs/suspicious` | CHIEF своей бригады, ADMIN | — | 200 object[] |
+| POST | `/api/v1/runs/{id}/review` | CHIEF своей бригады, ADMIN, не свой рейс | object `{ approve }` | 200 object |
 | GET | `/api/v1/org/depots` | любая роль, cookie или Bearer | — | 200 |
 | GET | `/api/v1/org/depots/{id}/brigades` | любая роль, cookie или Bearer | — | 200 |
 | GET | `/api/v1/org/brigades/{id}` | любая роль, cookie или Bearer | — | 200 |
@@ -112,7 +114,8 @@ npm run openapi:export
 - `expiring` — баллы сгорают в ближайшие `expiryWarnDays`.
 - `scenario` — публикация версии. Получают проводники, у которых рейс или назначение того же класса вагона. Ключ дедупа включает версию. Без своего класса вагона уведомления нет.
 - `advice` — понедельник 09:00 МСК. Компетенция ниже `weakScore` и ниже среднего по депо. В тексте название сценария для тренировки, если он есть.
-- `challenge` — понедельник 00:00 МСК, тема депо (самая слабая средняя компетенция): «Неделя … — бригады депо соревнуются до воскресенья». Тема лежит в Redis и в аудите `challenge.theme`. Рейс с этой компетенцией пишет `PointLedger` с причиной `CHALLENGE` на `challengePoints` из `content/rules.yaml`. Тот же `kind` пишет закрытие сезона: место бригады.
+- `challenge` — понедельник 00:00 МСК, тема депо (самая слабая средняя компетенция): «Неделя … — бригады депо соревнуются до воскресенья». Тема лежит в Redis и в аудите `challenge.theme`. Рейс с этой компетенцией пишет `PointLedger` с причиной `CHALLENGE` на `challengePoints` из `content/rules.yaml`. Повтор `run.recorded` вторую строку не пишет. Тот же `kind` пишет закрытие сезона: место бригады.
+- Подозрительный рейс в ZSET не входит (`lb:applied:<runId> = skip`). После `POST /api/v1/runs/{id}/review` с `approve: true` очки сезона недели `finishedAt` пишутся один раз, только если эта неделя ещё текущая. Прошлая неделя в текущий рейтинг не дописывается.
 - `overtaken` — соседа обогнали в бригаде.
 - `achievement` — полученный знак.
 - `promotion` — рекомендация к повышению, себе и начальнику бригады.
