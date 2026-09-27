@@ -1,4 +1,11 @@
 import { z } from 'zod';
+import {
+  GIGACHAT_DEFAULT_BASE_URL,
+  type LlmApiProfile,
+  type LlmProviderName,
+  YANDEX_DEFAULT_BASE_URL,
+} from '../llm/llm.constants';
+import { effectiveLlmConcurrency } from './llm-concurrency';
 import { loadLocalEnv } from './load-env';
 
 const portSchema = z.preprocess(
@@ -26,7 +33,12 @@ const blankToUndefined = (value: unknown) =>
 
 const llmProviderSchema = z.preprocess(
   (value: unknown) => (value === undefined || value === '' ? 'none' : value),
-  z.enum(['openai-compatible', 'gigachat', 'none']),
+  z.enum(['openai-compatible', 'gigachat', 'yandex', 'none']),
+);
+
+const optionalLlmProviderSchema = z.preprocess(
+  blankToUndefined,
+  z.enum(['openai-compatible', 'gigachat', 'yandex', 'none']).optional(),
 );
 
 const optionalHttpUrl = z.preprocess(
@@ -50,8 +62,32 @@ const llmConcurrencySchema = z.preprocess(
 );
 
 const llmTemperatureSchema = z.preprocess(
-  (value: unknown) => (value === undefined || value === '' ? 0.7 : value),
-  z.coerce.number().min(0).max(2),
+  blankToUndefined,
+  z.coerce.number().min(0).max(2).optional(),
+);
+
+const llmProfileSchema = z.preprocess(
+  blankToUndefined,
+  z.enum(['llama-cpp', 'vllm', 'yandex']).optional(),
+);
+
+const extraHeadersSchema = z.preprocess((value: unknown) => {
+  if (value === undefined || value === '') {
+    return undefined;
+  }
+  if (typeof value !== 'string') {
+    return value;
+  }
+  try {
+    return JSON.parse(value) as unknown;
+  } catch {
+    return value;
+  }
+}, z.record(z.string(), z.string()).optional());
+
+const gigachatBaseSchema = z.preprocess(
+  (value: unknown) => (value === undefined || value === '' ? GIGACHAT_DEFAULT_BASE_URL : value),
+  z.string().regex(/^https:\/\/\S+$/, 'ожидается https://'),
 );
 
 const llmTopPSchema = z.preprocess(
@@ -137,15 +173,26 @@ const EnvSchema = z
     LLM_BASE_URL: optionalHttpUrl,
     LLM_MODEL: optionalText,
     LLM_API_KEY: optionalText,
+    LLM_PROJECT: optionalText,
+    LLM_PROFILE: llmProfileSchema,
+    LLM_EXTRA_HEADERS: extraHeadersSchema,
     LLM_TIMEOUT_MS: llmTimeoutSchema,
     LLM_CONCURRENCY: llmConcurrencySchema,
     LLM_TEMPERATURE: llmTemperatureSchema,
     LLM_TOP_P: llmTopPSchema,
     LLM_TOP_K: llmTopKSchema,
     LLM_JUDGE: llmJudgeSchema,
+    LLM_JUDGE_PROVIDER: optionalLlmProviderSchema,
+    LLM_JUDGE_BASE_URL: optionalHttpUrl,
+    LLM_JUDGE_MODEL: optionalText,
+    LLM_JUDGE_API_KEY: optionalText,
+    LLM_JUDGE_PROJECT: optionalText,
+    LLM_JUDGE_PROFILE: llmProfileSchema,
+    LLM_JUDGE_EXTRA_HEADERS: extraHeadersSchema,
     GIGACHAT_AUTH_KEY: optionalText,
     GIGACHAT_SCOPE: gigachatScopeSchema,
     GIGACHAT_CA_FILE: optionalText,
+    GIGACHAT_BASE_URL: gigachatBaseSchema,
   })
   .superRefine((env, ctx) => {
     if (env.NODE_ENV === 'production' && env.COOKIE_SECURE !== true) {
@@ -155,11 +202,22 @@ const EnvSchema = z
         message: 'в production нужен true',
       });
     }
-    if (env.LLM_PROVIDER === 'openai-compatible') {
-      requireLlmField(ctx, env.LLM_BASE_URL, 'LLM_BASE_URL', 'нужен для openai-compatible');
-      requireLlmField(ctx, env.LLM_MODEL, 'LLM_MODEL', 'нужен для openai-compatible');
+    const judge = judgeSlice(env);
+    checkChat(ctx, generateSlice(env), {
+      base: 'LLM_BASE_URL',
+      model: 'LLM_MODEL',
+      apiKey: 'LLM_API_KEY',
+      project: 'LLM_PROJECT',
+    });
+    if (judge.provider !== env.LLM_PROVIDER) {
+      checkChat(ctx, judge, {
+        base: 'LLM_JUDGE_BASE_URL',
+        model: 'LLM_JUDGE_MODEL',
+        apiKey: 'LLM_JUDGE_API_KEY',
+        project: 'LLM_JUDGE_PROJECT',
+      });
     }
-    if (env.LLM_PROVIDER === 'gigachat') {
+    if (env.LLM_PROVIDER === 'gigachat' || judge.provider === 'gigachat') {
       requireLlmField(ctx, env.GIGACHAT_AUTH_KEY, 'GIGACHAT_AUTH_KEY', 'нужен для gigachat');
       requireLlmField(
         ctx,
@@ -167,38 +225,159 @@ const EnvSchema = z
         'GIGACHAT_CA_FILE',
         'нужен сертификат НУЦ Минцифры',
       );
-      requireLlmField(ctx, env.LLM_MODEL, 'LLM_MODEL', 'нужен для gigachat');
     }
   })
-  .transform((env) => ({
-    nodeEnv: env.NODE_ENV,
-    port: env.PORT,
-    databaseUrl: env.DATABASE_URL,
-    redisUrl: env.REDIS_URL,
-    jwtAccessSecret: env.JWT_ACCESS_SECRET,
-    gameTicketSecret: env.GAME_TICKET_SECRET,
-    gameServerToken: env.GAME_SERVER_TOKEN,
-    seedEncKey: env.SEED_ENC_KEY,
-    extIdPepper: env.EXT_ID_PEPPER,
-    corsOrigins: env.CORS_ORIGINS,
-    publicGameWsUrl: env.PUBLIC_GAME_WS_URL,
-    cookieSecure: env.COOKIE_SECURE,
-    trustProxy: env.TRUST_PROXY,
-    webhookAllowedHosts: env.WEBHOOK_ALLOWED_HOSTS,
-    llmProvider: env.LLM_PROVIDER,
-    llmBaseUrl: env.LLM_BASE_URL,
-    llmModel: env.LLM_MODEL,
-    llmApiKey: env.LLM_API_KEY,
-    llmTimeoutMs: env.LLM_TIMEOUT_MS,
-    llmConcurrency: env.LLM_CONCURRENCY,
-    llmTemperature: env.LLM_TEMPERATURE,
-    llmTopP: env.LLM_TOP_P,
-    llmTopK: env.LLM_TOP_K,
-    llmJudge: env.LLM_JUDGE,
-    gigachatAuthKey: env.GIGACHAT_AUTH_KEY,
-    gigachatScope: env.GIGACHAT_SCOPE,
-    gigachatCaFile: env.GIGACHAT_CA_FILE,
-  }));
+  .transform((env) => {
+    const judge = judgeSlice(env);
+    return {
+      nodeEnv: env.NODE_ENV,
+      port: env.PORT,
+      databaseUrl: env.DATABASE_URL,
+      redisUrl: env.REDIS_URL,
+      jwtAccessSecret: env.JWT_ACCESS_SECRET,
+      gameTicketSecret: env.GAME_TICKET_SECRET,
+      gameServerToken: env.GAME_SERVER_TOKEN,
+      seedEncKey: env.SEED_ENC_KEY,
+      extIdPepper: env.EXT_ID_PEPPER,
+      corsOrigins: env.CORS_ORIGINS,
+      publicGameWsUrl: env.PUBLIC_GAME_WS_URL,
+      cookieSecure: env.COOKIE_SECURE,
+      trustProxy: env.TRUST_PROXY,
+      webhookAllowedHosts: env.WEBHOOK_ALLOWED_HOSTS,
+      llmProvider: env.LLM_PROVIDER,
+      llmBaseUrl: withDefaultBase(env.LLM_PROVIDER, env.LLM_BASE_URL),
+      llmModel: env.LLM_MODEL,
+      llmApiKey: env.LLM_API_KEY,
+      llmProject: env.LLM_PROJECT,
+      llmExtraHeaders: env.LLM_EXTRA_HEADERS,
+      llmProfile: resolveProfile(env.LLM_PROVIDER, env.LLM_PROFILE),
+      llmTimeoutMs: env.LLM_TIMEOUT_MS,
+      llmConcurrency: effectiveLlmConcurrency(
+        env.LLM_PROVIDER,
+        env.GIGACHAT_SCOPE,
+        env.LLM_CONCURRENCY,
+      ),
+      llmTemperature: env.LLM_TEMPERATURE ?? defaultTemperature(env.LLM_PROVIDER),
+      llmTopP: env.LLM_TOP_P,
+      llmTopK: env.LLM_TOP_K,
+      llmJudge: env.LLM_JUDGE,
+      gigachatAuthKey: env.GIGACHAT_AUTH_KEY,
+      gigachatScope: env.GIGACHAT_SCOPE,
+      gigachatCaFile: env.GIGACHAT_CA_FILE,
+      gigachatBaseUrl: env.GIGACHAT_BASE_URL,
+      judgeProvider: judge.provider,
+      judgeBaseUrl: withDefaultBase(judge.provider, judge.baseUrl),
+      judgeModel: judge.model,
+      judgeApiKey: judge.apiKey,
+      judgeProject: judge.project,
+      judgeExtraHeaders: judge.extraHeaders,
+      judgeProfile: resolveProfile(judge.provider, judge.profile),
+    };
+  });
+
+type ChatFields = {
+  provider: LlmProviderName;
+  baseUrl?: string;
+  model?: string;
+  apiKey?: string;
+  project?: string;
+  extraHeaders?: Record<string, string>;
+  profile?: LlmApiProfile;
+};
+
+type LlmEnvSlice = {
+  LLM_PROVIDER: LlmProviderName;
+  LLM_BASE_URL?: string;
+  LLM_MODEL?: string;
+  LLM_API_KEY?: string;
+  LLM_PROJECT?: string;
+  LLM_PROFILE?: LlmApiProfile;
+  LLM_EXTRA_HEADERS?: Record<string, string>;
+  LLM_JUDGE_PROVIDER?: LlmProviderName;
+  LLM_JUDGE_BASE_URL?: string;
+  LLM_JUDGE_MODEL?: string;
+  LLM_JUDGE_API_KEY?: string;
+  LLM_JUDGE_PROJECT?: string;
+  LLM_JUDGE_PROFILE?: LlmApiProfile;
+  LLM_JUDGE_EXTRA_HEADERS?: Record<string, string>;
+};
+
+function generateSlice(env: LlmEnvSlice): ChatFields {
+  return {
+    provider: env.LLM_PROVIDER,
+    baseUrl: env.LLM_BASE_URL,
+    model: env.LLM_MODEL,
+    apiKey: env.LLM_API_KEY,
+    project: env.LLM_PROJECT,
+    extraHeaders: env.LLM_EXTRA_HEADERS,
+    profile: env.LLM_PROFILE,
+  };
+}
+
+function judgeSlice(env: LlmEnvSlice): ChatFields {
+  const provider = env.LLM_JUDGE_PROVIDER ?? env.LLM_PROVIDER;
+  const same = provider === env.LLM_PROVIDER;
+  return {
+    provider,
+    baseUrl: env.LLM_JUDGE_BASE_URL ?? (same ? env.LLM_BASE_URL : undefined),
+    model: env.LLM_JUDGE_MODEL ?? (same ? env.LLM_MODEL : undefined),
+    apiKey: env.LLM_JUDGE_API_KEY ?? (same ? env.LLM_API_KEY : undefined),
+    project: env.LLM_JUDGE_PROJECT ?? (same ? env.LLM_PROJECT : undefined),
+    extraHeaders: env.LLM_JUDGE_EXTRA_HEADERS ?? (same ? env.LLM_EXTRA_HEADERS : undefined),
+    profile: env.LLM_JUDGE_PROFILE ?? (same ? env.LLM_PROFILE : undefined),
+  };
+}
+
+function withDefaultBase(provider: LlmProviderName, baseUrl?: string): string | undefined {
+  if (baseUrl) {
+    return baseUrl;
+  }
+  if (provider === 'yandex') {
+    return YANDEX_DEFAULT_BASE_URL;
+  }
+  return undefined;
+}
+
+function resolveProfile(provider: LlmProviderName, explicit?: LlmApiProfile): LlmApiProfile {
+  if (explicit) {
+    return explicit;
+  }
+  if (provider === 'yandex') {
+    return 'yandex';
+  }
+  return 'llama-cpp';
+}
+
+function defaultTemperature(provider: LlmProviderName): number {
+  if (provider === 'gigachat' || provider === 'yandex') {
+    return 1;
+  }
+  return 0.7;
+}
+
+function checkChat(
+  ctx: z.RefinementCtx,
+  fields: ChatFields,
+  names: { base: string; model: string; apiKey: string; project: string },
+): void {
+  if (fields.provider === 'none') {
+    return;
+  }
+  if (fields.provider === 'gigachat') {
+    requireLlmField(ctx, fields.model, names.model, 'нужен для gigachat');
+    return;
+  }
+  if (fields.provider === 'openai-compatible') {
+    requireLlmField(ctx, fields.baseUrl, names.base, 'нужен для openai-compatible');
+    requireLlmField(ctx, fields.model, names.model, 'нужен для openai-compatible');
+    return;
+  }
+  requireLlmField(ctx, fields.model, names.model, 'нужен для yandex');
+  requireLlmField(ctx, fields.apiKey, names.apiKey, 'нужен для yandex');
+  if (fields.model !== undefined && !fields.model.startsWith('gpt://')) {
+    requireLlmField(ctx, fields.project, names.project, 'нужен folder для URI модели');
+  }
+}
 
 function requireLlmField(
   ctx: z.RefinementCtx,

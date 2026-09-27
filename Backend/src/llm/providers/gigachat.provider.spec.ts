@@ -49,6 +49,7 @@ describe('GigaChatProvider', () => {
           JSON.stringify({
             model: 'GigaChat',
             choices: [{ message: { content: '{"ok":true}' } }],
+            usage: { prompt_tokens: 11, completion_tokens: 4, total_tokens: 15 },
           }),
       };
     });
@@ -70,7 +71,9 @@ describe('GigaChatProvider', () => {
     const first = await client.complete(input);
     const second = await client.complete(input);
     expect(first.content).toBe('{"ok":true}');
+    expect(first.usage).toEqual({ prompt_tokens: 11, completion_tokens: 4, total_tokens: 15 });
     expect(second.model).toBe('GigaChat');
+    expect(GIGACHAT_CHAT_URL).toBe('https://api.giga.chat/v1/chat/completions');
     const oauthCalls = fetchImpl.mock.calls.filter((call) => call[0] === GIGACHAT_OAUTH_URL);
     const chatCalls = fetchImpl.mock.calls.filter((call) => call[0] === GIGACHAT_CHAT_URL);
     expect(oauthCalls).toHaveLength(1);
@@ -86,8 +89,14 @@ describe('GigaChatProvider', () => {
 
     const chatBody = JSON.parse(chatCalls[0]?.[1]?.body ?? '{}') as {
       response_format: { type: string; schema: unknown; strict: boolean };
+      temperature: number;
+      repetition_penalty: number;
+      top_p?: number;
     };
     expect(chatBody.response_format).toEqual({ type: 'json_schema', schema, strict: true });
+    expect(chatBody.temperature).toBe(1);
+    expect(chatBody.repetition_penalty).toBe(1);
+    expect(chatBody.top_p).toBeUndefined();
     expect(chatCalls[0]?.[1]?.headers?.authorization).toBe('Bearer token-1');
     expect(cache.saved[0]?.key).toBe('llm:gigachat:token:GIGACHAT_API_PERS');
     expect(cache.saved[0]?.ttl).toBeGreaterThan(1_700);

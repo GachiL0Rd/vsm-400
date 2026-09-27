@@ -52,7 +52,11 @@ export function parseJsonBody(text: string, label: string): unknown {
   }
 }
 
-export function readChatContent(body: unknown): { content: string; model: string | undefined } {
+export function readChatContent(body: unknown): {
+  content: string;
+  model: string | undefined;
+  usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
+} {
   const record = asRecord(body);
   if (!record) {
     throw new Error('LLM: ответ не JSON');
@@ -67,7 +71,32 @@ export function readChatContent(body: unknown): { content: string; model: string
   if (typeof content !== 'string' || content.trim() === '') {
     throw new Error('LLM: пустой content');
   }
-  return { content, model };
+  const usage = readUsage(record.usage);
+  return usage ? { content, model, usage } : { content, model };
+}
+
+function readUsage(
+  value: unknown,
+): { prompt_tokens: number; completion_tokens: number; total_tokens: number } | undefined {
+  const record = asRecord(value);
+  if (!record) {
+    return undefined;
+  }
+  const promptTokens = asCount(record.prompt_tokens);
+  const completionTokens = asCount(record.completion_tokens);
+  const totalTokens = asCount(record.total_tokens);
+  if (promptTokens === undefined || completionTokens === undefined || totalTokens === undefined) {
+    return undefined;
+  }
+  return {
+    prompt_tokens: promptTokens,
+    completion_tokens: completionTokens,
+    total_tokens: totalTokens,
+  };
+}
+
+function asCount(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {

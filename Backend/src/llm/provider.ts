@@ -14,9 +14,16 @@ export type LlmCompleteInput = {
   topP?: number;
 };
 
+export type LlmUsage = {
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
+};
+
 export type LlmCompleteResult = {
   content: string;
   model: string;
+  usage?: LlmUsage;
 };
 
 export interface LlmProvider {

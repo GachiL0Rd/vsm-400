@@ -82,6 +82,9 @@ describe('loadConfig', () => {
     expect(config.llmTimeoutMs).toBe(90_000);
     expect(config.llmConcurrency).toBe(2);
     expect(config.llmTemperature).toBe(0.7);
+    expect(config.llmProfile).toBe('llama-cpp');
+    expect(config.gigachatBaseUrl).toBe('https://api.giga.chat');
+    expect(config.judgeProvider).toBe('none');
     expect(config.llmTopP).toBe(0.8);
     expect(config.llmTopK).toBe(20);
     expect(config.llmJudge).toBe(true);
@@ -119,6 +122,102 @@ describe('loadConfig', () => {
     expect(gigachat.gigachatAuthKey).toBe('base64key');
     expect(gigachat.gigachatScope).toBe('GIGACHAT_API_B2B');
     expect(gigachat.llmConcurrency).toBe(4);
+    expect(gigachat.llmTemperature).toBe(1);
+    expect(gigachat.judgeProvider).toBe('gigachat');
+    expect(gigachat.judgeModel).toBe('GigaChat');
+
+    const pers = loadConfig({
+      ...valid,
+      LLM_PROVIDER: 'gigachat',
+      LLM_MODEL: 'GigaChat-2-Max',
+      GIGACHAT_AUTH_KEY: 'base64key',
+      GIGACHAT_CA_FILE: '/tmp/ca.pem',
+      LLM_CONCURRENCY: '8',
+    });
+    expect(pers.gigachatScope).toBe('GIGACHAT_API_PERS');
+    expect(pers.llmConcurrency).toBe(1);
+    expect(pers.llmTemperature).toBe(1);
+  });
+
+  it('yandex — алиас с дефолтной базой, судья может быть другим', () => {
+    expect(() =>
+      loadConfig({ ...valid, LLM_PROVIDER: 'yandex', LLM_MODEL: 'aliceai-llm-flash' }),
+    ).toThrow(/LLM_API_KEY/);
+    expect(() =>
+      loadConfig({
+        ...valid,
+        LLM_PROVIDER: 'yandex',
+        LLM_MODEL: 'aliceai-llm-flash',
+        LLM_API_KEY: 'key',
+      }),
+    ).toThrow(/LLM_PROJECT/);
+
+    const yandex = loadConfig({
+      ...valid,
+      LLM_PROVIDER: 'yandex',
+      LLM_MODEL: 'aliceai-llm-flash',
+      LLM_API_KEY: 'key',
+      LLM_PROJECT: 'folder1',
+      LLM_EXTRA_HEADERS: '{"X-Title":"vsm"}',
+    });
+    expect(yandex.llmProvider).toBe('yandex');
+    expect(yandex.llmBaseUrl).toBe('https://ai.api.cloud.yandex.net/v1');
+    expect(yandex.llmProfile).toBe('yandex');
+    expect(yandex.llmTemperature).toBe(1);
+    expect(yandex.llmProject).toBe('folder1');
+    expect(yandex.llmExtraHeaders).toEqual({ 'X-Title': 'vsm' });
+    expect(yandex.judgeProvider).toBe('yandex');
+    expect(yandex.judgeModel).toBe('aliceai-llm-flash');
+    expect(yandex.judgeApiKey).toBe('key');
+    expect(yandex.llmConcurrency).toBe(2);
+
+    const uri = loadConfig({
+      ...valid,
+      LLM_PROVIDER: 'yandex',
+      LLM_MODEL: 'gpt://folder1/aliceai-llm-flash/latest',
+      LLM_API_KEY: 'key',
+      LLM_TEMPERATURE: '0.4',
+    });
+    expect(uri.llmModel).toBe('gpt://folder1/aliceai-llm-flash/latest');
+    expect(uri.llmTemperature).toBe(0.4);
+
+    expect(() =>
+      loadConfig({
+        ...valid,
+        LLM_PROVIDER: 'yandex',
+        LLM_MODEL: 'aliceai-llm-flash',
+        LLM_API_KEY: 'key',
+        LLM_PROJECT: 'folder1',
+        LLM_JUDGE_PROVIDER: 'gigachat',
+      }),
+    ).toThrow(/LLM_JUDGE_MODEL/);
+
+    const split = loadConfig({
+      ...valid,
+      LLM_PROVIDER: 'yandex',
+      LLM_MODEL: 'aliceai-llm-flash',
+      LLM_API_KEY: 'key',
+      LLM_PROJECT: 'folder1',
+      LLM_JUDGE_PROVIDER: 'gigachat',
+      LLM_JUDGE_MODEL: 'GigaChat-2-Max',
+      GIGACHAT_AUTH_KEY: 'base64key',
+      GIGACHAT_CA_FILE: '/tmp/ca.pem',
+    });
+    expect(split.judgeProvider).toBe('gigachat');
+    expect(split.judgeModel).toBe('GigaChat-2-Max');
+    expect(split.judgeProfile).toBe('llama-cpp');
+    expect(split.llmProfile).toBe('yandex');
+
+    expect(() => loadConfig({ ...valid, LLM_EXTRA_HEADERS: 'nope' })).toThrow(/LLM_EXTRA_HEADERS/);
+    expect(
+      loadConfig({
+        ...valid,
+        LLM_PROVIDER: 'openai-compatible',
+        LLM_BASE_URL: 'http://127.0.0.1:8081',
+        LLM_MODEL: 'qwen3-8b',
+        LLM_PROFILE: 'vllm',
+      }).llmProfile,
+    ).toBe('vllm');
   });
 
   it('разбирает allowlist вебхуков и считает пустое значение открытым', () => {

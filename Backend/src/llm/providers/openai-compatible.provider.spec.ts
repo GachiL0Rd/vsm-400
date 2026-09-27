@@ -41,6 +41,8 @@ describe('openai-совместимый провайдер', () => {
       max_tokens: number;
       reasoning_effort: string;
       chat_template_kwargs: { enable_thinking: boolean };
+      repeat_penalty: number;
+      thinking?: unknown;
     };
     expect(body.response_format.type).toBe('json_schema');
     expect(body.response_format.json_schema).toMatchObject({
@@ -54,7 +56,101 @@ describe('openai-совместимый провайдер', () => {
     expect(body.max_tokens).toBe(256);
     expect(body.reasoning_effort).toBe('none');
     expect(body.chat_template_kwargs.enable_thinking).toBe(false);
+    expect(body.repeat_penalty).toBe(1);
+    expect(body.thinking).toBeUndefined();
     expect(init?.headers?.authorization).toBe('Bearer local-key');
+  });
+
+  it('профиль yandex собирает URI и не шлёт repeat_penalty и thinking', async () => {
+    const fetchImpl = vi.fn<FetchLike>(async () => ({
+      ok: true,
+      status: 200,
+      text: async () =>
+        JSON.stringify({
+          choices: [{ message: { content: '{"text":"а"}' } }],
+          usage: { prompt_tokens: 3, completion_tokens: 2, total_tokens: 5 },
+        }),
+    }));
+    const client = new OpenAiCompatibleProvider({
+      name: 'yandex',
+      profile: 'yandex',
+      baseUrl: 'https://ai.api.cloud.yandex.net/v1',
+      model: 'aliceai-llm-flash',
+      apiKey: 'ya-key',
+      project: 'folder1',
+      extraHeaders: { 'X-Title': 'vsm', 'x-data-logging-enabled': 'true' },
+      timeoutMs: 1_000,
+      fetchImpl,
+    });
+    const result = await client.complete({
+      messages: [{ role: 'user', content: 'перефразируй' }],
+      jsonSchema: schema,
+      schemaName: 'scenario_text_variant',
+      temperature: 1.4,
+    });
+    expect(client.name).toBe('yandex');
+    expect(result.usage).toEqual({ prompt_tokens: 3, completion_tokens: 2, total_tokens: 5 });
+    const init = fetchImpl.mock.calls[0]?.[1];
+    const body = JSON.parse(init?.body ?? '{}') as Record<string, unknown>;
+    expect(body.model).toBe('gpt://folder1/aliceai-llm-flash/latest');
+    expect(body.temperature).toBe(1);
+    expect(body.reasoning_effort).toBe('none');
+    expect(body.repeat_penalty).toBeUndefined();
+    expect(body.thinking).toBeUndefined();
+    expect(body.chat_template_kwargs).toBeUndefined();
+    expect(init?.headers?.authorization).toBe('Bearer ya-key');
+    expect(init?.headers?.['OpenAI-Project']).toBe('folder1');
+    expect(init?.headers?.['x-data-logging-enabled']).toBe('false');
+    expect(init?.headers?.['X-Title']).toBe('vsm');
+  });
+
+  it('готовый gpt:// URI не оборачивается второй раз', async () => {
+    const fetchImpl = vi.fn<FetchLike>(async () => ({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ choices: [{ message: { content: '{}' } }] }),
+    }));
+    const client = new OpenAiCompatibleProvider({
+      profile: 'yandex',
+      baseUrl: 'https://ai.api.cloud.yandex.net/v1',
+      model: 'gpt://folder1/aliceai-llm-flash/latest',
+      timeoutMs: 1_000,
+      fetchImpl,
+    });
+    await client.complete({
+      messages: [],
+      jsonSchema: schema,
+      schemaName: 'scenario_text_variant',
+    });
+    const body = JSON.parse(fetchImpl.mock.calls[0]?.[1]?.body ?? '{}') as { model: string };
+    expect(body.model).toBe('gpt://folder1/aliceai-llm-flash/latest');
+  });
+
+  it('профиль vllm не шлёт repeat_penalty и thinking', async () => {
+    const fetchImpl = vi.fn<FetchLike>(async () => ({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ choices: [{ message: { content: '{}' } }] }),
+    }));
+    const client = new OpenAiCompatibleProvider({
+      profile: 'vllm',
+      baseUrl: 'http://127.0.0.1:8000',
+      model: 'qwen',
+      timeoutMs: 1_000,
+      fetchImpl,
+    });
+    await client.complete({
+      messages: [],
+      jsonSchema: schema,
+      schemaName: 'scenario_text_variant',
+    });
+    const body = JSON.parse(fetchImpl.mock.calls[0]?.[1]?.body ?? '{}') as Record<string, unknown>;
+    expect(body.model).toBe('qwen');
+    expect(body.repeat_penalty).toBeUndefined();
+    expect(body.thinking).toBeUndefined();
+    expect(body.chat_template_kwargs).toBeUndefined();
+    expect(body.reasoning_effort).toBeUndefined();
+    expect(body.presence_penalty).toBe(0);
   });
 
   it('обрезает /v1 у базы и поднимает HTTP-ошибку', async () => {

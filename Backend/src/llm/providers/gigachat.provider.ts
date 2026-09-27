@@ -28,7 +28,6 @@ export class GigaChatProvider implements LlmProvider {
       model: string;
       timeoutMs: number;
       temperature?: number;
-      topP?: number;
       cache: TokenCache;
       caPem?: string | Buffer;
       caFile?: string;
@@ -63,9 +62,9 @@ export class GigaChatProvider implements LlmProvider {
         body: JSON.stringify({
           model: this.options.model,
           messages: input.messages,
-          temperature: input.temperature ?? this.options.temperature ?? 0.7,
-          top_p: input.topP ?? this.options.topP ?? 0.8,
+          temperature: input.temperature ?? this.options.temperature ?? 1,
           max_tokens: LLM_MAX_TOKENS,
+          repetition_penalty: 1,
           // Форма GigaChat, не OpenAI: schema лежит рядом с type.
           response_format: {
             type: 'json_schema',
@@ -79,7 +78,11 @@ export class GigaChatProvider implements LlmProvider {
       throw new Error(`GigaChat HTTP ${response.status}: ${response.text.slice(0, 200)}`);
     }
     const parsed = readChatContent(parseJsonBody(response.text, 'GigaChat'));
-    return { content: parsed.content, model: parsed.model ?? this.options.model };
+    return {
+      content: parsed.content,
+      model: parsed.model ?? this.options.model,
+      ...(parsed.usage ? { usage: parsed.usage } : {}),
+    };
   }
 
   private async token(signal?: AbortSignal): Promise<string> {

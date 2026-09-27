@@ -1,3 +1,4 @@
+import { effectiveLlmConcurrency } from '../config/llm-concurrency';
 import { loadLocalEnv } from '../config/load-env';
 
 /**
@@ -9,8 +10,6 @@ loadLocalEnv();
 export const LLM_QUEUE = 'llm-variants';
 export const LLM_JOB_NAME = 'generate';
 
-export const LLM_WORKER_CONCURRENCY = readConcurrency(process.env.LLM_CONCURRENCY);
-
 export const LLM_JOB_ATTEMPTS = 3;
 export const LLM_BACKOFF_MS = 2_000;
 export const LLM_RATE_MAX = 20;
@@ -21,12 +20,17 @@ export const LLM_ERRORS_KEY = 'llm:errors';
 export const LLM_ERROR_LIMIT = 20;
 
 export const GIGACHAT_OAUTH_URL = 'https://ngw.devices.sberbank.ru:9443/api/v2/oauth';
-export const GIGACHAT_CHAT_URL = 'https://gigachat.devices.sberbank.ru/api/v1/chat/completions';
+export const GIGACHAT_DEFAULT_BASE_URL = 'https://api.giga.chat';
+export const GIGACHAT_CHAT_URL = 'https://api.giga.chat/v1/chat/completions';
 export const GIGACHAT_TOKEN_SKEW_MS = 60_000;
 
-export const LLM_PROVIDER = Symbol('LLM_PROVIDER');
+export const YANDEX_DEFAULT_BASE_URL = 'https://ai.api.cloud.yandex.net/v1';
 
-export type LlmProviderName = 'openai-compatible' | 'gigachat' | 'none';
+export const LLM_PROVIDER = Symbol('LLM_PROVIDER');
+export const LLM_JUDGE_PROVIDER = Symbol('LLM_JUDGE_PROVIDER');
+
+export type LlmProviderName = 'openai-compatible' | 'gigachat' | 'yandex' | 'none';
+export type LlmApiProfile = 'llama-cpp' | 'vllm' | 'yandex';
 export type LlmJobReason = 'seed' | 'refill' | 'live' | 'manual';
 export type TextVariantReasonName = 'SEED' | 'REFILL' | 'LIVE' | 'MANUAL';
 
@@ -62,6 +66,17 @@ export function readConcurrency(raw: string | undefined): number {
   }
   return value;
 }
+
+/** То же правило, что в loadConfig: PERS не смотрит на LLM_CONCURRENCY. */
+export function workerConcurrency(env: NodeJS.ProcessEnv = process.env): number {
+  return effectiveLlmConcurrency(
+    env.LLM_PROVIDER ?? '',
+    env.GIGACHAT_SCOPE ?? '',
+    readConcurrency(env.LLM_CONCURRENCY),
+  );
+}
+
+export const LLM_WORKER_CONCURRENCY = workerConcurrency();
 
 export function gigachatTokenKey(scope: string): string {
   return `llm:gigachat:token:${scope}`;
