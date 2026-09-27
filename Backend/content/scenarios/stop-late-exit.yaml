@@ -1,0 +1,126 @@
+# Дверь: ИОТ ВСМ-2026, п. 3.4.5–3.4.6. Коляска: 974_р. Пропуск выхода: ситуация 38.
+id: stop-late-exit
+title: "Не успевают выйти с коляской"
+category: service
+stage: stop
+carClasses: [FAMILY]
+difficulty: 2
+competencies: [safety, service, procedure]
+params:
+  dwellMin: { min: 1, max: 4 }
+init: { loyalty: 68, safety: 70 }
+gates:
+  failIf:
+    safety: { lt: 30 }
+start: open
+nodes:
+  open:
+    text: "Остановка короткая. Семья с коляской ещё у кресел."
+    variants:
+      - if: { param: dwellMin, lt: 2 }
+        text: "Стоянка короче двух минут, коляска ещё в салоне."
+    timer: 12
+    choices:
+      - id: roll
+        text: "Предупредить и катить в тамбур, дверь не держать"
+        effects: { safety: 8, loyalty: 4 }
+        skills: { safety: 2, service: 1 }
+        set: [warned]
+        verdict: best
+        next: follow
+      - id: foot
+        text: "Поставить ногу в дверь, пока они дойдут"
+        effects: { loyalty: 8, safety: -20 }
+        verdict: worse
+        better: "Автозакрытие двери не блокируют"
+        basis: "ИОТ ВСМ-2026, п. 3.4.5"
+        next: risk
+      - id: split
+        text: "Родитель выходит, коляску вывозите следом"
+        deviation: true
+        verdict: ok
+        better: "Коляску помогают везти, створку не зажимают"
+        basis: "974_р от 12.05.2026: персонал помогает с коляской"
+        set: [split]
+        next: follow
+    onTimeout:
+      effects: { safety: -12, loyalty: -4 }
+      verdict: missed
+      consequence: "Дверь пошла, семья всё ещё в проходе"
+      next: late
+  follow:
+    text: "Тамбур. Створка начинает сходиться."
+    timer: 10
+    choices:
+      - id: release
+        text: "Если не вышли — отпустить дверь и звать начальника"
+        requires: { flags: [warned] }
+        effects: { safety: 8 }
+        skills: { procedure: 1 }
+        verdict: best
+        next: end-ok
+      - id: hand
+        text: "Удержать створку рукой ещё секунду"
+        effects: { loyalty: 6, safety: -18 }
+        verdict: worse
+        better: "Створку не удерживают даже на секунду"
+        basis: "ИОТ ВСМ-2026, п. 3.4.6"
+        next: end-bad
+      - id: shout
+        text: "Крикнуть о выходе и не касаться створки"
+        effects: { safety: 2, loyalty: -2 }
+        verdict: ok
+        better: "Предупреждают заранее, не в момент закрытия"
+        basis: "Ситуации на борту.pdf, с. 15, ситуация 38"
+        next: end-ok
+    onTimeout:
+      effects: { safety: -22 }
+      verdict: missed
+      consequence: "Коляска в створе"
+      next: end-stop
+  late:
+    text: "Дверь закрыта. Семья внутри, платформа уходит."
+    timer: 16
+    choices:
+      - id: chief
+        text: "Доложить начальнику и объяснить порядок дальше"
+        effects: { safety: 6, loyalty: 2 }
+        verdict: best
+        next: end-ok
+      - id: reverse
+        text: "Обещать, что поезд вернут к платформе"
+        effects: { loyalty: 7, safety: -10 }
+        verdict: worse
+        better: "Объясняют порядок и зовут начальника, не разворот"
+        basis: "Ситуации на борту.pdf, с. 15, ситуация 38"
+        next: end-bad
+    onTimeout:
+      effects: { safety: -18, loyalty: -8 }
+      verdict: missed
+      consequence: "Родитель тянет ручку закрытой двери"
+      next: end-stop
+  risk:
+    text: "Дверь держится вашей ногой. На платформе машут."
+    choices:
+      - id: off
+        text: "Убрать ногу и доложить, если они не вышли"
+        effects: { safety: 10, loyalty: -4 }
+        set: [warned]
+        verdict: best
+        next: follow
+      - id: hold
+        text: "Держать, пока коляска не снаружи"
+        effects: { loyalty: 5, safety: -16 }
+        verdict: worse
+        better: "Дверь не держат, пока семья не выйдет"
+        basis: "ИОТ ВСМ-2026, п. 3.4.6"
+        next: end-stop
+  end-ok:
+    end: completed
+    text: "Дверь не держали, начальник знает, кто не вышел"
+  end-bad:
+    end: incident
+    text: "Створку удерживали ради коляски"
+  end-stop:
+    end: terminated
+    text: "Коляска оказалась в закрывающейся двери"

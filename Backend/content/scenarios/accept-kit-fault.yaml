@@ -1,0 +1,129 @@
+# Приёмка: ИОТ ВСМ-2026, п. 2.2, 3.4.4; лекарства — Ситуации на борту, ситуация 28.
+id: accept-kit-fault
+title: "Приёмка: кресло и аптечка"
+category: technical
+stage: acceptance
+carClasses: [ECONOMY]
+difficulty: 2
+competencies: [procedure, detection, safety]
+params:
+  occupancy: { min: 40, max: 100 }
+init: { loyalty: 70, safety: 72 }
+gates:
+  failIf:
+    safety: { lt: 30 }
+start: open
+nodes:
+  open:
+    text: "Кресло в экономе не фиксируется. У двери уже очередь."
+    variants:
+      - if: { param: occupancy, gte: 85 }
+        text: "Вагон почти полный: сломанное кресло сразу станет спором."
+    timer: 20
+    choices:
+      - id: report
+        text: "Пометить кресло и доложить ЛНП до посадки"
+        effects: { safety: 8, loyalty: -2 }
+        skills: { procedure: 2, detection: 1 }
+        set: [reported]
+        verdict: best
+        next: follow
+      - id: strap
+        text: "Подтянуть ремнём и открыть посадку молча"
+        effects: { loyalty: 6, safety: -16 }
+        verdict: worse
+        better: "Неисправность докладывают ЛНП, а не маскируют"
+        basis: "ИОТ ВСМ-2026, п. 2.2"
+        next: risk
+      - id: sheet
+        text: "Записать место в лист и только потом звать ЛНП"
+        deviation: true
+        verdict: ok
+        better: "Лист не заменяет доклад: ЛНП узнаёт до посадки"
+        basis: "ИОТ ВСМ-2026, п. 2.2"
+        set: [noted]
+        next: follow
+    onTimeout:
+      effects: { safety: -12, loyalty: -4 }
+      verdict: missed
+      consequence: "Посадка пошла, на кресло уже сели"
+      next: late
+  follow:
+    text: "У аптечки сорвана пломба, вложение не сходится с описью."
+    timer: 18
+    choices:
+      - id: kit
+        text: "Доложить ЛНП и просить замену до отправления"
+        requires: { flags: [reported] }
+        effects: { safety: 8 }
+        skills: { safety: 2 }
+        set: [kit-ok]
+        verdict: best
+        next: end-ok
+      - id: pills
+        text: "Положить свои таблетки, чтобы опись сошлась"
+        effects: { loyalty: 5, safety: -20 }
+        verdict: worse
+        better: "Свои лекарства в аптечку не кладут"
+        basis: "Ситуации на борту.pdf, с. 12, ситуация 28"
+        next: end-bad
+      - id: kit-only
+        text: "Доложить про аптечку, кресло закрыть позже"
+        effects: { safety: 4 }
+        verdict: ok
+        better: "Оба дефекта закрывают докладом до отправления"
+        basis: "ИОТ ВСМ-2026, п. 2.2"
+        set: [kit-ok]
+        next: end-ok
+    onTimeout:
+      effects: { safety: -14 }
+      verdict: missed
+      consequence: "Отправление готовят без целой аптечки"
+      next: end-stop
+  late:
+    text: "Пассажир на сломанном кресле спорит с соседом."
+    timer: 15
+    choices:
+      - id: split
+        text: "Разнять и доложить ЛНП про кресло и аптечку"
+        effects: { safety: 4, loyalty: -4 }
+        set: [reported]
+        verdict: best
+        next: follow
+      - id: promise
+        text: "Обещать другое место и ЛНП не звать"
+        effects: { loyalty: 7, safety: -12 }
+        verdict: worse
+        better: "Место и дефект решает ЛНП, не обещание в проходе"
+        basis: "ИОТ ВСМ-2026, п. 2.2"
+        next: end-bad
+    onTimeout:
+      effects: { safety: -16, loyalty: -6 }
+      verdict: missed
+      consequence: "Спор перешёл в толкотню у кресла"
+      next: end-stop
+  risk:
+    text: "Ремень держит спинку. Очередь благодарит за скорость."
+    choices:
+      - id: confess
+        text: "Остановить посадку и доложить, как есть"
+        effects: { safety: 10, loyalty: -6 }
+        set: [reported]
+        verdict: best
+        next: follow
+      - id: quiet
+        text: "Промолчать: спинка пока стоит"
+        effects: { loyalty: 3, safety: -14 }
+        verdict: worse
+        better: "Скрытый дефект опаснее задержки посадки"
+        basis: "ИОТ ВСМ-2026, п. 3.4.4"
+        next: end-bad
+  end-ok:
+    end: completed
+    text: "ЛНП знает про кресло и аптечку до отправления"
+  end-bad:
+    end: incident
+    text: "Дефект вскрылся уже после отправления"
+  end-stop:
+    end: terminated
+    text: "Рейс с незакрытой неисправностью остановлен"

@@ -12,6 +12,7 @@
 | --- | --- |
 | `Game/` | Browser client и Game Server; запуск описан в `Game/README.md` |
 | `Game/docs/` | Нормативные требования, рабочие guide и архив только модуля Game |
+| `Backend/` | API тренажёра (NestJS, Prisma, PostgreSQL); см. `Backend/README.md` |
 | `Server/` | Тестовый backend кабинета и раздача `Client/`; см. `Server/README.md` |
 | `Client/` | Статический личный кабинет; см. `Client/README.md` |
 | `docs/` | Кросс-проектный workflow, исследования и архив; карта — в `docs/README.md` |

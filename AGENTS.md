@@ -21,6 +21,7 @@
 | Каталог | Назначение | Локальные инструкции |
 | --- | --- | --- |
 | `Game/` | Browser Game Client и Game Server | `Game/AGENTS.md` |
+| `Backend/` | API тренажёра: NestJS 11, Fastify, Prisma, PostgreSQL | `Backend/AGENTS.md` |
 | `Server/` | Backend тестового личного кабинета: Hono, `node:sqlite`, TS без сборки | `Server/AGENTS.md` |
 | `Client/` | Статический личный кабинет (HTML/CSS/JS), точка входа в игру | `Client/AGENTS.md` |
 
