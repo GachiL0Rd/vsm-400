@@ -9,7 +9,7 @@ import { REFRESH_RACE_WINDOW_MS } from '../src/auth/refresh';
 import { APP_CONFIG, type AppConfig } from '../src/config/env';
 import { configureApp } from '../src/configure-app';
 import { Grade, Role } from '../src/generated/prisma/client';
-import { createFastifyAdapter } from '../src/main';
+import { createFastifyAdapter } from '../src/http-adapter';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { RedisService } from '../src/redis/redis.service';
 import { UsersService } from '../src/users/users.service';

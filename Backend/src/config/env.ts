@@ -537,14 +537,6 @@ function formatEnvError(error: z.ZodError): string {
 }
 
 /**
- * В адаптер — false или строка адресов. Число хопов fastify 5.12
- * (getTrustProxyFn) не читает X-Forwarded-For, поэтому в конфиг не попадает.
- */
-export function fastifyTrustProxy(value: false | string): false | string {
-  return value;
-}
-
-/**
  * Падает с понятным текстом, если env не совпал со схемой.
  * Явный source нужен тестам: .env с диска при этом не читается.
  */

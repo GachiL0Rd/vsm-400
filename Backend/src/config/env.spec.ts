@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { fastifyTrustProxy, loadConfig } from './env';
+import { loadConfig } from './env';
 
 const valid = {
   NODE_ENV: 'test',
@@ -55,13 +55,11 @@ describe('loadConfig', () => {
 
   it('TRUST_PROXY — false или список адресов, не число хопов', () => {
     expect(loadConfig(valid).trustProxy).toBe(false);
-    expect(fastifyTrustProxy(false)).toBe(false);
     expect(loadConfig({ ...valid, TRUST_PROXY: '' }).trustProxy).toBe(false);
     expect(loadConfig({ ...valid, TRUST_PROXY: 'false' }).trustProxy).toBe(false);
     expect(loadConfig({ ...valid, TRUST_PROXY: '0' }).trustProxy).toBe(false);
     const listed = loadConfig({ ...valid, TRUST_PROXY: '127.0.0.1, Loopback, 10.0.0.0/8' });
     expect(listed.trustProxy).toBe('127.0.0.1,loopback,10.0.0.0/8');
-    expect(fastifyTrustProxy(listed.trustProxy)).toBe('127.0.0.1,loopback,10.0.0.0/8');
     expect(loadConfig({ ...valid, TRUST_PROXY: 'fe80::/10' }).trustProxy).toBe('fe80::/10');
     expect(() => loadConfig({ ...valid, TRUST_PROXY: '2' })).toThrow(/Некорректное окружение/);
     expect(() => loadConfig({ ...valid, TRUST_PROXY: '2' })).toThrow(/TRUST_PROXY/);
