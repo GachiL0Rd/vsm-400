@@ -155,8 +155,8 @@ Guided и replay в этом адаптере не выдаются.
 
 ## `FinishedGameResult` → `RunSummary`
 
-Чистое отображение, без Nest. В журнал решений пусто: пошаговых фактов
-контракт v1 не несёт.
+Чистое отображение, без Nest. Без `assessment` журнал пуст. С полем —
+раздел «Оценочные факты». Шкалы и `outcome` из фактов заново не считаются.
 
 | Поле `RunSummary` | Откуда |
 | --- | --- |
@@ -164,16 +164,80 @@ Guided и replay в этом адаптере не выдаются.
 | `loyalty` | `clamp(scores.customerSatisfaction)`, затем целое |
 | `politeness` | `politenessOf(loyalty, [], [])` |
 | `outcome` | Если `safety` после clamp и округления `< 30` (`FINISH_FAIL_SAFETY`, тот же порог, что `gates.failIf.safety.lt` и `rules.failScore`) → `terminated`. Иначе `route-completed` → `completed`. Иначе `terminal-rule` и `outcomeId = route-safely-interrupted` → `completed`. Любой другой `terminal-rule` (`wagon-unserviceable`, `wagon-unsalvageable`, неизвестный id) → `incident` |
-| `decisions` | `[]` |
-| `competencyDelta` | `{}` |
-| `timeouts`, `reactionAvgMs` | `0` |
-| `facts.prevented`, `facts.complaints` | `0` |
-| `facts.incidents` | `1`, если `outcome = incident`, иначе `0` |
-| `facts.interventions` | `1`, если `outcomeId = route-safely-interrupted`, иначе `0` |
+| `decisions` | `[]`, если `assessment` нет |
+| `competencyDelta` | `{}`, если `assessment` нет |
+| `timeouts`, `reactionAvgMs` | `0`, если `assessment` нет |
+| `facts.prevented`, `facts.complaints` | `0`, если `assessment` нет |
+| `facts.incidents` | `1`, если `assessment` нет и `outcome = incident`, иначе `0` |
+| `facts.interventions` | `1`, если `assessment` нет и `outcomeId = route-safely-interrupted`, иначе `0` |
 
 Сначала шкала: `safety` ниже 30 даёт `terminated` при любом `termination`.
-Иначе `route-completed` не смотрит на `outcomeId`. `interventions` смотрит
-только на `outcomeId`, в том числе когда низкая шкала уже дала `terminated`.
+Иначе `route-completed` не смотрит на `outcomeId`. Без `assessment`
+`interventions` смотрит только на `outcomeId`, в том числе когда низкая шкала
+уже дала `terminated`. С `assessment` счётчики `facts` берутся из фактов,
+даже если все нули.
+
+## Оценочные факты (`assessment`)
+
+Необязательное поле `FinishedGameResult`. Тело без него принимается как раньше.
+`contractVersion` остаётся `1`.
+
+Контракт на стороне Game —
+[`platform-contract.md`](../../Game/docs/user/architecture/platform-contract.md).
+Поле туда допишет команда Game. Порядок выката: сначала Backend принимает
+`assessment`, затем Game начинает его слать.
+
+`kind` — непустая строка. Известные виды мапятся по таблицам. Неизвестный вид
+принимается: этап `enroute`, текст «Событие рейса» / «Факт зафиксирован»,
+без дельты компетенций. `verdict` — только `correct | late | incorrect | missed`.
+`detail` — плоский объект JSON-примитивов. В теле не больше 500 фактов.
+
+| `kind` | `stage` | компетенции |
+| --- | --- | --- |
+| `journal-submission` | `acceptance` | `procedure`, `detection` |
+| `boarding-decision` | `boarding` | `procedure`, `safety` |
+| `service-request` | `enroute` | `service` |
+| `fire` | `enroute` | `safety`, `reaction` |
+| `pressure` | `enroute` | `safety`, `reaction`, `escalation` |
+| `emergency-brake` | `enroute` | `safety`, `escalation` |
+| прочий | `enroute` | нет |
+
+| `verdict` Game | `Verdict` | величина на каждую компетенцию вида |
+| --- | --- | --- |
+| `correct` | `best` | +2 |
+| `late` | `ok` | +1 |
+| `incorrect` | `worse` | −1 |
+| `missed` | `missed` | −2 |
+
+Сумма по фактам копится как `addSkills`: отдельного потолка нет.
+
+| Поле `JournalEntry` | Откуда |
+| --- | --- |
+| `scenarioId` | `content.gameLevelId` |
+| `nodeId` | `id` факта |
+| `choiceId` | `kind` |
+| `safetyDelta`, `loyaltyDelta` | `scoreDelta.safety`, `scoreDelta.customerSatisfaction`, округление до целого |
+| `reactionMs` | `round(reactionUs / 1000)`. Поля нет — `null` |
+| `timerSec` | `null` |
+| `gameTime` | `at` (микросекунды симуляции от старта попытки) как `HH:MM`, тот же `formatClock` |
+| `situation`, `action` | короткий русский текст по виду и `detail`. Номера пунктов не выдумываются |
+| `better` | короткая подсказка для `incorrect` и `missed`, иначе `null`. Ложная отметка в журнале: «Отмечать неисправность только после проверки оборудования» |
+| `basis`, `consequence` | `null` |
+| `lucky`, `deviation` | `false` |
+
+`timeouts` — число фактов с вердиктом `missed`. `reactionAvgMs` — среднее
+заданных `reactionMs`, `0` если таких нет.
+
+| `facts` при наличии `assessment` | Откуда |
+| --- | --- |
+| `incidents` | `fire` и `pressure`, у которых `detail.critical === true` |
+| `prevented` | `fire` и `pressure` с `verdict = correct` |
+| `interventions` | `emergency-brake` с `detail.activated === true` |
+| `complaints` | `service-request` с `verdict = missed` |
+
+`RunRecorder` пишет `summary.decisions` в `RunDecision` тем же путём, что журнал
+движка. Дольше 80 решений итог помечается подозрительным и режется до 80:
+это прежний потолок смены, не отдельное правило фактов.
 
 ## Переменные
 
@@ -209,9 +273,9 @@ npm run build && node dist/server/main.mjs
 
 ## Ограничения
 
-- Решений по ходам нет: `RunDecision` пустой, `competencyDelta` пустой,
-  компетенции смены не двигаются. Следующий шаг — `assessment.facts` со
-  стороны Game, не разбор `userInputs` на Backend.
+- Без `assessment` решений по ходам нет: `RunDecision` пустой,
+  `competencyDelta` пустой. С `assessment` факты становятся решениями.
+  `userInputs` Backend не разбирает.
 - Id ачивок Game в каталог Backend не входят. Они остаются в сыром `result`.
 - `resolve` продлевает попытку до `GAME_ATTEMPT_TTL_MS` (3 часа от запуска):
   `expiresAt` становится `now + 3 ч`, только если новый срок позже текущего.

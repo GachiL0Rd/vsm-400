@@ -20,6 +20,52 @@ const achievementIdsSchema = z.array(z.string().min(1)).superRefine((ids, ctx) =
   }
 });
 
+/** Факты и строки режем, чтобы тело finish не раздувало журнал. */
+const MAX_ASSESSMENT_FACTS = 500;
+const MAX_DETAIL_KEYS = 24;
+const MAX_SHORT = 64;
+const MAX_FACT_ID = 160;
+const MAX_DETAIL_TEXT = 200;
+/** round(us/1000) должен влезть в int4 reactionMs. */
+const MAX_SIM_US = 2_147_483_647_000;
+const MAX_SCORE_DELTA = 10_000;
+
+const simMicrosSchema = z.int().nonnegative().max(MAX_SIM_US);
+
+const detailValueSchema = z.union([
+  z.string().max(MAX_DETAIL_TEXT),
+  z.number(),
+  z.boolean(),
+  z.null(),
+]);
+
+const detailSchema = z
+  .record(z.string().min(1).max(MAX_SHORT), detailValueSchema)
+  .superRefine((detail, ctx) => {
+    if (Object.keys(detail).length > MAX_DETAIL_KEYS) {
+      ctx.addIssue({ code: 'custom', message: 'detail слишком большой' });
+    }
+  });
+
+const assessmentFactSchema = z.strictObject({
+  id: z.string().min(1).max(MAX_FACT_ID),
+  kind: z.string().min(1).max(MAX_SHORT),
+  at: simMicrosSchema,
+  verdict: z.enum(['correct', 'late', 'incorrect', 'missed']),
+  scoreDelta: z.strictObject({
+    safety: z.number().min(-MAX_SCORE_DELTA).max(MAX_SCORE_DELTA),
+    customerSatisfaction: z.number().min(-MAX_SCORE_DELTA).max(MAX_SCORE_DELTA),
+  }),
+  reactionUs: simMicrosSchema.optional(),
+  detail: detailSchema,
+});
+
+const finishedAssessmentSchema = z.strictObject({
+  setVersion: z.string().min(1).max(MAX_SHORT),
+  durationUs: simMicrosSchema,
+  facts: z.array(assessmentFactSchema).max(MAX_ASSESSMENT_FACTS),
+});
+
 export const finishedGameResultSchema = z.strictObject({
   attemptId: z.string().min(1),
   content: finishedContentSchema,
@@ -37,6 +83,7 @@ export const finishedGameResultSchema = z.strictObject({
     safety: z.number().min(0).max(100),
     customerSatisfaction: z.number().min(0).max(100),
   }),
+  assessment: finishedAssessmentSchema.optional(),
 });
 
 export class FinishedGameResultDto extends createZodDto(finishedGameResultSchema) {}

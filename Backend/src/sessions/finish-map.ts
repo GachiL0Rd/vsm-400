@@ -1,6 +1,7 @@
 import { clampScale } from '../engine/scale';
 import { politenessOf } from '../engine/summarize';
 import type { RunSummary } from '../engine/types';
+import { type GameAssessment, mapAssessment } from './finish-facts';
 
 /**
  * Порог провала шкалы безопасности после округления.
@@ -9,8 +10,9 @@ import type { RunSummary } from '../engine/types';
 export const FINISH_FAIL_SAFETY = 30;
 
 /**
- * Из FinishedGameResult в RunSummary идут только termination и scores.
- * userInputs и id ачивок игры в компетенциях Backend не участвуют.
+ * Из FinishedGameResult в RunSummary идут termination, scores и,
+ * если Game его прислал, assessment. userInputs и id ачивок игры
+ * в компетенциях Backend не участвуют. Шкалы из фактов заново не считаются.
  */
 export type FinishAssessment = {
   termination: {
@@ -21,17 +23,38 @@ export type FinishAssessment = {
     safety: number;
     customerSatisfaction: number;
   };
+  content?: {
+    gameLevelId: string;
+  };
+  assessment?: GameAssessment;
 };
 
 export function finishToSummary(result: FinishAssessment): RunSummary {
   const safety = roundedScore(result.scores.safety);
   const loyalty = roundedScore(result.scores.customerSatisfaction);
   const outcome = mapOutcome(result.termination, safety);
+  const traced = result.assessment
+    ? mapAssessment(result.assessment, result.content?.gameLevelId ?? '')
+    : emptyTrace(result.termination, outcome);
   return {
     outcome,
     loyalty,
     safety,
+    // Графа сценариев нет: доля вежливости остаётся loyalty/100, как без фактов.
     politeness: politenessOf(loyalty, [], []),
+    timeouts: traced.timeouts,
+    reactionAvgMs: traced.reactionAvgMs,
+    competencyDelta: traced.competencyDelta,
+    decisions: traced.decisions,
+    facts: traced.facts,
+  };
+}
+
+function emptyTrace(
+  termination: FinishAssessment['termination'],
+  outcome: RunSummary['outcome'],
+): ReturnType<typeof mapAssessment> {
+  return {
     timeouts: 0,
     reactionAvgMs: 0,
     competencyDelta: {},
@@ -40,7 +63,7 @@ export function finishToSummary(result: FinishAssessment): RunSummary {
       prevented: 0,
       incidents: outcome === 'incident' ? 1 : 0,
       complaints: 0,
-      interventions: result.termination.outcomeId === 'route-safely-interrupted' ? 1 : 0,
+      interventions: termination.outcomeId === 'route-safely-interrupted' ? 1 : 0,
     },
   };
 }
