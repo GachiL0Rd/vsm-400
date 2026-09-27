@@ -76,7 +76,7 @@ export class WorldRenderer {
   ) {
     this.floor = scene.add.graphics().setDepth(0);
     this.overlay = scene.add.graphics().setDepth(16);
-    this.objects = scene.add.graphics().setDepth(20);
+    this.objects = scene.add.graphics().setDepth(4_000);
     this.actors = scene.add.graphics().setDepth(30);
     this.heldItems = scene.add.graphics().setDepth(5_000);
   }
@@ -259,7 +259,7 @@ export class WorldRenderer {
         resolution: Math.max(1, this.viewZoom),
       })
       .setOrigin(0.5)
-      .setDepth(21);
+      .setDepth(4_001);
     const halfW = Math.max(18, label.width / 2 + 5);
     const halfH = Math.max(11, label.height / 2 + 4);
     const color = this.visuals.object(object).fillColor;
