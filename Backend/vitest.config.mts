@@ -17,6 +17,7 @@ const sharedEnv = {
   CORS_ORIGINS: 'http://127.0.0.1:5173',
   PUBLIC_GAME_WS_URL: 'ws://127.0.0.1:3001/game',
   COOKIE_SECURE: 'false',
+  LLM_PROVIDER: 'none',
 };
 
 const dbFiles = [
@@ -25,6 +26,7 @@ const dbFiles = [
   'test/auth.e2e-spec.ts',
   'test/scenarios.e2e-spec.ts',
   'test/sessions.e2e-spec.ts',
+  'test/llm.e2e-spec.ts',
 ];
 
 export default defineConfig({

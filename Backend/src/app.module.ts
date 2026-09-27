@@ -15,6 +15,7 @@ import { ConfigModule } from './config/config.module';
 import { HealthModule } from './health/health.module';
 import { IntegrationModule } from './integration/integration.module';
 import { LeaderboardModule } from './leaderboard/leaderboard.module';
+import { LlmModule } from './llm/llm.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { OrgModule } from './org/org.module';
 import { PrismaModule } from './prisma/prisma.module';
@@ -39,6 +40,7 @@ import { UsersModule } from './users/users.module';
     UsersModule,
     OrgModule,
     ScenariosModule,
+    LlmModule,
     SessionsModule,
     ProgressionModule,
     AchievementsModule,
