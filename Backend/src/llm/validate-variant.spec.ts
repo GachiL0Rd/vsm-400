@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { type ValidateSource, validateVariant } from './validate-variant';
+import {
+  isFormatReject,
+  unwrapJson,
+  type ValidateSource,
+  validateVariant,
+} from './validate-variant';
 
 const source: ValidateSource = {
   text: 'На скорости свист из тамбура. Пассажир держится за уши.',
@@ -24,6 +29,17 @@ function reasons(raw: unknown, patch?: Partial<ValidateSource>): string[] {
   const result = validateVariant(raw, { ...source, ...patch });
   return result.ok ? [] : result.reasons;
 }
+
+describe('isFormatReject', () => {
+  it('только битый json, схема и набор id', () => {
+    expect(isFormatReject(['ответ не JSON'])).toBe(true);
+    expect(isFormatReject(['схема ответа'])).toBe(true);
+    expect(isFormatReject(['набор id выборов не совпал'])).toBe(true);
+    expect(isFormatReject(['нет якоря: свист'])).toBe(false);
+    expect(isFormatReject(['ответ не JSON', 'нет якоря: свист'])).toBe(false);
+    expect(isFormatReject([])).toBe(false);
+  });
+});
 
 describe('validateVariant', () => {
   it('принимает перефраз и выравнивает порядок id', () => {
@@ -50,6 +66,18 @@ describe('validateVariant', () => {
       expect(result.reasons).toContain('нет якоря: Ёжик');
     }
     expect(validateVariant(raw, source).ok).toBe(true);
+  });
+
+  it('снимает текст вокруг объекта и не чинит содержимое', () => {
+    const json = JSON.stringify(good);
+    const fenced = `Узел {open}:\n\`\`\`json\n${json}\n\`\`\`\nконец`;
+    expect(unwrapJson(fenced)).toBe(json);
+    expect(unwrapJson(`\`\`\`json\n${json}\nхвост без закрытия`)).toBe(json);
+    expect(unwrapJson(`модель: ${json} спасибо`)).toBe(json);
+    expect(validateVariant(fenced, source).ok).toBe(true);
+    const broken = 'перед { "text": "x", } после';
+    expect(unwrapJson(broken)).toBe('{ "text": "x", }');
+    expect(reasons(broken)).toEqual(['ответ не JSON']);
   });
 
   it('отклоняет битый json и чужую схему', () => {

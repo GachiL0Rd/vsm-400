@@ -24,10 +24,23 @@ export function readVariantPayload(value: unknown): VariantPayload | null {
   return parsed.ok ? parsed.payload : null;
 }
 
+const FORMAT_REASONS = new Set(['ответ не JSON', 'схема ответа', 'набор id выборов не совпал']);
+
+/** Повтор генерации только из-за формы. Смысл, якоря и сходство сюда не входят. */
+export function isFormatReject(reasons: readonly string[]): boolean {
+  return reasons.length > 0 && reasons.every((reason) => FORMAT_REASONS.has(reason));
+}
+
 export function unwrapJson(raw: string): string {
   const trimmed = raw.trim();
-  const fenced = /^```(?:json)?\s*([\s\S]*?)\s*```$/i.exec(trimmed);
-  return (fenced?.[1] ?? trimmed).trim();
+  const fenced = /```(?:json)?\s*([\s\S]*?)```/i.exec(trimmed);
+  const body = (fenced?.[1] ?? trimmed).trim();
+  const start = body.indexOf('{');
+  const end = body.lastIndexOf('}');
+  if (start === -1 || end < start) {
+    return body;
+  }
+  return body.slice(start, end + 1);
 }
 
 export function validateVariant(raw: unknown, source: ValidateSource): ValidateResult {
