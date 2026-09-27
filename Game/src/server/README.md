@@ -5,7 +5,11 @@ integration, HTTP/static hosting and the WebSocket transport. Browser wire DTOs
 remain in `src/common`; `CommonGameProtocolAdapter` connects them to the
 `GameSessionWorker`/`PublicGameProjection` boundary.
 
-Run the standalone server with `npm run server`. Without `PLATFORM_API_URL` and
+For source development, run the standalone server with `npm run server`. For a
+production-style distribution, `npm run build` creates `dist/server/main.mjs`
+and `dist/client/`; `npm run start:server` runs the compiled server. The compiled
+server automatically serves its sibling `dist/client/` unless `GAME_STATIC_DIR`
+is explicitly configured. Without `PLATFORM_API_URL` and
 `PLATFORM_SERVICE_TOKEN`, it uses `MockPlatformGateway`; configuration is read
 once by `parseServerConfig`.
 

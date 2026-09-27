@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "server": "tsx src/server/main.ts",
-    "build": "vite build",
+    "build": "node scripts/build-production.mjs",
     "preview": "vite preview --host 0.0.0.0",
     "format": "biome format --write .",
     "lint": "biome lint .",
@@ -18,8 +18,10 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "check:bundle": "node scripts/check-bundle.mjs",
-    "verify": "npm run check:biome && npm run typecheck && npm run test && npm run build && npm run check:bundle",
-    "audit:dead-code": "node scripts/check-dead-code.mjs"
+    "verify": "npm run check:biome && npm run typecheck && npm run test && npm run build && npm run test:production && npm run check:bundle",
+    "audit:dead-code": "node scripts/check-dead-code.mjs",
+    "start:server": "node dist/server/main.mjs",
+    "test:production": "node scripts/test-production-server.mjs"
   },
   "dependencies": {
     "graphology": "0.26.0",

@@ -158,29 +158,31 @@ If Platform integration is not ready, omit `PLATFORM_API_URL` and `PLATFORM_SERV
 
 ## 7. Reference Game Server Dockerfile shape
 
-The repository currently starts the server through `tsx`, so the fastest reference image is intentionally not a minimized production image:
+`npm run build` now produces a self-contained application distribution under `Game/dist/`: a bundled Node server plus the browser client it serves. A multi-stage image can therefore discard source files, dev dependencies, and `node_modules` from the runtime stage:
 
 ```dockerfile
-FROM node:22-bookworm-slim
+FROM node:22-bookworm-slim AS build
 WORKDIR /app/Game
 
 COPY Game/package.json Game/package-lock.json ./
 RUN npm ci
-
 COPY Game/ ./
 RUN npm run build
 
+FROM node:22-bookworm-slim AS runtime
+WORKDIR /app
+COPY --from=build /app/Game/dist ./dist
+
 ENV GAME_SERVER_HOST=0.0.0.0
 ENV GAME_SERVER_PORT=4174
-ENV GAME_STATIC_DIR=/app/Game/dist
 
 EXPOSE 4174
-CMD ["npm", "run", "server"]
+CMD ["node", "dist/server/main.mjs"]
 ```
 
-This is a **reference shape**, not yet a checked-in production Dockerfile.
+The compiled server auto-discovers `dist/client/`; `GAME_STATIC_DIR` is only needed when overriding that built-in location. The runtime image therefore needs Node and `dist/`, but no npm install.
 
-Why `npm ci` is not `npm ci --omit=dev` yet: the current server entrypoint uses the dev dependency `tsx`. A future server build target should compile/bundle the Node entrypoint and allow a smaller runtime stage.
+`npm run test:production` additionally copies `dist/` to an isolated temporary directory and starts the compiled server there, verifying that the distribution does not depend on project sources or `node_modules`.
 
 ## 8. Reference Compose shape
 
@@ -225,7 +227,8 @@ For a production deployment, use a separate readiness probe against `/ready`; th
 ### Option A — inside Game Server image
 
 - run `npm run build` during image build;
-- set `GAME_STATIC_DIR=/app/Game/dist`;
+- copy the resulting `dist/` tree into the runtime image;
+- start `node dist/server/main.mjs`;
 - proxy `/` and `/game-ws` to Game Server.
 
 Advantages: simplest demo deployment.
@@ -234,8 +237,8 @@ Trade-off: every client asset change rebuilds/redeploys Game Server image.
 
 ### Option B — separate static image/CDN
 
-- build `Game/dist` separately;
-- publish it through nginx/object storage/CDN;
+- build `Game/dist/client` separately or extract it from the normal `npm run build` result;
+- publish that client directory through nginx/object storage/CDN;
 - route `/game-ws` to Game Server.
 
 Advantages: browser assets can deploy independently.

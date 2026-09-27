@@ -47,9 +47,10 @@ npm run verify
 npm run dev
 ```
 
-`verify` выполняет Biome, TypeScript, Vitest, production build и проверку
-bundle. Браузерные e2e-скрипты старого demo удалены; новый Playwright flow стоит
-возвращать после появления стабильного сквозного `GameAttempt`.
+`verify` выполняет Biome, TypeScript, Vitest, production build, smoke-запуск
+скомпилированного Game Server и проверку browser bundle. `npm run build` создаёт
+единый distributable в `dist/`: `dist/server/main.mjs` и обслуживаемый им
+`dist/client/`. Запуск готовой сборки: `npm run start:server`.
 
 ## Linux dependency bundle для агентной среды
 

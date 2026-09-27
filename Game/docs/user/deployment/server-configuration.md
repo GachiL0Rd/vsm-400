@@ -7,23 +7,47 @@ This document describes the configuration currently consumed by `src/server/conf
 
 It is intentionally limited to the Game Server. Platform Server configuration is owned by that service, while the HTTP contract between the two services is defined by [`../api/platform-openapi.yaml`](../api/platform-openapi.yaml).
 
-## 1. Current entrypoint
+## 1. Development and production entrypoints
 
-From `Game/`:
+From `Game/`, source development still uses:
 
 ```bash
 npm run server
 ```
 
-Current script:
+which runs `tsx src/server/main.ts`.
 
-```text
-tsx src/server/main.ts
+The production build is created with:
+
+```bash
+npm run build
 ```
 
-The repository currently has no separate compiled Node server artifact. `npm run build` builds the browser client with Vite; it does not replace the `tsx` server entrypoint.
+It creates one deployable `dist/` tree:
 
-For a quick container this means the image must currently include the dependencies needed by `npm run server`, including `tsx`. A later production packaging pass may add a dedicated server compile/bundle target and then use a smaller runtime-only image.
+```text
+dist/
+├── build-manifest.json
+├── client/
+│   ├── index.html
+│   └── assets/...
+└── server/
+    └── main.mjs
+```
+
+Start the compiled server with:
+
+```bash
+npm run start:server
+```
+
+or directly:
+
+```bash
+node dist/server/main.mjs
+```
+
+The server bundle includes its runtime npm dependencies and automatically discovers the sibling `dist/client/` directory. A copied `dist/` tree therefore runs without project sources, `tsx`, or `node_modules`. `GAME_STATIC_DIR` remains available as an explicit override.
 
 Node requirement from `package.json`:
 
@@ -39,7 +63,7 @@ All process environment parsing is centralized in `src/server/config.ts`.
 | --- | --- | --- | --- |
 | `GAME_SERVER_HOST` | `127.0.0.1` | no | HTTP/WS listen address. In containers normally set to `0.0.0.0`. |
 | `GAME_SERVER_PORT` | `4174` | no | HTTP and WebSocket listen port. |
-| `GAME_STATIC_DIR` | unset | no | Directory containing built browser client. If set, it must exist and contain `index.html`; otherwise startup fails. |
+| `GAME_STATIC_DIR` | auto-detected in compiled distribution | no | Explicit static client directory override. If set, it must exist and contain `index.html`; otherwise startup fails. The compiled server otherwise serves sibling `dist/client/`. |
 | `PLATFORM_API_URL` | unset | paired | Base URL of Platform Server API. Must be configured together with `PLATFORM_SERVICE_TOKEN`. |
 | `PLATFORM_SERVICE_TOKEN` | unset | paired | Bearer token used by Game Server for service-to-service Platform calls. Treat as a secret. |
 | `PLATFORM_TIMEOUT_MS` | `5000` | no | Timeout for one Platform HTTP request. |
@@ -101,23 +125,23 @@ Readiness intentionally does not perform a live Platform Server dependency check
 
 Static hosting is optional.
 
-### Combined Game Server + browser image
+### Combined Game Server + browser distribution
 
-Build the browser client:
+Build both client and server:
 
 ```bash
 npm run build
 ```
 
-Vite writes the current client bundle to `Game/dist/`.
+The resulting `dist/` tree contains the Node server and browser client. When `node dist/server/main.mjs` starts, it automatically serves `dist/client/` if `GAME_STATIC_DIR` is unset.
 
-Start the Game Server with:
+An explicit override is still supported:
 
 ```text
-GAME_STATIC_DIR=/app/Game/dist
+GAME_STATIC_DIR=/custom/client
 ```
 
-The server validates that the configured directory exists and contains `index.html` before listening.
+Any explicitly configured static directory is validated before listening and must contain `index.html`.
 
 ### Separate static hosting
 
@@ -258,13 +282,15 @@ cd Game
 GAME_SERVER_HOST=0.0.0.0 npm run server
 ```
 
-Build client and serve it from the same Game Server:
+Build the deployable server + client and run it:
 
 ```bash
 cd Game
 npm run build
-GAME_SERVER_HOST=0.0.0.0 GAME_STATIC_DIR="$PWD/dist" npm run server
+GAME_SERVER_HOST=0.0.0.0 npm run start:server
 ```
+
+The same artifact can be copied elsewhere and started with `node dist/server/main.mjs`.
 
 Platform-integrated mode:
 

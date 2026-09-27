@@ -1,4 +1,6 @@
+import { existsSync } from 'node:fs';
 import process from 'node:process';
+import { fileURLToPath } from 'node:url';
 import { parseServerConfig } from './config.ts';
 import { BaselineContentRegistry } from './content-registry.ts';
 import { createGameHttpServer } from './http-server.ts';
@@ -7,7 +9,7 @@ import { CommonGameProtocolAdapter } from './protocol-adapter.ts';
 import { InMemoryResumeTokenRegistry } from './resume-token-registry.ts';
 import { GameSessionHost } from './session-host.ts';
 
-const config = parseServerConfig(process.env);
+const config = parseServerConfig(runtimeEnvironment(process.env));
 const platformGateway =
   config.platform === null
     ? new MockPlatformGateway({
@@ -48,3 +50,11 @@ async function shutdown(signal: NodeJS.Signals): Promise<void> {
 
 process.once('SIGINT', () => void shutdown('SIGINT'));
 process.once('SIGTERM', () => void shutdown('SIGTERM'));
+
+function runtimeEnvironment(environment: NodeJS.ProcessEnv): Record<string, string | undefined> {
+  if (environment.GAME_STATIC_DIR !== undefined) return environment;
+  const bundledClientDirectory = fileURLToPath(new URL('../client/', import.meta.url));
+  const bundledIndex = fileURLToPath(new URL('../client/index.html', import.meta.url));
+  if (!existsSync(bundledIndex)) return environment;
+  return { ...environment, GAME_STATIC_DIR: bundledClientDirectory };
+}
