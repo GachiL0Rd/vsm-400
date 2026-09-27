@@ -204,8 +204,48 @@ interface FinishedGameResult {
     safety: number;               // 0..100
     customerSatisfaction: number; // 0..100
   };
+
+  // Необязательно. contractVersion остаётся 1.
+  assessment?: FinishedAssessment;
+}
+
+interface FinishedAssessment {
+  setVersion: string;       // то же значение, что achievements.setVersion
+  durationUs: number;       // время симуляции в момент завершения, целое >= 0
+  facts: AssessmentFact[];  // порядок: at, затем id
+}
+
+interface AssessmentFact {
+  id: string;
+  kind:
+    | "journal-submission"
+    | "boarding-decision"
+    | "service-request"
+    | "fire"
+    | "pressure"
+    | "emergency-brake";
+  at: number;               // мкс симуляции, когда факт закрыт или наблюдался, целое >= 0
+  verdict: "correct" | "late" | "incorrect" | "missed";
+  scoreDelta: { safety: number; customerSatisfaction: number };
+  reactionUs?: number;      // целое >= 0; нет поля, если измерять нечего
+  detail: Record<string, string | number | boolean | null>;
 }
 ```
+
+`assessment` — необязательное поле. Platform принимает тело и с ним, и без него. Промежуточных сообщений с фактами нет: Game отдаёт их один раз, внутри финального `FinishedGameResult`. Порядок выката: сначала Platform принимает поле, затем Game начинает его отправлять.
+
+`scores.safety` равен `clamp(startingScore + Σ facts.scoreDelta.safety)`, то же для `customerSatisfaction`. `clamp` округляет до целого и ограничивает диапазоном 0..100. `startingScore` берётся из конфигурации оценки попытки, в baseline это 100, и в тело finish не входит. Любая коррекция, включая безопасный минимум приёмки, записана в `scoreDelta` соответствующего факта, поэтому равенство точное.
+
+`verdict` решает Game. `correct` — верное действие вовремя. `late` — верное, но позже целевого времени. `incorrect` — неверное действие. `missed` — нужное действие не случилось.
+
+`detail` плоский, только JSON-примитивы:
+
+- `journal-submission`: `communication`, `extinguisher`, `climate`, `emergencyBrake` (`unset|ok|problem`), `sanitation` (`unset|clean|issue`), `accepted`, `reportedProblem`, `realProblem`, `falseReport`, `missedProblem`.
+- `boarding-decision`: `passengerId`, `expected` (`admit|reject`), `actual` (`admit|reject`).
+- `service-request`: `passengerId` если известен, `serviceClass` (`basic|comfort|business`), `timedOut`, `targetUs`.
+- `fire`: `incidentId`, `extinguished`, `critical`.
+- `pressure`: `incidentId`, `critical`.
+- `emergency-brake`: `sealRemoved`, `activated`, `hazardActive`.
 
 `termination` фиксирует фактический способ завершения попытки, но не заменяет оценку. Например `terminal-rule/emergency-brake-used` может соответствовать корректному безопасному решению и высокому `safety`.
 

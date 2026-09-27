@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { AssessmentResult } from './assessment';
 import { BASELINE_ASSESSMENT_CONFIG } from './assessment-config';
 import { GameAttempt } from './game-attempt';
 import { BASELINE_LEVEL } from './level';
@@ -60,6 +61,21 @@ function faultExtinguisher(attempt: GameAttempt): void {
   ]);
 }
 
+function clampScore(value: number): number {
+  return Math.max(0, Math.min(100, Math.round(value)));
+}
+
+function expectInvariant(result: AssessmentResult, starting = 100): void {
+  let safety = 0;
+  let customerSatisfaction = 0;
+  for (const fact of result.facts) {
+    safety += fact.scoreDelta.safety;
+    customerSatisfaction += fact.scoreDelta.customerSatisfaction;
+  }
+  expect(result.scores.safety).toBe(clampScore(starting + safety));
+  expect(result.scores.customerSatisfaction).toBe(clampScore(starting + customerSatisfaction));
+}
+
 function finishQuietRoute(attempt: GameAttempt): void {
   const originAt = secondsToSimTimeUs(5 * 60);
   if (attempt.time < originAt) attempt.advanceTo(originAt);
@@ -91,7 +107,30 @@ describe('GameAttempt', () => {
       };
     };
 
-    expect(run()).toEqual(run());
+    const first = run();
+    expect(first).toEqual(run());
+    expectInvariant(first.assessment);
+    expect(first.assessment.facts.map((fact) => fact.kind)).toEqual(
+      expect.arrayContaining([
+        'journal-submission',
+        'boarding-decision',
+        'service-request',
+        'fire',
+        'pressure',
+      ]),
+    );
+    const fire = first.assessment.facts.find((fact) => fact.id === 'fire:cabin-fire');
+    const pressure = first.assessment.facts.find(
+      (fact) => fact.id === 'pressure:entry-pressure-leak',
+    );
+    expect(fire).toMatchObject({
+      verdict: 'correct',
+      detail: { incidentId: 'cabin-fire', extinguished: true, critical: false },
+    });
+    expect(pressure).toMatchObject({
+      verdict: 'correct',
+      detail: { incidentId: 'entry-pressure-leak', critical: false },
+    });
   });
 
   it('runs the baseline scenario from pre-departure through the normal route end', () => {
@@ -388,6 +427,16 @@ describe('GameAttempt', () => {
     });
     expect(attempt.inspectEmergencyBrake).toBeDefined();
     expect(attempt.snapshot().emergencyBrake).toEqual({ seal: 'broken', activated: true });
+    expect(
+      attempt.assessmentResult().facts.find((fact) => fact.kind === 'emergency-brake'),
+    ).toEqual({
+      id: 'emergency-brake',
+      kind: 'emergency-brake',
+      at: attempt.termination?.at,
+      verdict: 'incorrect',
+      scoreDelta: { safety: -20, customerSatisfaction: -20 },
+      detail: { sealRemoved: true, activated: true, hazardActive: false },
+    });
   });
 
   it('keeps terminal-rule outcome separate from route completion', () => {
@@ -417,10 +466,31 @@ describe('GameAttempt', () => {
       ruleId: 'predeparture-critical',
       outcomeId: 'wagon-unserviceable',
     });
-    expect(attempt.assessmentResult()).toEqual({
-      scores: { safety: 90, customerSatisfaction: 60 },
-      achievements: { setVersion: 'baseline-v2', ids: [] },
-    });
+    const result = attempt.assessmentResult();
+    expect(result.scores).toEqual({ safety: 90, customerSatisfaction: 60 });
+    expect(result.achievements).toEqual({ setVersion: 'baseline-v2', ids: [] });
+    expect(result.facts).toEqual([
+      {
+        id: 'journal-submission',
+        kind: 'journal-submission',
+        at: 0,
+        verdict: 'incorrect',
+        scoreDelta: { safety: -10, customerSatisfaction: -40 },
+        detail: {
+          communication: 'ok',
+          extinguisher: 'problem',
+          climate: 'ok',
+          emergencyBrake: 'ok',
+          sanitation: 'clean',
+          accepted: true,
+          reportedProblem: true,
+          realProblem: false,
+          falseReport: true,
+          missedProblem: false,
+        },
+      },
+    ]);
+    expectInvariant(result);
   });
 
   it('treats climate and communication problem marks as false reports', () => {
@@ -432,11 +502,18 @@ describe('GameAttempt', () => {
         kind: 'terminal-rule',
         outcomeId: 'wagon-unserviceable',
       });
-      expect(attempt.assessmentResult().scores).toEqual({
+      const result = attempt.assessmentResult();
+      expect(result.scores).toEqual({
         safety: 90,
         customerSatisfaction: 60,
       });
-      expect(attempt.assessmentResult().achievements.ids).not.toContain('clean-predeparture');
+      expect(result.achievements.ids).not.toContain('clean-predeparture');
+      expect(result.facts[0]).toMatchObject({
+        kind: 'journal-submission',
+        verdict: 'incorrect',
+        detail: { [field]: 'problem', falseReport: true, realProblem: false },
+      });
+      expectInvariant(result);
     }
   });
 
@@ -461,9 +538,24 @@ describe('GameAttempt', () => {
       outcomeId: 'wagon-unserviceable',
     });
     const result = attempt.assessmentResult();
-    expect(result.scores.safety).toBeGreaterThanOrEqual(95);
+    expect(result.scores.safety).toBe(95);
     expect(result.scores.customerSatisfaction).toBe(50);
     expect(result.achievements.ids).not.toContain('clean-predeparture');
+    expect(result.facts).toEqual([
+      expect.objectContaining({
+        id: 'journal-submission',
+        verdict: 'correct',
+        scoreDelta: { safety: 45, customerSatisfaction: 0 },
+        detail: expect.objectContaining({
+          extinguisher: 'problem',
+          reportedProblem: true,
+          realProblem: true,
+          falseReport: false,
+          missedProblem: false,
+        }),
+      }),
+    ]);
+    expectInvariant(result, 50);
   });
 
   it('penalizes a missed critical fault when the journal marks it ok', () => {
@@ -475,10 +567,15 @@ describe('GameAttempt', () => {
     finishQuietRoute(attempt);
 
     expect(attempt.termination).toMatchObject({ kind: 'route-completed' });
-    expect(attempt.assessmentResult()).toEqual({
-      scores: { safety: 70, customerSatisfaction: 0 },
-      achievements: { setVersion: 'baseline-v2', ids: ['documents-perfect'] },
+    const result = attempt.assessmentResult();
+    expect(result.scores).toEqual({ safety: 70, customerSatisfaction: 0 });
+    expect(result.achievements).toEqual({ setVersion: 'baseline-v2', ids: ['documents-perfect'] });
+    expect(result.facts.find((fact) => fact.kind === 'journal-submission')).toMatchObject({
+      verdict: 'missed',
+      scoreDelta: { safety: -30, customerSatisfaction: 0 },
+      detail: { extinguisher: 'ok', missedProblem: true, falseReport: false },
     });
+    expectInvariant(result);
   });
 
   it('stacks a false mark with a missed real fault and does not lift safety', () => {
@@ -490,10 +587,24 @@ describe('GameAttempt', () => {
       kind: 'terminal-rule',
       outcomeId: 'wagon-unserviceable',
     });
-    expect(attempt.assessmentResult()).toEqual({
-      scores: { safety: 60, customerSatisfaction: 60 },
-      achievements: { setVersion: 'baseline-v2', ids: [] },
-    });
+    const result = attempt.assessmentResult();
+    expect(result.scores).toEqual({ safety: 60, customerSatisfaction: 60 });
+    expect(result.achievements).toEqual({ setVersion: 'baseline-v2', ids: [] });
+    expect(result.facts).toEqual([
+      expect.objectContaining({
+        kind: 'journal-submission',
+        verdict: 'missed',
+        scoreDelta: { safety: -40, customerSatisfaction: -40 },
+        detail: expect.objectContaining({
+          communication: 'problem',
+          extinguisher: 'ok',
+          falseReport: true,
+          missedProblem: true,
+          realProblem: false,
+        }),
+      }),
+    ]);
+    expectInvariant(result);
   });
 
   it('keeps honest pre-departure scores and grants clean-predeparture', () => {
@@ -501,12 +612,179 @@ describe('GameAttempt', () => {
     completeJournal(attempt);
     finishQuietRoute(attempt);
 
-    expect(attempt.assessmentResult()).toEqual({
-      scores: { safety: 100, customerSatisfaction: 0 },
-      achievements: {
-        setVersion: 'baseline-v2',
-        ids: ['clean-predeparture', 'documents-perfect'],
+    const result = attempt.assessmentResult();
+    expect(result.scores).toEqual({ safety: 100, customerSatisfaction: 0 });
+    expect(result.achievements).toEqual({
+      setVersion: 'baseline-v2',
+      ids: ['clean-predeparture', 'documents-perfect'],
+    });
+    expect(result.facts.some((fact) => fact.kind === 'emergency-brake')).toBe(false);
+    expect(result.facts.find((fact) => fact.kind === 'journal-submission')).toMatchObject({
+      at: 0,
+      verdict: 'correct',
+      scoreDelta: { safety: 0, customerSatisfaction: 0 },
+    });
+    expectInvariant(result);
+  });
+
+  it('stamps boarding decisions with the simulation time', () => {
+    const attempt = new GameAttempt({ rootSeed: 11, scenario: scenarioWithoutIncidents() });
+    completeJournal(attempt);
+    const decidedAt = secondsToSimTimeUs(5 * 60);
+    attempt.advanceTo(decidedAt);
+    resolveOriginBoarding(attempt, { 'passenger-2': 'reject' });
+    attempt.advanceTo(attempt.scenario.normalEndTimeUs);
+
+    const result = attempt.assessmentResult();
+    expect(result.facts.find((fact) => fact.id === 'boarding:passenger-2')).toEqual({
+      id: 'boarding:passenger-2',
+      kind: 'boarding-decision',
+      at: decidedAt,
+      verdict: 'incorrect',
+      scoreDelta: { safety: 0, customerSatisfaction: -25 },
+      detail: { passengerId: 'passenger-2', expected: 'admit', actual: 'reject' },
+    });
+    expectInvariant(result);
+  });
+
+  it('records a missed business service against the passenger and the timeout time', () => {
+    const attempt = new GameAttempt({ rootSeed: 4 });
+    completeJournal(attempt);
+    attempt.advanceTo(secondsToSimTimeUs(5 * 60));
+    resolveOriginBoarding(attempt, { 'passenger-3': 'admit' });
+    const action = attempt.entities.get('passenger-3').currentAction;
+    expect(action?.actionId).toBe('request-drink');
+    const timeoutAt = (action?.startedAt ?? 0) + secondsToSimTimeUs(120);
+    attempt.advanceTo(timeoutAt);
+    attempt.signal('critical-predeparture-fault');
+
+    const service = attempt
+      .assessmentResult()
+      .facts.find(
+        (fact) => fact.kind === 'service-request' && fact.detail.passengerId === 'passenger-3',
+      );
+    expect(service).toEqual({
+      id: 'service:passenger-3:0',
+      kind: 'service-request',
+      at: timeoutAt,
+      verdict: 'missed',
+      scoreDelta: { safety: 0, customerSatisfaction: -20 },
+      detail: {
+        passengerId: 'passenger-3',
+        serviceClass: 'business',
+        timedOut: true,
+        targetUs: 60_000_000,
       },
     });
+  });
+
+  it('records a late service response from the authoritative delivery time', () => {
+    const attempt = new GameAttempt({ rootSeed: 4 });
+    completeJournal(attempt);
+    attempt.advanceTo(secondsToSimTimeUs(5 * 60));
+    resolveOriginBoarding(attempt, { 'passenger-3': 'admit' });
+    const action = attempt.entities.get('passenger-3').currentAction;
+    expect(action?.actionId).toBe('request-drink');
+    const startedAt = action?.startedAt ?? 0;
+    follow(attempt, [
+      'origin-desk-door:forward',
+      'origin-door-entry:forward',
+      'entry-cabin:forward',
+      'cabin-service:forward',
+    ]);
+    attempt.takeDrink();
+    const servedAt = startedAt + 70_000_000;
+    attempt.advanceTo(servedAt);
+    attempt.giveHeldItem('passenger-3');
+    attempt.signal('critical-predeparture-fault');
+
+    expect(
+      attempt.assessmentResult().facts.find((fact) => fact.id === 'service:passenger-3:0'),
+    ).toEqual({
+      id: 'service:passenger-3:0',
+      kind: 'service-request',
+      at: servedAt,
+      verdict: 'late',
+      scoreDelta: { safety: 0, customerSatisfaction: -5 },
+      reactionUs: 70_000_000,
+      detail: {
+        passengerId: 'passenger-3',
+        serviceClass: 'business',
+        timedOut: false,
+        targetUs: 60_000_000,
+      },
+    });
+  });
+
+  it('records the cabin fire from ignition through extinguishing', () => {
+    const attempt = new GameAttempt({ rootSeed: 17 });
+    prepareForBaselineFire(attempt);
+    attempt.advanceTo(secondsToSimTimeUs(45 * 60));
+    const extinguishedAt = attempt.time;
+    attempt.useExtinguisher('fire:carriage.cabin');
+    attempt.signal('critical-predeparture-fault');
+
+    const fire = attempt.assessmentResult().facts.find((fact) => fact.kind === 'fire');
+    expect(fire).toMatchObject({
+      id: 'fire:cabin-fire',
+      at: extinguishedAt,
+      verdict: 'correct',
+      detail: { incidentId: 'cabin-fire', extinguished: true, critical: false },
+    });
+    expect(fire?.reactionUs).toBe(extinguishedAt - secondsToSimTimeUs(45 * 60));
+  });
+
+  it('records a critical fire and a critical pressure incident', () => {
+    const fireAttempt = new GameAttempt({ rootSeed: 12 });
+    completeJournal(fireAttempt);
+    fireAttempt.advanceTo(secondsToSimTimeUs(5 * 60));
+    resolveOriginBoarding(fireAttempt);
+    fireAttempt.advanceTo(secondsToSimTimeUs(50 * 60));
+    expect(fireAttempt.assessmentResult().facts.find((fact) => fact.kind === 'fire')).toMatchObject(
+      {
+        id: 'fire:cabin-fire',
+        verdict: 'missed',
+        at: fireAttempt.termination?.at,
+        scoreDelta: { safety: -60, customerSatisfaction: -30 },
+        detail: { incidentId: 'cabin-fire', extinguished: false, critical: true },
+      },
+    );
+
+    const definition = {
+      ...structuredClone(BASELINE_SCENARIO_DEFINITION),
+      incidents: [
+        {
+          id: 'critical-pressure',
+          kind: 'pressure-leak' as const,
+          startAfterDepartureUs: secondsToSimTimeUs(1),
+          failureLocationId: 'pressure.entry',
+          baseCabinPressureKPa: 101.3,
+          attenuationKPaPerMeter: 5,
+          whistleDistanceM: 1.5,
+          earsBlockedDistanceM: 1,
+          criticalCabinPressureKPa: 80,
+          stages: [{ afterStartUs: 0, pressureLossAtSourceKPa: 30 }],
+        },
+      ],
+    };
+    const pressureAttempt = new GameAttempt({
+      rootSeed: 22,
+      scenario: loadScenarioDefinition(definition, BASELINE_LEVEL),
+    });
+    completeJournal(pressureAttempt);
+    pressureAttempt.advanceTo(secondsToSimTimeUs(5 * 60));
+    resolveOriginBoarding(pressureAttempt);
+    pressureAttempt.advanceTo(secondsToSimTimeUs(35 * 60 + 2));
+    const pressure = pressureAttempt
+      .assessmentResult()
+      .facts.find((fact) => fact.kind === 'pressure');
+    expect(pressure).toMatchObject({
+      id: 'pressure:critical-pressure',
+      verdict: 'missed',
+      at: pressureAttempt.termination?.at,
+      scoreDelta: { safety: -50, customerSatisfaction: -25 },
+      detail: { incidentId: 'critical-pressure', critical: true },
+    });
+    expectInvariant(pressureAttempt.assessmentResult());
   });
 });

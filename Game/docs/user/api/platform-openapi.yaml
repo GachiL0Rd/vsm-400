@@ -99,6 +99,9 @@ paths:
         This operation MUST be idempotent by attemptId. Repeating the exact same
         terminal result returns the same receipt. A conflicting terminal payload for
         an already-finished attempt returns 409 and must not overwrite the result.
+        `assessment` is optional. Bodies with it and without it are both valid.
+        contractVersion stays 1. The Platform accepts the field first; the Game
+        Server sends it only in this terminal body.
       parameters:
         - name: attemptId
           in: path
@@ -113,28 +116,72 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/FinishedGameResult'
-            example:
-              attemptId: attempt-123
-              content:
-                gameLevelId: vsm-baseline-01
-                gameLevelVersion: '1'
-                simulationCompatibilityVersion: '1'
-              rootSeed: '8745983467598346759'
-              userInputs:
-                - at: 1200000
-                  sequence: 1
-                  command:
-                    type: move-to
-                    cellId: carriage-01/cell-10
-              achievements:
-                setVersion: '1'
-                ids: [inspected-extinguisher]
-              termination:
-                kind: route-completed
-                outcomeId: destination-arrived
-              scores:
-                safety: 96
-                customerSatisfaction: 84
+            examples:
+              withoutAssessment:
+                summary: A terminal body without assessment stays valid.
+                value:
+                  attemptId: attempt-123
+                  content:
+                    gameLevelId: vsm-baseline-01
+                    gameLevelVersion: '1'
+                    simulationCompatibilityVersion: '1'
+                  rootSeed: '8745983467598346759'
+                  userInputs:
+                    - at: 1200000
+                      sequence: 1
+                      command:
+                        type: move-to
+                        cellId: carriage-01/cell-10
+                  achievements:
+                    setVersion: baseline-v2
+                    ids: [inspected-extinguisher]
+                  termination:
+                    kind: route-completed
+                    outcomeId: destination-arrived
+                  scores:
+                    safety: 96
+                    customerSatisfaction: 84
+              withAssessment:
+                summary: The Game Server attaches assessment once, at the end.
+                value:
+                  attemptId: attempt-123
+                  content:
+                    gameLevelId: vsm-baseline-01
+                    gameLevelVersion: '1'
+                    simulationCompatibilityVersion: '1'
+                  rootSeed: '8745983467598346759'
+                  userInputs: []
+                  achievements:
+                    setVersion: baseline-v2
+                    ids: []
+                  termination:
+                    kind: terminal-rule
+                    outcomeId: wagon-unserviceable
+                  scores:
+                    safety: 90
+                    customerSatisfaction: 60
+                  assessment:
+                    setVersion: baseline-v2
+                    durationUs: 0
+                    facts:
+                      - id: journal-submission
+                        kind: journal-submission
+                        at: 0
+                        verdict: incorrect
+                        scoreDelta:
+                          safety: -10
+                          customerSatisfaction: -40
+                        detail:
+                          communication: ok
+                          extinguisher: problem
+                          climate: ok
+                          emergencyBrake: ok
+                          sanitation: clean
+                          accepted: true
+                          reportedProblem: true
+                          realProblem: false
+                          falseReport: true
+                          missedProblem: false
       responses:
         '200':
           description: Result persisted or an identical result was already persisted.
@@ -346,6 +393,11 @@ components:
           allOf:
             - $ref: '#/components/schemas/ScoreResult'
           description: Final Game Server assessment scores. They are derived from authoritative gameplay facts and are not supplied by the browser.
+        assessment:
+          allOf:
+            - $ref: '#/components/schemas/FinishedAssessment'
+          description: |
+            Optional terminal assessment facts. Omit the property entirely for a body the Platform already accepted before this field existed. When present, scores.safety equals clamp(startingScore + the sum of facts.scoreDelta.safety), and the same holds for customerSatisfaction. clamp rounds to the nearest integer, then limits the result to 0..100. startingScore comes from the attempt assessment configuration (100 in the baseline) and is not a field of this body. Any score override, including the safe pre-departure minimum, is included in the corresponding fact's scoreDelta. facts are ordered by at, then id. The Platform must accept bodies with and without this property. contractVersion stays 1. Rollout order is Platform first, Game second.
     FinishedContentVersion:
       type: object
       additionalProperties: false
@@ -386,6 +438,75 @@ components:
           type: string
           minLength: 1
           description: Stable outcome ID; this field is not itself a safety evaluation.
+    FinishedAssessment:
+      type: object
+      additionalProperties: false
+      required: [setVersion, durationUs, facts]
+      properties:
+        setVersion:
+          type: string
+          minLength: 1
+          description: Same value as achievements.setVersion. The baseline evaluator currently emits baseline-v2.
+        durationUs:
+          type: integer
+          minimum: 0
+          description: Authoritative simulation time at termination, in microseconds.
+        facts:
+          type: array
+          items:
+            $ref: '#/components/schemas/AssessmentFact'
+    AssessmentFact:
+      type: object
+      additionalProperties: false
+      required: [id, kind, at, verdict, scoreDelta, detail]
+      properties:
+        id:
+          type: string
+          minLength: 1
+          description: Stable within the attempt, for example boarding:passenger-2 or fire:cabin-fire.
+        kind:
+          type: string
+          enum:
+            - journal-submission
+            - boarding-decision
+            - service-request
+            - fire
+            - pressure
+            - emergency-brake
+        at:
+          type: integer
+          minimum: 0
+          description: Simulation microseconds when the fact was resolved or observed.
+        verdict:
+          type: string
+          enum: [correct, late, incorrect, missed]
+          description: |
+            correct is the right action in time. late is the right action after the target time. incorrect is the wrong action. missed means the required action never happened.
+        scoreDelta:
+          $ref: '#/components/schemas/AssessmentScoreDelta'
+        reactionUs:
+          type: integer
+          minimum: 0
+          description: Optional reaction interval in microseconds, such as a service response or fire start to extinguish.
+        detail:
+          type: object
+          description: |
+            Flat kind-specific facts. Values are JSON primitives only. journal-submission carries communication, extinguisher, climate, emergencyBrake (unset|ok|problem), sanitation (unset|clean|issue), accepted, reportedProblem, realProblem, falseReport, missedProblem. boarding-decision carries passengerId, expected (admit|reject), actual (admit|reject). service-request carries passengerId when known, serviceClass (basic|comfort|business), timedOut, targetUs. fire carries incidentId, extinguished, critical. pressure carries incidentId, critical. emergency-brake carries sealRemoved, activated, hazardActive.
+          additionalProperties:
+            oneOf:
+              - type: string
+              - type: number
+              - type: boolean
+              - type: 'null'
+    AssessmentScoreDelta:
+      type: object
+      additionalProperties: false
+      required: [safety, customerSatisfaction]
+      properties:
+        safety:
+          type: number
+        customerSatisfaction:
+          type: number
     ScoreResult:
       type: object
       additionalProperties: false

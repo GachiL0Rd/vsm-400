@@ -3,6 +3,7 @@ import type { ServerMessage } from '../common/game-wire.ts';
 import { PublicGameProjection } from '../projection/public-game-session.ts';
 import { GameAttempt } from '../simulation/game-attempt.ts';
 import { BaselineContentRegistry } from './content-registry.ts';
+import { finishedGameResultSchema } from './finished-game-result.schema.ts';
 import {
   GameSessionWorker,
   type WorkerClock,
@@ -390,6 +391,20 @@ describe('GameSessionWorker', () => {
     expect(gateway.finished[0]?.scores.safety).toBeLessThanOrEqual(100);
     expect(gateway.finished[0]?.scores.customerSatisfaction).toBeGreaterThanOrEqual(0);
     expect(gateway.finished[0]?.scores.customerSatisfaction).toBeLessThanOrEqual(100);
+    const finished = gateway.finished[0];
+    expect(finished).toBeDefined();
+    if (finished === undefined) return;
+    expect(finishedGameResultSchema.parse(JSON.parse(JSON.stringify(finished)))).toEqual(finished);
+    expect(finished.assessment?.setVersion).toBe(finished.achievements.setVersion);
+    expect(finished.assessment?.durationUs).toBe(attempt.termination?.at);
+    expect(finished.assessment?.facts.length).toBeGreaterThan(0);
+    const deltas = finished.assessment?.facts ?? [];
+    const safety = deltas.reduce((sum, fact) => sum + fact.scoreDelta.safety, 0);
+    const loyalty = deltas.reduce((sum, fact) => sum + fact.scoreDelta.customerSatisfaction, 0);
+    expect(finished.scores.safety).toBe(Math.max(0, Math.min(100, Math.round(100 + safety))));
+    expect(finished.scores.customerSatisfaction).toBe(
+      Math.max(0, Math.min(100, Math.round(100 + loyalty))),
+    );
     expect(
       publications.map((message) => message.type === 'session-state' && message.state),
     ).toContain('finishing');
