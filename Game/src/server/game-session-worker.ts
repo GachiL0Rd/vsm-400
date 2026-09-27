@@ -682,6 +682,11 @@ export class GameSessionWorker {
           termination.kind === 'route-completed' ? 'route-completed' : termination.outcomeId,
       },
       scores: assessment.scores,
+      assessment: {
+        setVersion: assessment.achievements.setVersion,
+        durationUs: termination.at,
+        facts: assessment.facts,
+      },
     };
   }
 }

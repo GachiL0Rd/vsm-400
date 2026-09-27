@@ -330,7 +330,15 @@ export class GameAttempt {
       extinguisher: items.extinguisher,
       emergencyBrake: this.emergencyBrakeState,
     });
-    this.assessmentRuntime.recordJournalSubmission(facts);
+    this.assessmentRuntime.recordJournalSubmission({
+      ...facts,
+      communication: returned.communication,
+      extinguisher: returned.extinguisher,
+      climate: returned.climate,
+      emergencyBrake: returned.emergencyBrake,
+      accepted: returned.accepted,
+      at: this.time,
+    });
     if (facts.reportedProblem) {
       this.signal('critical-predeparture-fault');
       return returned;
@@ -371,6 +379,7 @@ export class GameAttempt {
       passengerId,
       passengerDefinition.expectedBoardingDecision,
       decision,
+      this.time,
     );
 
     if (decision === 'admit') {
@@ -426,7 +435,10 @@ export class GameAttempt {
     const event = this.items.useExtinguisher(this.playerId, targetId);
     this.fields.setFireSource(cellId, 0);
     this.fields.reduceFire(cellId, 5);
-    this.assessmentRuntime.recordFireExtinguished(this.time);
+    const incidentId = this.fireIncidentIdForCell(cellId);
+    if (incidentId !== undefined) {
+      this.assessmentRuntime.recordFireExtinguished(incidentId, this.time);
+    }
     return event;
   }
 
@@ -444,7 +456,7 @@ export class GameAttempt {
       throw new RangeError('Emergency brake is already activated');
     }
     this.emergencyBrakeState = { ...this.emergencyBrakeState, seal: 'broken' };
-    this.assessmentRuntime.recordEmergencySealRemoved();
+    this.assessmentRuntime.recordEmergencySealRemoved(this.time);
     return this.emergencyBrakeState;
   }
 
@@ -460,7 +472,7 @@ export class GameAttempt {
       throw new RangeError('Emergency brake is already activated');
     }
     this.emergencyBrakeState = { seal: 'broken', activated: true };
-    this.assessmentRuntime.recordEmergencyActivation(this.hasActiveSafetyIncident());
+    this.assessmentRuntime.recordEmergencyActivation(this.hasActiveSafetyIncident(), this.time);
     const termination = this.signal('emergency-brake-used');
     if (termination === null)
       throw new RangeError('Emergency brake terminal rule is not configured');
@@ -501,10 +513,12 @@ export class GameAttempt {
       (waitingAction.actionId === 'request-food' || waitingAction.actionId === 'request-drink')
     ) {
       const passenger = this.scenario.passenger(targetId);
-      this.assessmentRuntime.recordServiceResolution(
-        passenger.serviceClass,
-        this.time - waitingAction.startedAt,
-      );
+      this.assessmentRuntime.recordServiceResolution({
+        passengerId: targetId,
+        serviceClass: passenger.serviceClass,
+        responseUs: this.time - waitingAction.startedAt,
+        at: this.time,
+      });
     }
     return event;
   }
@@ -537,7 +551,11 @@ export class GameAttempt {
           (currentBefore.actionId === 'request-food' || currentBefore.actionId === 'request-drink')
         ) {
           const passenger = this.scenario.passenger(result.entityId);
-          this.assessmentRuntime.recordServiceTimeout(passenger.serviceClass);
+          this.assessmentRuntime.recordServiceTimeout({
+            passengerId: result.entityId,
+            serviceClass: passenger.serviceClass,
+            at: scheduled.at,
+          });
         }
         if (result.status === 'finished' && this.activePassengers.has(result.entityId)) {
           this.scheduleNpcDecision(result.entityId, scheduled.at);
@@ -652,6 +670,7 @@ export class GameAttempt {
       return;
     }
     this.activePressureIncidentId = incident.id;
+    this.assessmentRuntime.recordPressureStarted(incident.id, at);
     for (let index = 0; index < incident.stages.length; index += 1) {
       const stage = incident.stages[index];
       if (stage === undefined) continue;
@@ -671,10 +690,10 @@ export class GameAttempt {
     );
     if (location === undefined)
       throw new RangeError(`Unknown fire location ${incident.failureLocationId}`);
-    this.assessmentRuntime.recordFireStarted(at);
+    this.assessmentRuntime.recordFireStarted(incident.id, at);
     this.fields.setFireSource(location.cellId, incident.sourcePerSecond);
-    const events = this.fields.addFire(location.cellId, incident.initialFire);
-    this.handleFieldEvents(events);
+    this.fields.addFire(location.cellId, incident.initialFire);
+    this.handleFieldEvents(at);
     if (this.terminationState === null) {
       this.queue.schedule(addTime(at, secondsToFieldStepUs(1)), { kind: 'field-step' });
     }
@@ -705,7 +724,7 @@ export class GameAttempt {
     this.updatePressureExposureTraits(incident, sourceCell.x, sourceCell.y, at);
     const measured = this.measureClimate(at);
     if (measured.pressureKPa <= incident.criticalCabinPressureKPa) {
-      this.assessmentRuntime.recordPressureCritical();
+      this.assessmentRuntime.recordPressureCritical(incident.id, at);
       this.signal('pressure-critical');
     }
   }
@@ -793,14 +812,14 @@ export class GameAttempt {
   }
 
   private stepFields(at: SimTimeUs): void {
-    const events = this.fields.step(1);
-    this.handleFieldEvents(events);
+    this.fields.step(1);
+    this.handleFieldEvents(at);
     if (this.terminationState !== null) return;
     const active = this.fields.snapshot().some((cell) => cell.fire > 0 || cell.fireSource > 0);
     if (active) this.queue.schedule(addTime(at, secondsToFieldStepUs(1)), { kind: 'field-step' });
   }
 
-  private handleFieldEvents(_events: readonly unknown[]): void {
+  private handleFieldEvents(at: SimTimeUs): void {
     const fields = new Map(this.fields.snapshot().map((field) => [field.cellId, field]));
     for (const incident of this.scenario.definition.incidents) {
       if (incident.kind !== 'fire') continue;
@@ -810,11 +829,22 @@ export class GameAttempt {
       if (location === undefined) continue;
       const field = fields.get(location.cellId);
       if (field !== undefined && field.fire >= incident.criticalFire) {
-        this.assessmentRuntime.recordFireCritical();
+        this.assessmentRuntime.recordFireCritical(incident.id, at);
         this.signal('fire-unsalvageable');
         return;
       }
     }
+  }
+
+  private fireIncidentIdForCell(cellId: string): string | undefined {
+    for (const incident of this.scenario.definition.incidents) {
+      if (incident.kind !== 'fire') continue;
+      const location = this.level.definition.failureLocations.find(
+        (item) => item.id === incident.failureLocationId,
+      );
+      if (location?.cellId === cellId) return incident.id;
+    }
+    return undefined;
   }
 
   private stageOriginPassengerFlow(flow: {

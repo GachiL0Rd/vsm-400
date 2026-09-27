@@ -1,3 +1,5 @@
+import type { AssessmentFact } from '../simulation/assessment.ts';
+
 export type SessionMode =
   | { readonly kind: 'live' }
   | {
@@ -32,6 +34,12 @@ export interface ResolvedPlatformSession {
   readonly mode: SessionMode;
 }
 
+export interface FinishedAssessment {
+  readonly setVersion: string;
+  readonly durationUs: number;
+  readonly facts: readonly AssessmentFact[];
+}
+
 export interface FinishedGameResult {
   readonly attemptId: string;
   readonly content: {
@@ -53,6 +61,7 @@ export interface FinishedGameResult {
     readonly safety: number;
     readonly customerSatisfaction: number;
   };
+  readonly assessment?: FinishedAssessment;
 }
 
 export interface FinishSessionResponse {

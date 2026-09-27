@@ -9,6 +9,7 @@ import {
 import { secondsToSimTimeUs } from '../simulation/sim-time.ts';
 import { parseServerConfig } from './config.ts';
 import { BaselineContentRegistry } from './content-registry.ts';
+import { finishedGameResultSchema } from './finished-game-result.schema.ts';
 import { createGameHttpServer } from './http-server.ts';
 import { MockPlatformGateway, mockMode } from './platform-gateway.ts';
 import { CommonGameProtocolAdapter } from './protocol-adapter.ts';
@@ -852,6 +853,71 @@ describe('game server protocol integration', () => {
       );
       if (currentClimate.form?.kind !== 'climate-control') throw new Error('Expected climate form');
       expect(currentClimate.form.value.pressureKPa).toBeLessThan(101.3);
+    } finally {
+      socket.close();
+      await app.close();
+    }
+  });
+
+  it('sends a schema-valid assessment when the mock platform receives the finish body', async () => {
+    const gateway = new MockPlatformGateway({
+      attemptId: 'attempt-assessment',
+      gameLevelId: 'vsm-baseline-01',
+      mode: mockMode('live'),
+    });
+    const host = new GameSessionHost({
+      platformGateway: gateway,
+      contentRegistry: new BaselineContentRegistry(),
+      resumeTokens: new InMemoryResumeTokenRegistry(),
+      disconnectDebounceMs: 1_000,
+      reconnectGraceMs: 30_000,
+    });
+    const app = createGameHttpServer(
+      parseServerConfig({ GAME_SERVER_PORT: '4174' }),
+      new CommonGameProtocolAdapter({ host }),
+    );
+    await app.listen(0);
+    const address = app.server.address() as AddressInfo;
+    const socket = new WebSocket(`ws://127.0.0.1:${address.port}/game-ws`);
+
+    try {
+      await open(socket);
+      const ready = await authenticate(socket, 'hello-assessment');
+      const worker = host.worker(ready.attemptId);
+      if (worker === undefined) throw new Error('Expected assessment worker');
+      const attempt = worker.projection.attempt;
+      attempt.takeJournal();
+      attempt.editJournal({
+        communication: 'ok',
+        extinguisher: 'problem',
+        climate: 'ok',
+        emergencyBrake: 'ok',
+        sanitation: 'clean',
+        note: 'pressure gauge outside normal range',
+        accepted: true,
+      });
+      attempt.returnJournal();
+      expect(attempt.termination).toMatchObject({ outcomeId: 'wagon-unserviceable' });
+      await worker.finish();
+
+      expect(gateway.finished).toHaveLength(1);
+      const finished = gateway.finished[0];
+      expect(finishedGameResultSchema.parse(JSON.parse(JSON.stringify(finished)))).toEqual(
+        finished,
+      );
+      expect(finished?.assessment).toMatchObject({
+        setVersion: 'baseline-v2',
+        durationUs: 0,
+        facts: [
+          {
+            id: 'journal-submission',
+            kind: 'journal-submission',
+            at: 0,
+            verdict: 'incorrect',
+            scoreDelta: { safety: -10, customerSatisfaction: -40 },
+          },
+        ],
+      });
     } finally {
       socket.close();
       await app.close();
