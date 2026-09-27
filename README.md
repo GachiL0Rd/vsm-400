@@ -9,11 +9,12 @@
 | Путь | Содержимое |
 | --- | --- |
 | `Game/` | Phaser-игра и её локальная dev-оболочка; запуск описан в `Game/README.md` |
-| `Game/docs/vsm-docs-iteration-07/` | Актуальные продуктовые и архитектурные требования |
-| `docs/agent/` | Процесс разработки и справка для агентов |
+| `Game/docs/user/` | Актуальные продуктовые, архитектурные и implementation-требования игры |
+| `Game/docs/agent/` | Рабочие инструкции и checklist игрового модуля
+| `docs/agent/` | Общерепозиторный процесс разработки и справка для агентов |
 | `docs/backlog/` | Исторические и неактуальные материалы |
 
-Начните с [`Game/docs/vsm-docs-iteration-07/README.md`](Game/docs/vsm-docs-iteration-07/README.md). Правила участия описаны
+Начните с [`Game/docs/README.md`](Game/docs/README.md) и [`Game/docs/user/README.md`](Game/docs/user/README.md). Правила участия описаны
 в [`CONTRIBUTING.md`](CONTRIBUTING.md), инструкции для агентов — в
 [`AGENTS.md`](AGENTS.md).
 

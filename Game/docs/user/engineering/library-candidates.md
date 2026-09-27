@@ -156,3 +156,13 @@ MessagePack implementation для Node/browser с TypeScript declarations. Мо�
 4. Schema library: Level/Trait/Action asset validation и readable error output.
 
 Результаты benchmark/spikes можно добавлять сюда отдельными секциями, не меняя normative simulation docs.
+
+## 9. Принятые utility dependencies для ближайшей реализации
+
+На baseline 0.7 в `Game/package.json` заранее закреплены:
+
+- `zod 4.6.5` — для ближайших Level/Scenario/content и wire validation;
+- `heap-js 2.7.1` — как готовый heap/priority-queue utility при следующем рефакторинге event queue;
+- `knip 6.38.0` — только dev-аудит dead code/dependencies, не часть runtime.
+
+Наличие зависимости не означает, что существующий код обязан немедленно переписываться под неё. До подключения в runtime сохраняются текущие проверенные реализации и тесты.
