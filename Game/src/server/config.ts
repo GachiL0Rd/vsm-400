@@ -7,6 +7,7 @@ const environmentSchema = z.object({
   GAME_SERVER_HOST: z.string().min(1).optional(),
   GAME_SERVER_PORT: z.coerce.number().int().min(1).max(65535).optional(),
   GAME_STATIC_DIR: z.string().min(1).optional(),
+  GAME_CONTENT_DIR: z.string().min(1).optional(),
   PLATFORM_API_URL: z.string().url().optional(),
   PLATFORM_SERVICE_TOKEN: z.string().min(1).optional(),
   PLATFORM_TIMEOUT_MS: z.coerce.number().int().positive().optional(),
@@ -26,6 +27,7 @@ export interface ServerConfig {
   readonly host: string;
   readonly port: number;
   readonly staticClientDirectory: string | null;
+  readonly contentDirectory: string;
   readonly platform: {
     readonly baseUrl: string;
     readonly serviceToken: string;
@@ -51,6 +53,7 @@ export function parseServerConfig(environment: Record<string, string | undefined
     host: input.GAME_SERVER_HOST ?? DEFAULT_HOST,
     port: input.GAME_SERVER_PORT ?? DEFAULT_PORT,
     staticClientDirectory: input.GAME_STATIC_DIR ?? null,
+    contentDirectory: input.GAME_CONTENT_DIR ?? 'content',
     platform: platformConfig(input),
     disconnectDebounceMs: input.GAME_DISCONNECT_DEBOUNCE_MS ?? 1_000,
     reconnectGraceMs: input.GAME_RECONNECT_GRACE_MS ?? 30_000,

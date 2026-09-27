@@ -9,7 +9,11 @@ const timeoutMs = 10_000;
 const sourceDist = resolve('dist');
 const sandbox = await mkdtemp(join(tmpdir(), 'vsm-production-smoke-'));
 const isolatedDist = join(sandbox, 'dist');
+const externalClient = join(sandbox, 'client-root');
+const externalContent = join(sandbox, 'server-content');
 await cp(sourceDist, isolatedDist, { recursive: true });
+await cp(join(sourceDist, 'client'), externalClient, { recursive: true });
+await cp(join(sourceDist, 'content'), externalContent, { recursive: true });
 
 const port = await reservePort();
 const child = spawn(process.execPath, [join(isolatedDist, 'server', 'main.mjs')], {
@@ -18,7 +22,8 @@ const child = spawn(process.execPath, [join(isolatedDist, 'server', 'main.mjs')]
     ...process.env,
     GAME_SERVER_HOST: '127.0.0.1',
     GAME_SERVER_PORT: String(port),
-    GAME_STATIC_DIR: undefined,
+    GAME_STATIC_DIR: externalClient,
+    GAME_CONTENT_DIR: externalContent,
     PLATFORM_API_URL: undefined,
     PLATFORM_SERVICE_TOKEN: undefined,
     GAME_DISCONNECT_DEBOUNCE_MS: '20',
@@ -42,7 +47,9 @@ try {
   await waitForReady(port);
   await verifyStaticClient(port);
   await verifyWebSocket(port);
-  console.log('Production server smoke test passed: static client + WebSocket protocol.');
+  console.log(
+    'Production server smoke test passed: external client root + content bundle + WebSocket protocol.',
+  );
 } catch (error) {
   console.error('Production server stdout:\n', stdout);
   console.error('Production server stderr:\n', stderr);

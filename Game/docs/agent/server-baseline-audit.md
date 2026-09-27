@@ -52,7 +52,7 @@ simulation primitives into `GameAttempt`/projection plus the game-specific asses
 | Emergency brake | configuration + terminal signal | object + terminal rule | no public action/object runtime invokes the signal |
 | Driver communication | configuration only | level object exists | no inspection/call actions or state |
 | Sanitation | configuration only | `sanitationLocations` | not projected to client; no journal comparison/assessment |
-| Passenger ticket/passport | missing | none | no document state or admit/reject actions |
+| Passenger ticket/passport | implemented baseline slice | scenario + projection + common + client modal | origin passengers wait on the platform; ticket/identity form exposes admit/reject while expected decision stays server-only |
 | Fire/pressure fields | primitive implemented | tested `FieldWorld` | not instantiated/advanced by `GameAttempt` |
 | Baseline incident | missing | terminal rules exist | scenario does not schedule/drive an incident |
 | Terminal outcomes | partial | `GameAttempt.signal()` + route completion | most signals have no gameplay source |
@@ -125,20 +125,14 @@ Remaining work in this slice is to expose actual inspection actions for driver c
 
 Fire and pressure incidents are now instantiated inside `GameAttempt`. Fire has extinguisher handling and a critical terminal path; pressure has staged distance-based loss, climate sensor refresh, proximity traits and a critical terminal path. Remaining work in this area is emergency-brake/report handling and richer presentation/NPC reactions to `pressure-whistle` / `ears-blocked`.
 
-### B3. Passenger documents
+### B3. Passenger documents — complete for baseline
 
-Add ticket/passport public document data plus authoritative admit/reject action. Keep hidden
+Implemented ticket/passport public document data plus authoritative admit/reject action. Hidden
 correctness on the server.
 
-### B4. Assessment and achievements
+### B4. Assessment and achievements — complete for baseline
 
-Replace placeholders in `finishedResult()` with a run-scoped observer/assessment result.
-At minimum baseline completion must produce non-placeholder:
-
-- safety `0..100`;
-- customer satisfaction `0..100`;
-- achievement set version;
-- unlocked IDs.
+`AssessmentRuntime` observes authoritative gameplay facts without mutating simulation state. `finishedResult()` now sends non-placeholder safety/customer scores plus versioned achievement IDs to Platform Server. Current `baseline-v1` covers journal outcome, boarding decisions, service response/timeout, fire, pressure and emergency-brake use. Tuning and new mechanics can extend this observer without changing simulation semantics.
 
 ### B5. Guided/replay behavior
 

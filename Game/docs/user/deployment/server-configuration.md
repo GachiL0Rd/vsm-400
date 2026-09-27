@@ -31,6 +31,9 @@ dist/
 ├── client/
 │   ├── index.html
 │   └── assets/...
+├── content/
+│   ├── manifest.json
+│   └── vsm-baseline-01/...
 └── server/
     └── main.mjs
 ```
@@ -47,7 +50,7 @@ or directly:
 node dist/server/main.mjs
 ```
 
-The server bundle includes its runtime npm dependencies and automatically discovers the sibling `dist/client/` directory. A copied `dist/` tree therefore runs without project sources, `tsx`, or `node_modules`. `GAME_STATIC_DIR` remains available as an explicit override.
+The server bundle includes its runtime npm dependencies and automatically discovers sibling `dist/client/` and `dist/content/` directories. A copied `dist/` tree therefore runs without project sources, `tsx`, or `node_modules`. `GAME_STATIC_DIR` and `GAME_CONTENT_DIR` remain explicit overrides.
 
 Node requirement from `package.json`:
 
@@ -63,7 +66,8 @@ All process environment parsing is centralized in `src/server/config.ts`.
 | --- | --- | --- | --- |
 | `GAME_SERVER_HOST` | `127.0.0.1` | no | HTTP/WS listen address. In containers normally set to `0.0.0.0`. |
 | `GAME_SERVER_PORT` | `4174` | no | HTTP and WebSocket listen port. |
-| `GAME_STATIC_DIR` | auto-detected in compiled distribution | no | Explicit static client directory override. If set, it must exist and contain `index.html`; otherwise startup fails. The compiled server otherwise serves sibling `dist/client/`. |
+| `GAME_STATIC_DIR` | auto-detected `dist/client/` | no | Browser folder-root override. If set, it must exist and contain `index.html`; otherwise startup fails. |
+| `GAME_CONTENT_DIR` | auto-detected `dist/content/` (`Game/content/` in source) | no | Read-only server gameplay bundle root containing `manifest.json`. Invalid/missing content fails startup. |
 | `PLATFORM_API_URL` | unset | paired | Base URL of Platform Server API. Must be configured together with `PLATFORM_SERVICE_TOKEN`. |
 | `PLATFORM_SERVICE_TOKEN` | unset | paired | Bearer token used by Game Server for service-to-service Platform calls. Treat as a secret. |
 | `PLATFORM_TIMEOUT_MS` | `5000` | no | Timeout for one Platform HTTP request. |
@@ -133,7 +137,7 @@ Build both client and server:
 npm run build
 ```
 
-The resulting `dist/` tree contains the Node server and browser client. When `node dist/server/main.mjs` starts, it automatically serves `dist/client/` if `GAME_STATIC_DIR` is unset.
+The resulting `dist/` tree contains the Node server, browser client folder root, and server gameplay content bundle. When `node dist/server/main.mjs` starts, it automatically serves `dist/client/` if `GAME_STATIC_DIR` is unset.
 
 An explicit override is still supported:
 
@@ -151,29 +155,11 @@ The browser still needs `/game-ws` routed to the Game Server. If client and Game
 
 ## 5. Game content and media assets
 
-### Current implementation
+Server-side gameplay configuration is now file-backed. `GAME_CONTENT_DIR` contains the versioned `manifest.json` plus Level, Scenario, Actions and Assessment JSON files. The shipped baseline lives in `Game/content/` and is copied to `dist/content/` by `npm run build`.
 
-The baseline game content is currently code-backed by `BaselineContentRegistry`. The known baseline ID is:
+The runtime loads and validates the complete registry before opening the listener. Platform `gameLevelId` values are resolved only through this registry. See [`content-bundle.md`](content-bundle.md) for the exact release format and immutability rules.
 
-```text
-vsm-baseline-01
-```
-
-Therefore the current Game Server does **not** require a mounted content directory to start.
-
-The browser currently uses local/public visual IDs and placeholder/rendering registries. A production external media manifest/download pipeline is planned but is not yet a server startup dependency.
-
-### Future packaging boundary
-
-When level/scenario/content definitions move to external versioned files, prefer one immutable mounted/read-only content bundle per image/release, for example:
-
-```text
-/app/content
-```
-
-Do not silently replace content for a running release if deterministic replay depends on its version.
-
-Large image/audio assets may be served separately from gameplay content. Their manifest/version must remain compatible with public `visualId` values sent by the Game Server.
+Browser/media files remain a separate concern. `GAME_STATIC_DIR` is an ordinary folder root containing `index.html` and its assets; it does not need to follow the Game Server content-manifest format. Large visual/audio assets may therefore be packaged with the client or served separately as long as stable projected `visualId` values remain compatible.
 
 ## 6. Secrets and configuration ownership
 
@@ -181,7 +167,7 @@ Put in the **container image**:
 
 - application source or compiled server artifact;
 - pinned npm dependencies;
-- baseline immutable game content if bundled;
+- immutable server content bundle if bundled;
 - optionally the built browser client.
 
 Put in **environment/config**:
@@ -206,9 +192,10 @@ Startup fails before listening when:
 - only one of `PLATFORM_API_URL` / `PLATFORM_SERVICE_TOKEN` is set;
 - configured `GAME_STATIC_DIR` does not exist;
 - configured static path is not a directory;
-- configured static directory does not contain `index.html`.
+- configured static directory does not contain `index.html`;
+- `GAME_CONTENT_DIR` has no valid `manifest.json` or one of its referenced files/configs is invalid.
 
-Unknown `gameLevelId` is currently detected when a session is resolved and the local `BaselineContentRegistry` cannot resolve it.
+Unknown `gameLevelId` is detected when a session is resolved against the already-loaded file content registry.
 
 A deployment readiness probe should begin only after the process has bound the listener.
 

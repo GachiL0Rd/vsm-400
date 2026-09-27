@@ -259,7 +259,9 @@ Targets can be `cell`, `entity`, or `object`. A stale revision is rejected inste
 }
 ```
 
-`input` is optional JSON. Its semantic shape is action-specific and validated server-side.
+`input` is optional JSON. Its semantic shape is action-specific and validated server-side. For form actions the current baseline contracts are listed in section 8. A client MUST submit a fresh action handle from the current revision; mutating a previously received form descriptor locally does not mutate server state.
+
+In `replay` mode, gameplay-affecting commands are rejected with `unsupported-command`. This currently applies to `move-to`, `query-actions`, and `invoke-action`. `resync` remains available, and `set-time-scale` is treated as playback control rather than gameplay input.
 
 ### `set-time-scale`
 
@@ -351,7 +353,19 @@ Successful `query-actions` returns:
 
 `uiKind` is one of `interaction`, `inspect`, `dialogue`, or `form`.
 
-A `form` action may carry a browser-safe `form` descriptor. The current baseline uses:
+A `form` action carries a browser-safe descriptor. Protocol v1 currently defines five baseline form kinds.
+
+| `form.kind` | Purpose | `invoke-action.input` |
+| --- | --- | --- |
+| `acceptance-journal` | pre-departure acceptance checklist | the complete journal value |
+| `extinguisher-inspection` | inspect/prepare the extinguisher | `{ "removePin": boolean }` |
+| `climate-control` | inspect cached climate/pressure sensors | `{ "refresh": boolean }` |
+| `emergency-brake` | inspect, break seal, then activate | `{ "action": "remove-seal" | "activate" }` |
+| `passenger-documents` | inspect ticket and identity document | `{ "decision": "admit" | "reject" }` |
+
+### `acceptance-journal`
+
+Descriptor/value and submitted input use the same complete shape:
 
 ```json
 {
@@ -368,9 +382,130 @@ A `form` action may carry a browser-safe `form` descriptor. The current baseline
 }
 ```
 
-The baseline also exposes `extinguisher-inspection` and `climate-control` forms. `climate-control` carries cached `temperatureC`, `pressureKPa`, `smokeDetected`, connection state and `updatedAt`; invoking it with `{ "refresh": true }` performs a server-side sensor refresh.
+Allowed values are `unset | ok | problem` for `communication`, `extinguisher`, `climate`, and `emergencyBrake`; sanitation is `unset | clean | issue`. `note` is limited to 1000 characters. The server requires the complete object rather than a partial patch.
 
-The client opens the corresponding form locally and submits the edited value through the same opaque action handle using `invoke-action.input`. The server validates the complete input schema; partial or malformed form values are rejected with `invalid-input`.
+### `extinguisher-inspection`
+
+```json
+{
+  "kind": "extinguisher-inspection",
+  "value": {
+    "pin": "present",
+    "seal": "intact",
+    "pressure": "normal",
+    "bodyDamage": "none",
+    "used": false,
+    "canRemovePin": true
+  }
+}
+```
+
+The mutable command is deliberately smaller than the descriptor:
+
+```json
+{ "removePin": true }
+```
+
+`canRemovePin` is presentation guidance only. The server revalidates held-item state, proximity/action ownership, and current revision when the handle is invoked.
+
+### `climate-control`
+
+```json
+{
+  "kind": "climate-control",
+  "value": {
+    "connection": "connected",
+    "temperatureC": 22.4,
+    "pressureKPa": 100.8,
+    "smokeDetected": false,
+    "updatedAt": 42000000,
+    "canRefresh": true
+  }
+}
+```
+
+The values are the panel's last cached observation, not a continuously streamed sensor field. To request a server-side refresh:
+
+```json
+{ "refresh": true }
+```
+
+`connection` is currently `connected | disconnected`; disconnected/error behavior may be expanded without exposing hidden field state.
+
+### `emergency-brake`
+
+```json
+{
+  "kind": "emergency-brake",
+  "value": {
+    "seal": "intact",
+    "activated": false,
+    "canRemoveSeal": true,
+    "canActivate": false
+  }
+}
+```
+
+Removing the seal and activating the brake are separate commands:
+
+```json
+{ "action": "remove-seal" }
+```
+
+After that command is accepted, public state/revision changes and the old action handle becomes stale. The client MUST query actions again before sending:
+
+```json
+{ "action": "activate" }
+```
+
+A successful activation terminates the attempt through the normal session lifecycle; it is not represented as a special transport close.
+
+### `passenger-documents`
+
+```json
+{
+  "kind": "passenger-documents",
+  "value": {
+    "passengerId": "passenger-17",
+    "serviceClass": "comfort",
+    "ticket": {
+      "passengerName": "Иван Иванов",
+      "train": "ВСМ-400",
+      "date": "2026-09-27",
+      "departureTime": "12:00",
+      "carriage": "04",
+      "seat": "12A",
+      "documentType": "passport",
+      "documentNumberMasked": "**1234",
+      "qrCode": "ticket-public-code"
+    },
+    "identity": {
+      "type": "passport",
+      "passengerName": "Иван Иванов",
+      "birthDate": "1990-01-01",
+      "numberMasked": "**1234"
+    },
+    "canAdmit": true,
+    "canReject": true
+  }
+}
+```
+
+Decision input:
+
+```json
+{ "decision": "admit" }
+```
+
+or:
+
+```json
+{ "decision": "reject" }
+```
+
+The server does not expose its expected/correct boarding decision in this descriptor. That value remains assessment/server state.
+
+The client opens the corresponding form locally and submits through the same opaque action handle using `invoke-action.input`. The server validates the complete action-specific input schema; malformed form input is rejected with `invalid-input`.
 
 The handle is opaque. The client MUST NOT parse or synthesize it, persist it as a long-lived capability, or infer domain rules from it.
 
@@ -443,7 +578,7 @@ Successful Platform finalization publishes `finished` with a redirect URL:
 
 `finishing` means simulation has terminated and the Game Server is finalizing the result with Platform Server.
 
-If finalization fails, the current worker does not invent a successful result. It returns its lifecycle to `active` or `paused` and publishes that state. Automatic retry policy is not part of protocol v1.
+If Platform finalization fails, the worker does not invent a successful result and does not resume terminal simulation. It remains in `finishing`; an explicit/idempotent finalization retry may later transition it to `finished`. Automatic retry timing is not part of protocol v1.
 
 ## 11. Server errors
 

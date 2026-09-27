@@ -1,4 +1,4 @@
-import { rm, writeFile } from 'node:fs/promises';
+import { cp, rm, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import process from 'node:process';
 import { build } from 'vite';
@@ -36,6 +36,8 @@ await build({
   },
 });
 
+await cp(resolve(root, 'content'), resolve(dist, 'content'), { recursive: true });
+
 await writeFile(
   resolve(dist, 'build-manifest.json'),
   `${JSON.stringify(
@@ -43,6 +45,8 @@ await writeFile(
       formatVersion: 1,
       client: 'client/index.html',
       server: 'server/main.mjs',
+      content: 'content/manifest.json',
+      clientRoot: 'client/',
       start: 'node server/main.mjs',
     },
     null,

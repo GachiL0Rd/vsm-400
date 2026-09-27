@@ -1,6 +1,6 @@
 # Игровой content и media assets
 
-**Версия документа:** 0.1.0
+**Версия документа:** 0.2.0
 **Статус:** Draft / implementation direction
 **Дата редакции:** 2026-09-27
 
@@ -36,23 +36,21 @@ held-item visuals
 
 Отсутствие production media assets не должно блокировать simulation/server tests.
 
-## 2. Предлагаемая структура
+## 2. Реализованная server-content структура
+
+Release server content находится в `Game/content/` и копируется build-ом в `dist/content/`:
 
 ```text
-Game/
-  content/
-    levels/
-    scenarios/
-    dialogues/
-    behavior/
-
-  assets/
-    manifest.json       tracked
-    local/              ignored production media
-    placeholders/       optional tracked development assets
+content/
+  manifest.json
+  vsm-baseline-01/
+    level.json
+    scenario.json
+    actions.json
+    assessment.json
 ```
 
-Точные имена каталогов можно скорректировать при первом content-loading spike.
+`GAME_CONTENT_DIR` может указывать на отдельный read-only bundle. Точный контракт описан в [`../deployment/content-bundle.md`](../deployment/content-bundle.md). Dialogue/service extensions могут позднее добавляться как новые versioned files/references manifest-а.
 
 ## 3. Asset manifest
 

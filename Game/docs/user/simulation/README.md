@@ -40,3 +40,5 @@ Simulation documentation разделена по независимым подс
 ## Конкретный demo content
 
 Общие simulation documents не перечисляют UI-состав каждого объекта. Конкретные состояния, модалки, held-items и asset decomposition текущего demo находятся в `../implementation/`.
+
+- [`assessment.md`](assessment.md) — итоговые safety/customer scores и achievements как observer над simulation facts.

@@ -62,8 +62,9 @@ Current server does not write authoritative persistent state to disk.
 Possible read-only paths:
 
 ```text
-/app/Game/dist       optional browser client
-/app/content         future external content bundle
+/app/dist/server     compiled Game Server
+/app/client          optional external browser folder root
+/app/content         immutable server gameplay content bundle
 ```
 
 ## 3. Platform Server container
@@ -158,7 +159,7 @@ If Platform integration is not ready, omit `PLATFORM_API_URL` and `PLATFORM_SERV
 
 ## 7. Reference Game Server Dockerfile shape
 
-`npm run build` now produces a self-contained application distribution under `Game/dist/`: a bundled Node server plus the browser client it serves. A multi-stage image can therefore discard source files, dev dependencies, and `node_modules` from the runtime stage:
+`npm run build` now produces a self-contained application distribution under `Game/dist/`: a bundled Node server, browser folder root, and versioned server gameplay content bundle. A multi-stage image can therefore discard source files, dev dependencies, and `node_modules` from the runtime stage:
 
 ```dockerfile
 FROM node:22-bookworm-slim AS build
@@ -180,9 +181,9 @@ EXPOSE 4174
 CMD ["node", "dist/server/main.mjs"]
 ```
 
-The compiled server auto-discovers `dist/client/`; `GAME_STATIC_DIR` is only needed when overriding that built-in location. The runtime image therefore needs Node and `dist/`, but no npm install.
+The compiled server auto-discovers `dist/client/` and `dist/content/`; `GAME_STATIC_DIR` and `GAME_CONTENT_DIR` override those locations. The runtime image therefore needs Node and `dist/`, but no npm install.
 
-`npm run test:production` additionally copies `dist/` to an isolated temporary directory and starts the compiled server there, verifying that the distribution does not depend on project sources or `node_modules`.
+`npm run test:production` additionally starts the compiled server in an isolated temporary directory with client and server-content supplied as independent folder roots. This verifies that runtime does not depend on project sources or `node_modules` and that both deployment overrides work.
 
 ## 8. Reference Compose shape
 
@@ -247,13 +248,11 @@ The client protocol must remain compatible with the deployed Game Server protoco
 
 ## 10. Content and asset volumes
 
-Current baseline content is embedded in code and needs no content volume.
-
-When external content is implemented, recommended separation is:
+Baseline gameplay content is now external versioned JSON copied to `dist/content/`. It may instead be mounted independently through `GAME_CONTENT_DIR`. Recommended separation is:
 
 ```text
-/content    immutable/versioned simulation content
-/assets     optional media bundle or manifest-resolved files
+/content    immutable/versioned server gameplay content
+/client     browser folder root (index.html + assets)
 ```
 
 Simulation content affecting replay/determinism should be immutable for a released content version.
@@ -270,7 +269,7 @@ Large media may be deployed independently as long as the client asset manifest r
 | resume tokens | Game Server memory | no |
 | accepted input journal during run | Game Server worker | no until finish |
 | final scores/result | Platform Server after finish | yes |
-| baseline game content | Game Server image/code | immutable deployment artifact |
+| baseline game content | Game Server content bundle | immutable deployment artifact |
 | browser bundle | Game Server/static service | immutable deployment artifact |
 | visual media | client/static layer | deployment artifact |
 

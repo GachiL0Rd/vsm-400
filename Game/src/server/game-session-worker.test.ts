@@ -92,6 +92,13 @@ function completeJournal(attempt: GameAttempt): void {
   attempt.returnJournal();
 }
 
+function resolveOriginBoarding(attempt: GameAttempt): void {
+  attempt.advanceTo(5 * 60 * 1_000_000);
+  attempt.decidePassengerBoarding('passenger-1', 'admit');
+  attempt.decidePassengerBoarding('passenger-2', 'admit');
+  attempt.decidePassengerBoarding('passenger-3', 'reject');
+}
+
 class FailOncePlatformGateway implements PlatformGateway {
   finishAttempts = 0;
 
@@ -280,6 +287,7 @@ describe('GameSessionWorker', () => {
     const runtime = new FakeRuntime();
     const attempt = new GameAttempt({ rootSeed: 12 });
     completeJournal(attempt);
+    resolveOriginBoarding(attempt);
     const { value, gateway } = worker(runtime, attempt, {
       maxCatchUpMs: attempt.scenario.normalEndTimeUs / 1_000 + 1_000,
     });
@@ -294,6 +302,11 @@ describe('GameSessionWorker', () => {
     expect(value.lifecycle).toBe('finished');
     expect(gateway.finished).toHaveLength(1);
     expect(gateway.finished[0]?.rootSeed).toBe('12');
+    expect(gateway.finished[0]?.achievements.setVersion).toBe('baseline-v1');
+    expect(gateway.finished[0]?.scores.safety).toBeGreaterThanOrEqual(0);
+    expect(gateway.finished[0]?.scores.safety).toBeLessThanOrEqual(100);
+    expect(gateway.finished[0]?.scores.customerSatisfaction).toBeGreaterThanOrEqual(0);
+    expect(gateway.finished[0]?.scores.customerSatisfaction).toBeLessThanOrEqual(100);
     expect(
       publications.map((message) => message.type === 'session-state' && message.state),
     ).toContain('finishing');

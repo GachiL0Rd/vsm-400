@@ -337,11 +337,15 @@ components:
           items: {}
           description: Preserve this authoritative game-specific JSON log without interpreting it.
         achievements:
-          $ref: '#/components/schemas/AchievementResult'
+          allOf:
+            - $ref: '#/components/schemas/AchievementResult'
+          description: Versioned Game Server assessment achievements. The baseline evaluator currently emits setVersion `baseline-v1`; consumers must treat IDs as opaque stable identifiers within that set version.
         termination:
           $ref: '#/components/schemas/TerminationResult'
         scores:
-          $ref: '#/components/schemas/ScoreResult'
+          allOf:
+            - $ref: '#/components/schemas/ScoreResult'
+          description: Final Game Server assessment scores. They are derived from authoritative gameplay facts and are not supplied by the browser.
     FinishedContentVersion:
       type: object
       additionalProperties: false
@@ -385,6 +389,7 @@ components:
     ScoreResult:
       type: object
       additionalProperties: false
+      description: Baseline assessment dimensions, each normalized to the inclusive range 0..100.
       required: [safety, customerSatisfaction]
       properties:
         safety:
