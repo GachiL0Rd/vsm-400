@@ -131,7 +131,7 @@ describe('VariantPoolService', () => {
     );
   });
 
-  it('на maxUses уводит в RETIRED и ставит refill', async () => {
+  it('на maxUses уводит в RETIRED и отдаёт refill, очередь не трогает', async () => {
     const { pool, prisma, queue } = harness();
     prisma.scenarioTextVariant.update.mockResolvedValue({
       id: 'var-1',
@@ -144,19 +144,34 @@ describe('VariantPoolService', () => {
       maxUses: 3,
     });
     prisma.scenarioTextVariant.updateMany.mockResolvedValue({ count: 1 });
-    await pool.markUsed(['var-1']);
+    await expect(pool.markUsed(['var-1'])).resolves.toEqual([
+      expect.objectContaining({ reason: 'refill', nodeId: 'open', persona: 'тихо' }),
+    ]);
     expect(prisma.scenarioTextVariant.updateMany).toHaveBeenCalledWith({
       where: { id: 'var-1', status: 'APPROVED' },
       data: { status: 'RETIRED' },
     });
-    expect(queue.add).toHaveBeenCalledWith(
-      'generate',
-      expect.objectContaining({ reason: 'refill', nodeId: 'open', persona: 'тихо' }),
-      { priority: 10 },
-    );
+    expect(queue.add).not.toHaveBeenCalled();
   });
 
-  it('не ставит второй refill, если вариант уже сняли', async () => {
+  it('enqueueRefills ставит refill после коммита и глотает сбой Redis', async () => {
+    const { pool, queue } = harness();
+    const job = {
+      scenarioId: 'ride-pressure',
+      version: 2,
+      nodeId: 'open',
+      persona: 'тихо',
+      reason: 'refill' as const,
+    };
+    await pool.enqueueRefills([job]);
+    expect(queue.add).toHaveBeenCalledWith('generate', expect.objectContaining(job), {
+      priority: 10,
+    });
+    queue.add.mockRejectedValueOnce(new Error('redis down'));
+    await expect(pool.enqueueRefills([job])).resolves.toBeUndefined();
+  });
+
+  it('не отдаёт второй refill, если вариант уже сняли', async () => {
     const { pool, prisma, queue } = harness();
     prisma.scenarioTextVariant.update.mockResolvedValue({
       id: 'var-1',
@@ -169,7 +184,7 @@ describe('VariantPoolService', () => {
       persona: 'тихо',
     });
     prisma.scenarioTextVariant.updateMany.mockResolvedValue({ count: 0 });
-    await pool.markUsed(['var-1']);
+    await expect(pool.markUsed(['var-1'])).resolves.toEqual([]);
     expect(queue.add).not.toHaveBeenCalled();
   });
 
@@ -180,7 +195,7 @@ describe('VariantPoolService', () => {
       uses: 1,
       maxUses: 3,
     });
-    await pool.markUsed(['var-1']);
+    await expect(pool.markUsed(['var-1'])).resolves.toEqual([]);
     expect(prisma.scenarioTextVariant.updateMany).not.toHaveBeenCalled();
     expect(queue.add).not.toHaveBeenCalled();
   });

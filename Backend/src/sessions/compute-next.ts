@@ -26,7 +26,6 @@ export function computeNext(input: {
   plan: ShiftPlan;
   graphs: readonly ScenarioGraph[];
   choiceId: string;
-  clientTs: number | null;
   deadline: Date | null;
   now: Date;
   flags: readonly string[];
@@ -50,8 +49,6 @@ export function computeNext(input: {
     },
   );
   const timing = timingFlags({
-    clientTs: input.clientTs,
-    shownAt: input.shownAt ? input.shownAt.getTime() : null,
     deadlineAt: input.deadline ? input.deadline.getTime() : null,
     now: nowMs,
     choiceId: input.choiceId,

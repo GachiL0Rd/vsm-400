@@ -15,6 +15,13 @@ export function seqMismatch(): ConflictException {
   return new ConflictException({ message: 'Номер хода не совпал', code: 'SEQ_MISMATCH' });
 }
 
+export function wrongTransport(): ConflictException {
+  return new ConflictException({
+    message: 'Ход этой смены идёт другим каналом',
+    code: 'WRONG_TRANSPORT',
+  });
+}
+
 export function sessionClosed(): ConflictException {
   return new ConflictException({ message: 'Смена уже закрыта', code: 'SESSION_CLOSED' });
 }

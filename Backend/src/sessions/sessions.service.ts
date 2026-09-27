@@ -20,6 +20,7 @@ import { createState } from '../engine/step';
 import type { EngineState, RunSummary, ShiftPlan, TextVariant } from '../engine/types';
 import { view } from '../engine/view';
 import { ActorType, type GameSession, type Prisma } from '../generated/prisma/client';
+import type { LlmJobData } from '../llm/llm.constants';
 import { VariantPoolService } from '../llm/variant-pool.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
@@ -27,7 +28,6 @@ import { ScenariosService } from '../scenarios/scenarios.service';
 import { isUniqueViolation } from '../users/unique-violation';
 import {
   addedFlags,
-  FLAG_MULTI_SESSION,
   FLAG_SEQ_JUMP,
   FLAG_TICKET_REUSED,
   isPastDeadline,
@@ -55,6 +55,7 @@ import {
   sessionClosed,
   sessionNotActive,
   ticketReused,
+  wrongTransport,
 } from './http-errors';
 import { decisionBody, presentView, readReplay } from './present';
 import { reportToSummary } from './report-map';
@@ -104,6 +105,7 @@ type DecideCommand = {
   choiceId: string;
   clientTs?: number;
   ownerId: string | null;
+  transport: 'REST' | 'WS';
   actor: SessionActor;
 };
 
@@ -149,8 +151,9 @@ export class SessionsService {
     const saved = await this.prisma.$transaction((tx) =>
       this.persistOpen(tx, user.id, body.transport, draft, ip),
     );
+    await this.pool.enqueueRefills(saved.refills);
     if (saved.kind === 'existing') {
-      return this.reissue(saved.row, ip);
+      return this.resume(saved.row, ip);
     }
     if (draft.live.length > 0) {
       await this.events.emitAsync(SESSION_TEXT_REQUESTED, {
@@ -166,16 +169,20 @@ export class SessionsService {
     for (let attempt = 0; attempt < LAZY_STEPS; attempt += 1) {
       const session = await this.owned(userId, sessionId);
       const now = this.clock.now();
-      if (!isPlayable(session.status) || !isPastDeadline(deadlineMs(session), now.getTime())) {
-        await this.activatePending(session, now);
-        const fresh = await this.owned(userId, sessionId);
-        return this.presentSession(fresh);
+      const restTimeout =
+        session.transport === 'REST' &&
+        isPlayable(session.status) &&
+        isPastDeadline(deadlineMs(session), now.getTime());
+      // WS-смену в ACTIVE переводит только погашенный билет, не просмотр игрока.
+      if (!restTimeout) {
+        return this.presentSession(session);
       }
       await this.decide({
         sessionId,
         seq: session.seq,
         choiceId: 'timeout',
         ownerId: userId,
+        transport: 'REST',
         actor: { type: ActorType.SYSTEM, id: null, ip: null },
       });
     }
@@ -184,6 +191,9 @@ export class SessionsService {
 
   async decide(command: DecideCommand): Promise<DecisionView> {
     const session = await this.sessionFor(command);
+    if (session.transport !== command.transport) {
+      throw wrongTransport();
+    }
     const replay = await this.findReplay(session.id, command.seq, command.choiceId);
     if (replay) {
       if (replay.finished) {
@@ -210,7 +220,6 @@ export class SessionsService {
       plan,
       graphs,
       choiceId: command.choiceId,
-      clientTs: command.clientTs ?? null,
       deadline: session.nodeDeadlineAt,
       now,
       flags: session.flags,
@@ -281,7 +290,7 @@ export class SessionsService {
     let accepted = 0;
     let duplicates = 0;
     for (const event of body.events) {
-      const inserted = await this.insertEvent(sessionId, event);
+      const inserted = await this.insertTelemetry(sessionId, event);
       if (inserted) {
         accepted += 1;
       } else {
@@ -308,7 +317,12 @@ export class SessionsService {
     const won = await this.prisma.$transaction(async (tx) => {
       const updated = await tx.gameSession.updateMany({
         where: { id: session.id, status: 'ACTIVE' },
-        data: { status: 'COMPLETED', finishedAt: now, flags },
+        data: {
+          status: 'COMPLETED',
+          finishedAt: now,
+          flags,
+          result: toJson({ runId, suspicious, summary }),
+        },
       });
       if (updated.count !== 1) {
         return false;
@@ -318,7 +332,7 @@ export class SessionsService {
           actorType: ActorType.GAME_SERVER,
           action: 'session.completed',
           target: session.id,
-          meta: toJson({ runId, suspicious, summary }),
+          meta: toJson({ runId, suspicious }),
         },
       });
       await writeNewFlags(tx, session, flags, { type: ActorType.GAME_SERVER, id: null, ip: null });
@@ -459,14 +473,14 @@ export class SessionsService {
     transport: OpenBody['transport'],
     draft: Draft,
     ip: string | null,
-  ): Promise<{ kind: 'existing' | 'created'; row: GameSession }> {
+  ): Promise<{ kind: 'existing' | 'created'; row: GameSession; refills: LlmJobData[] }> {
     await lockUserSessions(tx, userId);
     const existing = await tx.gameSession.findFirst({
       where: { userId, status: { in: ['PENDING', 'ACTIVE'] } },
       orderBy: { createdAt: 'desc' },
     });
     if (existing) {
-      return { kind: 'existing', row: existing };
+      return { kind: 'existing', row: existing, refills: [] };
     }
     const shiftId = await claimShift(tx, userId, draft.assignmentId);
     const row = await tx.gameSession.create({
@@ -487,9 +501,9 @@ export class SessionsService {
         flags: [],
       },
     });
-    if (draft.textPlan) {
-      await this.pool.markUsed(selectedVariantIds(draft.textPlan), tx);
-    }
+    const refills = draft.textPlan
+      ? await this.pool.markUsed(selectedVariantIds(draft.textPlan), tx)
+      : [];
     await tx.auditLog.create({
       data: {
         actorType: ActorType.USER,
@@ -500,23 +514,16 @@ export class SessionsService {
         meta: toJson({ transport }),
       },
     });
-    return { kind: 'created', row };
+    return { kind: 'created', row, refills };
   }
 
-  private async reissue(row: GameSession, ip: string | null): Promise<OpenedSession> {
-    if (!row.flags.includes(FLAG_MULTI_SESSION)) {
-      await this.prisma.gameSession.update({
-        where: { id: row.id },
-        data: { flags: mergeFlags(row.flags, [FLAG_MULTI_SESSION]) },
-      });
-    }
+  private async resume(row: GameSession, ip: string | null): Promise<OpenedSession> {
     await this.audit.log({
       actorType: ActorType.USER,
       actorId: row.userId,
-      action: 'anticheat.multi-session',
+      action: 'session.resumed',
       target: row.id,
       ip,
-      meta: toJson({ flag: FLAG_MULTI_SESSION }),
     });
     const plan = readPlan(row.plan);
     const ticket = await this.tickets.sign(row.userId, row.id);
@@ -559,6 +566,7 @@ export class SessionsService {
           flags: next.flags,
           startedAt: session.startedAt ?? now,
           finishedAt: next.finished ? now : null,
+          ...(runId && summary ? { result: toJson({ runId, suspicious, summary }) } : {}),
         },
       });
       if (updated.count !== 1) {
@@ -582,7 +590,7 @@ export class SessionsService {
             action: 'session.completed',
             target: session.id,
             ip: command.actor.ip,
-            meta: toJson({ runId, suspicious, summary }),
+            meta: toJson({ runId, suspicious }),
           },
         });
       }
@@ -797,13 +805,13 @@ export class SessionsService {
   }
 
   private async readStoredRun(sessionId: string): Promise<StoredRun | null> {
-    const audit = await this.prisma.auditLog.findFirst({
-      where: { action: 'session.completed', target: sessionId },
-      orderBy: { id: 'desc' },
+    const session = await this.prisma.gameSession.findUnique({
+      where: { id: sessionId },
+      select: { result: true },
     });
-    const fromAudit = readCompletedMeta(audit?.meta);
-    if (fromAudit) {
-      return fromAudit;
+    const stored = readStoredResult(session?.result);
+    if (stored) {
+      return stored;
     }
     const run = await this.prisma.run.findUnique({
       where: { sessionId },
@@ -858,12 +866,12 @@ export class SessionsService {
     }
   }
 
-  private async insertEvent(
+  private async insertTelemetry(
     sessionId: string,
     event: GameEventsBody['events'][number],
   ): Promise<boolean> {
     try {
-      await this.prisma.gameEvent.create({
+      await this.prisma.gameTelemetry.create({
         data: {
           sessionId,
           seq: event.seq,
@@ -1018,14 +1026,14 @@ async function writeNewFlags(
   }
 }
 
-function readCompletedMeta(meta: unknown): StoredRun | null {
-  if (!isRecord(meta) || typeof meta.runId !== 'string') {
+function readStoredResult(raw: unknown): StoredRun | null {
+  if (!isRecord(raw) || typeof raw.runId !== 'string') {
     return null;
   }
   return {
-    runId: meta.runId,
-    suspicious: meta.suspicious === true,
-    summary: isSummary(meta.summary) ? meta.summary : null,
+    runId: raw.runId,
+    suspicious: raw.suspicious === true,
+    summary: isSummary(raw.summary) ? raw.summary : null,
   };
 }
 

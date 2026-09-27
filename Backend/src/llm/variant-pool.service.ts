@@ -163,11 +163,30 @@ export class VariantPoolService implements OnApplicationBootstrap {
     return { id: chosen.id, payload };
   }
 
-  async markUsed(ids: readonly string[], db: VariantStore = this.prisma): Promise<void> {
+  /**
+   * Внутри чужой транзакции только uses и RETIRED.
+   * Очередь — enqueueRefills после коммита: Redis под advisory lock
+   * роняет «Играть», а задача уже лежит в очереди.
+   */
+  async markUsed(ids: readonly string[], db: VariantStore = this.prisma): Promise<LlmJobData[]> {
+    const refills: LlmJobData[] = [];
     for (const id of ids) {
       const refill = await this.consume(db, id);
       if (refill) {
+        refills.push(refill);
+      }
+    }
+    return refills;
+  }
+
+  /** Сбой Redis не пробрасывается: смена уже открыта, пул доберёт cron. */
+  async enqueueRefills(refills: readonly LlmJobData[]): Promise<void> {
+    for (const refill of refills) {
+      try {
         await this.enqueue(refill);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        this.logger.error(`не поставить refill ${refill.nodeId}: ${message}`);
       }
     }
   }
@@ -221,9 +240,7 @@ export class VariantPoolService implements OnApplicationBootstrap {
       });
       return next;
     });
-    for (const refill of refills) {
-      await this.enqueue(refill);
-    }
+    await this.enqueueRefills(refills);
     return plan;
   }
 

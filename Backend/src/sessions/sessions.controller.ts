@@ -69,7 +69,9 @@ export class SessionsController {
   }
 
   @Get(':id')
-  @ApiOperation({ summary: 'Текущий узел смены. Просроченный дедлайн сервер закрывает сам' })
+  @ApiOperation({
+    summary: 'Текущий узел смены. Просроченный дедлайн REST сервер закрывает сам',
+  })
   @ApiOkResponse({ type: SessionViewDto })
   view(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.sessions.viewSession(user.id, id);
@@ -77,7 +79,7 @@ export class SessionsController {
 
   @Post(':id/decisions')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Ход. Повтор того же seq и choiceId отдаёт прежний ответ' })
+  @ApiOperation({ summary: 'Ход REST-смены. Повтор того же seq и choiceId отдаёт прежний ответ' })
   @ApiBody({ type: DecisionDto })
   @ApiOkResponse({ type: DecisionViewDto })
   decide(
@@ -92,6 +94,7 @@ export class SessionsController {
       choiceId: body.choiceId,
       clientTs: body.clientTs,
       ownerId: user.id,
+      transport: 'REST',
       actor: { type: ActorType.USER, id: user.id, ip: readIp(request) },
     });
   }

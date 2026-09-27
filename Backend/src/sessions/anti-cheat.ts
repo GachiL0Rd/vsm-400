@@ -1,28 +1,23 @@
-/** Допуск сети и рассинхрона часов: и на дедлайн, и на «ответ до показа». */
+/** Допуск сети: решение позже дедлайна на эту величину ещё в срок. */
 export const SKEW_MS = 500;
 
 export const REACTION_FAST_MS = 250;
 export const MIN_REACTION_SAMPLES = 3;
 
 export const FLAG_REACTION_FAST = 'reaction-fast';
-export const FLAG_BEFORE_SHOW = 'decision-before-show';
 export const FLAG_AFTER_DEADLINE = 'decision-after-deadline';
 export const FLAG_TICKET_REUSED = 'ticket-reused';
-export const FLAG_MULTI_SESSION = 'multi-session';
 export const FLAG_SEQ_JUMP = 'seq-jump';
 
-const CRITICAL = new Set<string>([
-  FLAG_REACTION_FAST,
-  FLAG_BEFORE_SHOW,
-  FLAG_AFTER_DEADLINE,
-  FLAG_TICKET_REUSED,
-  FLAG_MULTI_SESSION,
-  FLAG_SEQ_JUMP,
-]);
+/** Обнуляют очки рейса, пока человек не снимет подозрение. */
+export const CRITICAL_FLAGS = [FLAG_REACTION_FAST, FLAG_TICKET_REUSED] as const;
+
+/** Пишутся в flags и аудит. Рейс из-за них не подозрительный. */
+export const INFO_FLAGS = [FLAG_AFTER_DEADLINE, FLAG_SEQ_JUMP] as const;
+
+const CRITICAL = new Set<string>(CRITICAL_FLAGS);
 
 export type TimingInput = {
-  clientTs: number | null;
-  shownAt: number | null;
   deadlineAt: number | null;
   now: number;
   choiceId: string;
@@ -70,20 +65,13 @@ export function reactionFlag(reactions: readonly (number | null)[]): string | nu
   return FLAG_REACTION_FAST;
 }
 
+/** clientTs сюда не входит: это метка журнала, не часы сервера. */
 export function timingFlags(input: TimingInput): string[] {
-  const flags: string[] = [];
-  if (
-    input.clientTs !== null &&
-    input.shownAt !== null &&
-    input.clientTs < input.shownAt - SKEW_MS
-  ) {
-    flags.push(FLAG_BEFORE_SHOW);
-  }
   const late = isPastDeadline(input.deadlineAt, input.now);
   if (late && input.choiceId !== 'timeout') {
-    flags.push(FLAG_AFTER_DEADLINE);
+    return [FLAG_AFTER_DEADLINE];
   }
-  return flags;
+  return [];
 }
 
 export function mergeFlags(current: readonly string[], extra: readonly string[]): string[] {
