@@ -61,6 +61,14 @@ export type AttemptTermination =
       readonly outcomeId: string;
     };
 
+export interface ClimateObservation {
+  readonly connection: 'connected' | 'disconnected';
+  readonly temperatureC: number;
+  readonly pressureKPa: number;
+  readonly smokeDetected: boolean;
+  readonly updatedAt: SimTimeUs;
+}
+
 export interface GameAttemptSnapshot {
   readonly time: SimTimeUs;
   readonly rootSeed: number;
@@ -69,6 +77,7 @@ export interface GameAttemptSnapshot {
   readonly entities: readonly EntityState[];
   readonly items: ItemSnapshot;
   readonly fields: readonly CellFieldState[];
+  readonly climate: ClimateObservation;
   readonly termination: AttemptTermination | null;
 }
 
@@ -90,7 +99,8 @@ type AttemptEvent =
   | { readonly kind: 'leave-origin-stop' }
   | { readonly kind: 'arrive-stop'; readonly stopIndex: number }
   | { readonly kind: 'leave-stop'; readonly stopIndex: number }
-  | { readonly kind: 'fire-start'; readonly incidentId: string }
+  | { readonly kind: 'incident-start'; readonly incidentId: string }
+  | { readonly kind: 'pressure-stage'; readonly incidentId: string; readonly stageIndex: number }
   | { readonly kind: 'field-step' };
 
 /**
@@ -119,6 +129,14 @@ export class GameAttempt {
   private routeEndAt: SimTimeUs | null = null;
   private departureAt: SimTimeUs | null = null;
   private terminationState: AttemptTermination | null = null;
+  private climateObservation: ClimateObservation = {
+    connection: 'connected',
+    temperatureC: 22,
+    pressureKPa: 101.3,
+    smokeDetected: false,
+    updatedAt: 0,
+  };
+  private activePressureIncidentId: string | null = null;
 
   constructor(options: GameAttemptOptions) {
     this.level = options.level ?? BASELINE_LEVEL;
@@ -207,6 +225,7 @@ export class GameAttempt {
       entities: this.entities.list(),
       items: this.items.snapshot(),
       fields: this.fields.snapshot(),
+      climate: this.climateObservation,
       termination: this.terminationState,
     };
   }
@@ -310,6 +329,17 @@ export class GameAttempt {
     return event;
   }
 
+  inspectClimate(): ClimateObservation {
+    this.requireRunning();
+    return this.climateObservation;
+  }
+
+  refreshClimate(): ClimateObservation {
+    this.requireRunning();
+    this.climateObservation = this.measureClimate(this.time);
+    return this.climateObservation;
+  }
+
   takeDrink(): void {
     this.requireRunning();
     this.items.takeDrink(this.playerId);
@@ -375,8 +405,11 @@ export class GameAttempt {
       case 'leave-stop':
         this.leaveStop(event.stopIndex, scheduled.at);
         return;
-      case 'fire-start':
-        this.startFire(event.incidentId, scheduled.at);
+      case 'incident-start':
+        this.startIncident(event.incidentId, scheduled.at);
+        return;
+      case 'pressure-stage':
+        this.applyPressureStage(event.incidentId, event.stageIndex, scheduled.at);
         return;
       case 'field-step':
         this.stepFields(scheduled.at);
@@ -406,7 +439,7 @@ export class GameAttempt {
     this.departureAt = at;
     for (const incident of this.scenario.definition.incidents) {
       this.queue.schedule(addTime(at, incident.startAfterDepartureUs), {
-        kind: 'fire-start',
+        kind: 'incident-start',
         incidentId: incident.id,
       });
     }
@@ -441,6 +474,25 @@ export class GameAttempt {
     this.phaseState = { kind: 'finished' };
   }
 
+  private startIncident(incidentId: string, at: SimTimeUs): void {
+    const incident = this.scenario.definition.incidents.find((item) => item.id === incidentId);
+    if (incident === undefined) return;
+    if (incident.kind === 'fire') {
+      this.startFire(incidentId, at);
+      return;
+    }
+    this.activePressureIncidentId = incident.id;
+    for (let index = 0; index < incident.stages.length; index += 1) {
+      const stage = incident.stages[index];
+      if (stage === undefined) continue;
+      this.queue.schedule(addTime(at, stage.afterStartUs), {
+        kind: 'pressure-stage',
+        incidentId: incident.id,
+        stageIndex: index,
+      });
+    }
+  }
+
   private startFire(incidentId: string, at: SimTimeUs): void {
     const incident = this.scenario.definition.incidents.find((item) => item.id === incidentId);
     if (incident === undefined || incident.kind !== 'fire') return;
@@ -455,6 +507,117 @@ export class GameAttempt {
     if (this.terminationState === null) {
       this.queue.schedule(addTime(at, secondsToFieldStepUs(1)), { kind: 'field-step' });
     }
+  }
+
+  private applyPressureStage(incidentId: string, stageIndex: number, at: SimTimeUs): void {
+    const incident = this.scenario.definition.incidents.find((item) => item.id === incidentId);
+    if (incident === undefined || incident.kind !== 'pressure-leak') return;
+    const stage = incident.stages[stageIndex];
+    if (stage === undefined) return;
+    const location = this.level.definition.failureLocations.find(
+      (item) => item.id === incident.failureLocationId,
+    );
+    if (location === undefined)
+      throw new RangeError(`Unknown pressure location ${incident.failureLocationId}`);
+    const sourceCell = this.level.grid.cells.find((cell) => cell.id === location.cellId);
+    if (sourceCell === undefined)
+      throw new RangeError(`Unknown pressure source cell ${location.cellId}`);
+    for (const cell of this.level.grid.cells) {
+      if (!cell.id.startsWith('carriage.')) continue;
+      const distanceM = Math.hypot(cell.x - sourceCell.x, cell.y - sourceCell.y) * 0.5;
+      const pressureLoss = Math.max(
+        0,
+        stage.pressureLossAtSourceKPa - incident.attenuationKPaPerMeter * distanceM,
+      );
+      this.fields.setPressure(cell.id, pressureLoss);
+    }
+    this.updatePressureExposureTraits(incident, sourceCell.x, sourceCell.y, at);
+    const measured = this.measureClimate(at);
+    if (measured.pressureKPa <= incident.criticalCabinPressureKPa) {
+      this.signal('pressure-critical');
+    }
+  }
+
+  private refreshPressureExposure(at: SimTimeUs): void {
+    if (this.activePressureIncidentId === null) return;
+    const incident = this.scenario.definition.incidents.find(
+      (item) => item.id === this.activePressureIncidentId,
+    );
+    if (incident === undefined || incident.kind !== 'pressure-leak') return;
+    const location = this.level.definition.failureLocations.find(
+      (item) => item.id === incident.failureLocationId,
+    );
+    if (location === undefined) return;
+    const sourceCell = this.level.grid.cells.find((cell) => cell.id === location.cellId);
+    if (sourceCell === undefined) return;
+    this.updatePressureExposureTraits(incident, sourceCell.x, sourceCell.y, at);
+  }
+
+  private updatePressureExposureTraits(
+    incident: Extract<
+      (typeof this.scenario.definition.incidents)[number],
+      { kind: 'pressure-leak' }
+    >,
+    sourceX: number,
+    sourceY: number,
+    at: SimTimeUs,
+  ): void {
+    for (const entity of this.entities.list()) {
+      if (entity.position.kind !== 'cell') continue;
+      const entityCellId = entity.position.cellId;
+      const cell = this.level.grid.cells.find((item) => item.id === entityCellId);
+      if (cell === undefined) continue;
+      const distanceM = Math.hypot(cell.x - sourceX, cell.y - sourceY) * 0.5;
+      this.setEnvironmentalTrait(
+        entity.id,
+        'pressure-whistle',
+        distanceM <= incident.whistleDistanceM,
+        at,
+      );
+      this.setEnvironmentalTrait(
+        entity.id,
+        'ears-blocked',
+        distanceM <= incident.earsBlockedDistanceM,
+        at,
+      );
+    }
+  }
+
+  private setEnvironmentalTrait(
+    entityId: EntityId,
+    traitId: string,
+    enabled: boolean,
+    at: SimTimeUs,
+  ): void {
+    const entity = this.entities.get(entityId);
+    const has = entity.traits.includes(traitId);
+    if (enabled && !has) this.entities.grantTrait(entityId, traitId, at);
+    if (!enabled && has) this.entities.removeTrait(entityId, traitId);
+  }
+
+  private measureClimate(at: SimTimeUs): ClimateObservation {
+    const carriageCells = new Set(
+      this.level.definition.regions.find((region) => region.id === 'carriage-main')?.cellIds ?? [],
+    );
+    const values = this.fields.snapshot().filter((field) => carriageCells.has(field.cellId));
+    const count = Math.max(1, values.length);
+    const averageFire = values.reduce((sum, field) => sum + field.fire, 0) / count;
+    const averagePressureLoss = values.reduce((sum, field) => sum + field.pressure, 0) / count;
+    const pressureIncident =
+      this.activePressureIncidentId === null
+        ? null
+        : this.scenario.definition.incidents.find(
+            (item) => item.id === this.activePressureIncidentId,
+          );
+    const basePressure =
+      pressureIncident?.kind === 'pressure-leak' ? pressureIncident.baseCabinPressureKPa : 101.3;
+    return {
+      connection: 'connected',
+      temperatureC: roundSensor(22 + averageFire * 6),
+      pressureKPa: roundSensor(Math.max(0, basePressure - averagePressureLoss)),
+      smokeDetected: averageFire >= 0.05,
+      updatedAt: at,
+    };
   }
 
   private stepFields(at: SimTimeUs): void {
@@ -544,6 +707,7 @@ export class GameAttempt {
     const position = this.spatial.positionAt(entityId, at);
     if (position.kind !== 'cell') throw new RangeError('Movement did not materialize to a cell');
     this.entities.setPosition(entityId, { kind: 'cell', cellId: position.cellId });
+    this.refreshPressureExposure(this.time);
   }
 
   private requireInteractionRange(actorId: EntityId, targetId: EntityId): void {
@@ -614,6 +778,10 @@ function fireCellId(targetId: string): string {
     throw new RangeError('Extinguisher target is not a fire');
   }
   return targetId.slice(prefix.length);
+}
+
+function roundSensor(value: number): number {
+  return Math.round(value * 10) / 10;
 }
 
 function secondsToFieldStepUs(seconds: number): SimTimeUs {

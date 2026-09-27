@@ -1,6 +1,7 @@
 import type {
   AcceptanceJournalInput,
   AvailableActionView,
+  ClimateControlValue,
   ExtinguisherInspectionValue,
 } from '../../common';
 import type { InteractionController } from '../input/interaction-controller';
@@ -47,7 +48,66 @@ export class ActionOfferOverlay {
       this.showExtinguisherForm(action.handle, form.value, interactions);
       return;
     }
+    if (form?.kind === 'climate-control') {
+      this.showClimateForm(action.handle, form.value, interactions);
+      return;
+    }
     interactions.invokeAction(action.handle);
+  }
+
+  private showClimateForm(
+    actionHandle: string,
+    value: ClimateControlValue,
+    interactions: InteractionController,
+  ): void {
+    this.openDialog?.remove();
+    const dialog = document.createElement('dialog');
+    dialog.className = 'game-form-dialog';
+    const form = document.createElement('form');
+    form.method = 'dialog';
+    const title = document.createElement('h2');
+    title.textContent = 'Климат-контроль';
+    form.append(title);
+
+    const rows: readonly [string, string][] = [
+      ['Связь', value.connection === 'connected' ? 'Есть' : 'Нет'],
+      ['Температура', `${value.temperatureC.toFixed(1)} °C`],
+      ['Давление', `${value.pressureKPa.toFixed(1)} кПа`],
+      ['Датчик дыма', value.smokeDetected ? 'Дым обнаружен' : 'Норма'],
+      ['Последнее обновление', `${(value.updatedAt / 1_000_000).toFixed(0)} с`],
+    ];
+    for (const [label, text] of rows) {
+      const row = document.createElement('p');
+      row.textContent = `${label}: ${text}`;
+      form.append(row);
+    }
+
+    const controls = document.createElement('div');
+    controls.className = 'game-form-dialog__controls';
+    const close = document.createElement('button');
+    close.type = 'button';
+    close.textContent = 'Закрыть';
+    close.addEventListener('click', () => dialog.close());
+    controls.append(close);
+    if (value.canRefresh) {
+      const refresh = document.createElement('button');
+      refresh.type = 'button';
+      refresh.textContent = 'Обновить данные';
+      refresh.addEventListener('click', () => {
+        interactions.invokeAction(actionHandle, { refresh: true });
+        dialog.close();
+      });
+      controls.append(refresh);
+    }
+    form.append(controls);
+    dialog.addEventListener('close', () => {
+      dialog.remove();
+      if (this.openDialog === dialog) this.openDialog = null;
+    });
+    dialog.append(form);
+    document.body.append(dialog);
+    this.openDialog = dialog;
+    dialog.showModal();
   }
 
   private showExtinguisherForm(

@@ -118,12 +118,17 @@ interface ClimatePanelState {
 
 ### Actions
 
+Клик по `climate-control` выдаёт form-action `climate-control`. Modal показывает последнее сохранённое наблюдение:
+
 ```text
-open-climate-panel
-refresh-climate-data
+connection
+temperatureC
+pressureKPa
+smokeDetected
+updatedAt
 ```
 
-При `offline` refresh не обновляет показания и создаёт публичный error/status result.
+Кнопка `Обновить данные` отправляет `{ refresh: true }` через тот же opaque action handle. Сервер заново вычисляет средние показания вагона и обновляет `updatedAt`. Пока connection baseline всегда `connected`; offline/error semantics остаются будущим расширением.
 
 ## 6. Стоп-кран
 

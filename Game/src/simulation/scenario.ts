@@ -53,7 +53,30 @@ const fireIncidentSchema = z.object({
   criticalFire: z.number().positive(),
 });
 
-const incidentSchema = z.discriminatedUnion('kind', [fireIncidentSchema]);
+const pressureLeakIncidentSchema = z.object({
+  id: idSchema,
+  kind: z.literal('pressure-leak'),
+  startAfterDepartureUs: simTimeSchema,
+  failureLocationId: idSchema,
+  baseCabinPressureKPa: z.number().positive(),
+  attenuationKPaPerMeter: z.number().nonnegative(),
+  whistleDistanceM: z.number().nonnegative(),
+  earsBlockedDistanceM: z.number().nonnegative(),
+  criticalCabinPressureKPa: z.number().positive(),
+  stages: z
+    .array(
+      z.object({
+        afterStartUs: simTimeSchema,
+        pressureLossAtSourceKPa: z.number().nonnegative(),
+      }),
+    )
+    .min(1),
+});
+
+const incidentSchema = z.discriminatedUnion('kind', [
+  fireIncidentSchema,
+  pressureLeakIncidentSchema,
+]);
 
 export const scenarioDefinitionSchema = z.object({
   schemaVersion: z.literal(1),
@@ -205,6 +228,22 @@ export const BASELINE_SCENARIO_DEFINITION = {
       sourcePerSecond: 0.015,
       criticalFire: 2.5,
     },
+    {
+      id: 'entry-pressure-leak',
+      kind: 'pressure-leak',
+      startAfterDepartureUs: secondsToSimTimeUs(35 * 60),
+      failureLocationId: 'pressure.entry',
+      baseCabinPressureKPa: 101.3,
+      attenuationKPaPerMeter: 5,
+      whistleDistanceM: 1.5,
+      earsBlockedDistanceM: 1.0,
+      criticalCabinPressureKPa: 80,
+      stages: [
+        { afterStartUs: 0, pressureLossAtSourceKPa: 4 },
+        { afterStartUs: secondsToSimTimeUs(2 * 60), pressureLossAtSourceKPa: 12 },
+        { afterStartUs: secondsToSimTimeUs(4 * 60), pressureLossAtSourceKPa: 18 },
+      ],
+    },
   ],
   servicePlan: {
     windows: [
@@ -239,6 +278,11 @@ export const BASELINE_SCENARIO_DEFINITION = {
       id: 'fire-unsalvageable',
       signal: 'fire-unsalvageable',
       outcomeId: 'wagon-unsalvageable',
+    },
+    {
+      id: 'pressure-critical',
+      signal: 'pressure-critical',
+      outcomeId: 'wagon-unserviceable',
     },
   ],
 } as const;
@@ -343,14 +387,40 @@ function validateIncidents(definition: ScenarioDefinition, level: LoadedLevel): 
     'incident',
   );
   const failures = new Map(level.definition.failureLocations.map((item) => [item.id, item]));
-  for (const incident of definition.incidents) {
-    const location = failures.get(incident.failureLocationId);
-    if (location === undefined) {
-      throw new RangeError(`Unknown failure location ${incident.failureLocationId}`);
-    }
-    if (incident.kind === 'fire' && !location.kinds.includes('fire')) {
+  for (const incident of definition.incidents) validateIncident(incident, failures);
+}
+
+function validateIncident(
+  incident: ScenarioIncidentDefinition,
+  failures: ReadonlyMap<string, LoadedLevel['definition']['failureLocations'][number]>,
+): void {
+  const location = failures.get(incident.failureLocationId);
+  if (location === undefined) {
+    throw new RangeError(`Unknown failure location ${incident.failureLocationId}`);
+  }
+  if (incident.kind === 'fire') {
+    if (!location.kinds.includes('fire')) {
       throw new RangeError(`Failure location ${incident.failureLocationId} does not allow fire`);
     }
+    return;
+  }
+  if (!location.kinds.includes('pressure-leak')) {
+    throw new RangeError(
+      `Failure location ${incident.failureLocationId} does not allow pressure leak`,
+    );
+  }
+  validatePressureStages(incident);
+}
+
+function validatePressureStages(
+  incident: Extract<ScenarioIncidentDefinition, { kind: 'pressure-leak' }>,
+): void {
+  let previous = -1;
+  for (const stage of incident.stages) {
+    if (stage.afterStartUs <= previous) {
+      throw new RangeError(`Pressure incident ${incident.id} stages must be strictly ordered`);
+    }
+    previous = stage.afterStartUs;
   }
 }
 

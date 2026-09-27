@@ -123,16 +123,7 @@ Remaining work in this slice is to expose actual inspection actions for driver c
 
 ### B2. Incident loop
 
-Instantiate `FieldWorld` (or a deliberately simpler incident runtime) inside the attempt and connect:
-
-```text
-scenario incident
- -> visible fire/pressure state
- -> extinguisher/emergency action
- -> terminal/non-terminal outcome
-```
-
-Do not add more physics sophistication before this loop is playable.
+Fire and pressure incidents are now instantiated inside `GameAttempt`. Fire has extinguisher handling and a critical terminal path; pressure has staged distance-based loss, climate sensor refresh, proximity traits and a critical terminal path. Remaining work in this area is emergency-brake/report handling and richer presentation/NPC reactions to `pressure-whistle` / `ears-blocked`.
 
 ### B3. Passenger documents
 

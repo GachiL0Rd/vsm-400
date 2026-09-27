@@ -56,6 +56,7 @@ export interface FieldWorld {
   addFire(cellId: string, amount: number): readonly FieldThresholdEvent[];
   setFireSource(cellId: string, amount: number): void;
   setPressureSource(cellId: string, amount: number): void;
+  setPressure(cellId: string, amount: number): readonly FieldThresholdEvent[];
   /** Extinguisher-style discrete reduction. May emit a cleared threshold immediately. */
   reduceFire(cellId: string, amount: number): readonly FieldThresholdEvent[];
   /** Door or object permeability. Omitted fields keep their current scale. */
@@ -234,6 +235,20 @@ class FieldRuntime implements FieldWorld {
 
   setPressureSource(cellId: string, amount: number): void {
     this.requireCell(cellId).pressureSource = assertNonnegative(amount, 'Pressure source');
+  }
+
+  setPressure(cellId: string, amount: number): readonly FieldThresholdEvent[] {
+    const cell = this.requireCell(cellId);
+    const before = cell.pressure;
+    cell.pressure = assertNonnegative(amount, 'Pressure value');
+    return crossings(
+      cell.cellId,
+      'pressure',
+      before,
+      cell.pressure,
+      cell.pressureThreshold,
+      this.completedSteps,
+    );
   }
 
   reduceFire(cellId: string, amount: number): readonly FieldThresholdEvent[] {

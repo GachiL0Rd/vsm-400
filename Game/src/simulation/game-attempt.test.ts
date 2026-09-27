@@ -227,6 +227,60 @@ describe('GameAttempt', () => {
     expect(attempt.termination?.at).toBeGreaterThan(secondsToSimTimeUs(45 * 60));
   });
 
+  it('models staged pressure loss by euclidean distance and refreshes the climate sensor on demand', () => {
+    const attempt = new GameAttempt({ rootSeed: 21 });
+    prepareForBaselineFire(attempt);
+    attempt.advanceTo(secondsToSimTimeUs(45 * 60));
+    attempt.useExtinguisher('fire:carriage.cabin');
+
+    const beforeLeak = attempt.inspectClimate();
+    expect(beforeLeak.pressureKPa).toBe(101.3);
+
+    attempt.advanceTo(secondsToSimTimeUs(70 * 60));
+    const actual = new Map(
+      attempt.snapshot().fields.map((field) => [field.cellId, field.pressure]),
+    );
+    expect(actual.get('carriage.entry')).toBe(4);
+    expect(actual.get('carriage.cabin')).toBeCloseTo(1.5);
+    expect(attempt.inspectClimate()).toEqual(beforeLeak);
+
+    const refreshed = attempt.refreshClimate();
+    expect(refreshed.updatedAt).toBe(attempt.time);
+    expect(refreshed.pressureKPa).toBeLessThan(101.3);
+    expect(refreshed.pressureKPa).toBeGreaterThan(95);
+    expect(attempt.entities.get('player').traits).toContain('pressure-whistle');
+  });
+
+  it('terminates when a pressure incident drives the mean cabin pressure below its critical threshold', () => {
+    const definition = {
+      ...structuredClone(BASELINE_SCENARIO_DEFINITION),
+      incidents: [
+        {
+          id: 'critical-pressure',
+          kind: 'pressure-leak' as const,
+          startAfterDepartureUs: secondsToSimTimeUs(1),
+          failureLocationId: 'pressure.entry',
+          baseCabinPressureKPa: 101.3,
+          attenuationKPaPerMeter: 5,
+          whistleDistanceM: 1.5,
+          earsBlockedDistanceM: 1,
+          criticalCabinPressureKPa: 80,
+          stages: [{ afterStartUs: 0, pressureLossAtSourceKPa: 30 }],
+        },
+      ],
+    };
+    const scenario = loadScenarioDefinition(definition, BASELINE_LEVEL);
+    const attempt = new GameAttempt({ rootSeed: 22, scenario });
+    completeJournal(attempt);
+    attempt.advanceTo(secondsToSimTimeUs(35 * 60 + 2));
+
+    expect(attempt.termination).toMatchObject({
+      kind: 'terminal-rule',
+      ruleId: 'pressure-critical',
+      outcomeId: 'wagon-unserviceable',
+    });
+  });
+
   it('keeps terminal-rule outcome separate from route completion', () => {
     const attempt = new GameAttempt({ rootSeed: 8 });
     const result = attempt.signal('critical-predeparture-fault');

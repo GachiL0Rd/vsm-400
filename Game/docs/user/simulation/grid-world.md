@@ -183,14 +183,13 @@ fire' = max(0, fire + growth * dt * fire - decay * dt
 
 Если fuel для материала не задан, runtime сохраняет прежний простой режим без исчерпания топлива. Это позволяет использовать тот же `FieldWorld` для более простых тестовых полей.
 
-Для давления:
+Для давления `FieldWorld` всё ещё поддерживает простой stencil `source/leak + permeability/transfer`, но baseline pressure incident использует более прямой профиль, записывая pressure-loss по клеткам из евклидова расстояния до failure location:
 
 ```text
-source/leak
-permeability/transfer
+loss(cell) = max(0, sourceStageLoss - attenuationPerMeter * distance(cell, source))
 ```
 
-Цель — понятная gameplay-модель, а не точная CFD.
+Такой runtime проще интерпретируется как локальная потеря давления и не требует настройки искусственной диффузии для короткого вагона. Оба режима остаются gameplay-моделями, а не CFD.
 
 ## 11. Fields и discrete events
 

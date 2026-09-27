@@ -221,3 +221,22 @@ describe('field world', () => {
     expect(fields.stepCount).toBe(0);
   });
 });
+
+// Direct pressure assignment is used by distance-based pressure incidents rather
+// than the stencil pressure transport model.
+describe('direct pressure profile', () => {
+  it('sets one cell pressure and emits threshold crossings', () => {
+    const grid = createGridWorld({ cells: [cell('a', 0)], edges: [] });
+    const fields = createFieldWorld(grid, {
+      cells: [material('a', { pressureThreshold: 2 })],
+    });
+
+    expect(fields.setPressure('a', 3)).toEqual([
+      { field: 'pressure', cellId: 'a', direction: 'reached', value: 3, step: 0 },
+    ]);
+    expect(fields.snapshot()[0]?.pressure).toBe(3);
+    expect(fields.setPressure('a', 1)).toEqual([
+      { field: 'pressure', cellId: 'a', direction: 'cleared', value: 1, step: 0 },
+    ]);
+  });
+});

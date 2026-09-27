@@ -321,6 +321,99 @@ describe('PublicGameProjection', () => {
     expect(used.snapshot?.state.world.objects.some((object) => object.kind === 'fire')).toBe(false);
   });
 
+  it('keeps climate readings cached until the player refreshes the panel', () => {
+    const projection = createProjection(31);
+    projection.snapshot();
+    completeJournal(projection);
+    projection.advanceTo(secondsToSimTimeUs(5 * 60));
+    for (const cellId of ['platform-origin.door', 'carriage.entry', 'carriage.cabin']) {
+      moveToCell(projection, cellId);
+    }
+
+    const extinguisherOffer = projection.queryActions({
+      protocolVersion: GAME_PROTOCOL_VERSION,
+      type: 'query-actions',
+      requestId: 'pressure-extinguisher',
+      knownRevision: projection.revision,
+      target: { kind: 'object', objectId: 'extinguisher' },
+    });
+    const take = extinguisherOffer.actions.find((action) => action.label === 'Взять огнетушитель');
+    projection.invoke({
+      protocolVersion: GAME_PROTOCOL_VERSION,
+      type: 'invoke-action',
+      requestId: 'pressure-take-extinguisher',
+      knownRevision: projection.revision,
+      actionHandle: take?.handle ?? 'missing',
+    });
+    const self = projection.queryActions({
+      protocolVersion: GAME_PROTOCOL_VERSION,
+      type: 'query-actions',
+      requestId: 'pressure-prepare-self',
+      knownRevision: projection.revision,
+      target: { kind: 'entity', entityId: 'player' },
+    });
+    const inspect = self.actions.find((action) => action.form?.kind === 'extinguisher-inspection');
+    projection.invoke({
+      protocolVersion: GAME_PROTOCOL_VERSION,
+      type: 'invoke-action',
+      requestId: 'pressure-remove-pin',
+      knownRevision: projection.revision,
+      actionHandle: inspect?.handle ?? 'missing',
+      input: { removePin: true },
+    });
+    projection.advanceTo(secondsToSimTimeUs(45 * 60));
+    const fire = projection.queryActions({
+      protocolVersion: GAME_PROTOCOL_VERSION,
+      type: 'query-actions',
+      requestId: 'pressure-fire',
+      knownRevision: projection.revision,
+      target: { kind: 'object', objectId: 'fire:carriage.cabin' },
+    });
+    projection.invoke({
+      protocolVersion: GAME_PROTOCOL_VERSION,
+      type: 'invoke-action',
+      requestId: 'pressure-put-fire-out',
+      knownRevision: projection.revision,
+      actionHandle: fire.actions[0]?.handle ?? 'missing',
+    });
+    projection.advanceTo(secondsToSimTimeUs(70 * 60));
+
+    const stale = projection.queryActions({
+      protocolVersion: GAME_PROTOCOL_VERSION,
+      type: 'query-actions',
+      requestId: 'query-climate-stale',
+      knownRevision: projection.revision,
+      target: { kind: 'object', objectId: 'climate-control' },
+    });
+    const staleAction = stale.actions.find((action) => action.form?.kind === 'climate-control');
+    expect(staleAction?.form).toMatchObject({
+      kind: 'climate-control',
+      value: { pressureKPa: 101.3, canRefresh: true },
+    });
+
+    const refreshed = projection.invoke({
+      protocolVersion: GAME_PROTOCOL_VERSION,
+      type: 'invoke-action',
+      requestId: 'refresh-climate',
+      knownRevision: projection.revision,
+      actionHandle: staleAction?.handle ?? 'missing',
+      input: { refresh: true },
+    });
+    expect(refreshed.result.status).toBe('accepted');
+
+    const current = projection.queryActions({
+      protocolVersion: GAME_PROTOCOL_VERSION,
+      type: 'query-actions',
+      requestId: 'query-climate-current',
+      knownRevision: projection.revision,
+      target: { kind: 'object', objectId: 'climate-control' },
+    });
+    const currentAction = current.actions.find((action) => action.form?.kind === 'climate-control');
+    if (currentAction?.form?.kind !== 'climate-control') throw new Error('Climate form missing');
+    expect(currentAction.form.value.pressureKPa).toBeLessThan(101.3);
+    expect(currentAction.form.value.updatedAt).toBe(secondsToSimTimeUs(70 * 60));
+  });
+
   it('offers service actions only after an explicit target query', () => {
     const projection = createProjection();
     projection.snapshot();

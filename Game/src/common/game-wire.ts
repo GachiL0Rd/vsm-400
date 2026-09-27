@@ -157,6 +157,19 @@ export type ExtinguisherInspectionValue = z.infer<typeof extinguisherInspectionV
 export const extinguisherInspectionInputSchema = z.object({ removePin: z.boolean() }).strict();
 export type ExtinguisherInspectionInput = z.infer<typeof extinguisherInspectionInputSchema>;
 
+export const climateControlValueSchema = z.object({
+  connection: z.enum(['connected', 'disconnected']),
+  temperatureC: z.number().finite(),
+  pressureKPa: z.number().nonnegative(),
+  smokeDetected: z.boolean(),
+  updatedAt: simTimeSchema,
+  canRefresh: z.boolean(),
+});
+export type ClimateControlValue = z.infer<typeof climateControlValueSchema>;
+
+export const climateControlInputSchema = z.object({ refresh: z.boolean() }).strict();
+export type ClimateControlInput = z.infer<typeof climateControlInputSchema>;
+
 const acceptanceJournalFormSchema = z.object({
   kind: z.literal('acceptance-journal'),
   value: acceptanceJournalInputSchema,
@@ -167,9 +180,15 @@ const extinguisherInspectionFormSchema = z.object({
   value: extinguisherInspectionValueSchema,
 });
 
+const climateControlFormSchema = z.object({
+  kind: z.literal('climate-control'),
+  value: climateControlValueSchema,
+});
+
 export const actionFormSchema = z.discriminatedUnion('kind', [
   acceptanceJournalFormSchema,
   extinguisherInspectionFormSchema,
+  climateControlFormSchema,
 ]);
 export type ActionFormView = z.infer<typeof actionFormSchema>;
 

@@ -368,6 +368,8 @@ A `form` action may carry a browser-safe `form` descriptor. The current baseline
 }
 ```
 
+The baseline also exposes `extinguisher-inspection` and `climate-control` forms. `climate-control` carries cached `temperatureC`, `pressureKPa`, `smokeDetected`, connection state and `updatedAt`; invoking it with `{ "refresh": true }` performs a server-side sensor refresh.
+
 The client opens the corresponding form locally and submits the edited value through the same opaque action handle using `invoke-action.input`. The server validates the complete input schema; partial or malformed form values are rejected with `invalid-input`.
 
 The handle is opaque. The client MUST NOT parse or synthesize it, persist it as a long-lived capability, or infer domain rules from it.

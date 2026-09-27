@@ -615,4 +615,117 @@ describe('game server protocol integration', () => {
       await app.close();
     }
   });
+
+  it('refreshes climate-control readings through the real socket after a pressure incident starts', async () => {
+    const host = new GameSessionHost({
+      platformGateway: new MockPlatformGateway({
+        attemptId: 'attempt-climate',
+        gameLevelId: 'vsm-baseline-01',
+        mode: mockMode('live'),
+      }),
+      contentRegistry: new BaselineContentRegistry(),
+      resumeTokens: new InMemoryResumeTokenRegistry(),
+      disconnectDebounceMs: 1_000,
+      reconnectGraceMs: 30_000,
+    });
+    const app = createGameHttpServer(
+      parseServerConfig({ GAME_SERVER_PORT: '4174' }),
+      new CommonGameProtocolAdapter({ host }),
+    );
+    await app.listen(0);
+    const address = app.server.address() as AddressInfo;
+    const socket = new WebSocket(`ws://127.0.0.1:${address.port}/game-ws`);
+
+    try {
+      await open(socket);
+      const ready = await authenticate(socket, 'hello-climate');
+      const worker = host.worker(ready.attemptId);
+      if (worker === undefined) throw new Error('Expected climate worker');
+      completeJournalForIncidentSetup(worker);
+
+      for (const edgeId of [
+        'origin-desk-door:forward',
+        'origin-door-entry:forward',
+        'entry-cabin:forward',
+      ]) {
+        const movement = worker.projection.attempt.movePlayer(edgeId);
+        worker.projection.attempt.advanceTo(movement.arrivesAt);
+      }
+      worker.projection.attempt.takeExtinguisher();
+      worker.projection.attempt.prepareExtinguisher();
+      worker.projection.advanceTo(secondsToSimTimeUs(45 * 60), worker.publicClock());
+      worker.projection.attempt.useExtinguisher('fire:carriage.cabin');
+      worker.projection.refresh(worker.publicClock());
+      worker.projection.advanceTo(secondsToSimTimeUs(70 * 60), worker.publicClock());
+
+      const snapshotPromise = nextMessage(socket);
+      socket.send(
+        JSON.stringify({
+          protocolVersion: GAME_PROTOCOL_VERSION,
+          type: 'resync',
+          requestId: 'resync-climate',
+          knownRevision: ready.snapshot.state.revision,
+        }),
+      );
+      const snapshot = expectType(await snapshotPromise, 'snapshot');
+      let revision = snapshot.state.revision;
+
+      const offerPromise = nextMessage(socket);
+      socket.send(
+        JSON.stringify({
+          protocolVersion: GAME_PROTOCOL_VERSION,
+          type: 'query-actions',
+          requestId: 'query-climate-e2e',
+          knownRevision: revision,
+          target: { kind: 'object', objectId: 'climate-control' },
+        }),
+      );
+      const offer = expectType(await offerPromise, 'action-offer');
+      const climate = requireOfferedAction(
+        offer,
+        (action) => action.form?.kind === 'climate-control',
+        'climate form',
+      );
+      expect(climate.form).toMatchObject({
+        kind: 'climate-control',
+        value: { pressureKPa: 101.3, canRefresh: true },
+      });
+
+      const refreshPromise = nextMessages(socket, 2);
+      socket.send(
+        JSON.stringify({
+          protocolVersion: GAME_PROTOCOL_VERSION,
+          type: 'invoke-action',
+          requestId: 'refresh-climate-e2e',
+          knownRevision: revision,
+          actionHandle: climate.handle,
+          input: { refresh: true },
+        }),
+      );
+      const [, deltaRaw] = await refreshPromise;
+      revision = expectType(deltaRaw, 'delta').revision;
+
+      const currentPromise = nextMessage(socket);
+      socket.send(
+        JSON.stringify({
+          protocolVersion: GAME_PROTOCOL_VERSION,
+          type: 'query-actions',
+          requestId: 'query-climate-current-e2e',
+          knownRevision: revision,
+          target: { kind: 'object', objectId: 'climate-control' },
+        }),
+      );
+      const current = expectType(await currentPromise, 'action-offer');
+      const currentClimate = requireOfferedAction(
+        current,
+        (action) => action.form?.kind === 'climate-control',
+        'refreshed climate form',
+      );
+      if (currentClimate.form?.kind !== 'climate-control') throw new Error('Expected climate form');
+      expect(currentClimate.form.value.pressureKPa).toBeLessThan(101.3);
+    } finally {
+      socket.close();
+      await app.close();
+    }
+  });
 });

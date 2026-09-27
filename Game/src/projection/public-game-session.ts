@@ -2,6 +2,7 @@ import type {
   AcceptanceJournalInput,
   ActionOfferMessage,
   AvailableActionView,
+  ClimateControlInput,
   CommandResultMessage,
   ExtinguisherInspectionInput,
   GameDeltaMessage,
@@ -18,6 +19,7 @@ import type {
 } from '../common/game-wire';
 import {
   acceptanceJournalInputSchema,
+  climateControlInputSchema,
   extinguisherInspectionInputSchema,
   GAME_PROTOCOL_VERSION,
 } from '../common/game-wire';
@@ -42,15 +44,19 @@ export type RecordedGameplayCommand =
   | { readonly kind: 'take-extinguisher' }
   | { readonly kind: 'inspect-extinguisher'; readonly value: ExtinguisherInspectionInput }
   | { readonly kind: 'return-extinguisher' }
-  | { readonly kind: 'use-extinguisher'; readonly targetId: string };
+  | { readonly kind: 'use-extinguisher'; readonly targetId: string }
+  | { readonly kind: 'inspect-climate'; readonly value: ClimateControlInput };
 
 type RuntimeOperation =
   | Exclude<
       RecordedGameplayCommand,
-      { readonly kind: 'edit-journal' } | { readonly kind: 'inspect-extinguisher' }
+      | { readonly kind: 'edit-journal' }
+      | { readonly kind: 'inspect-extinguisher' }
+      | { readonly kind: 'inspect-climate' }
     >
   | { readonly kind: 'edit-journal-form' }
-  | { readonly kind: 'inspect-extinguisher-form' };
+  | { readonly kind: 'inspect-extinguisher-form' }
+  | { readonly kind: 'inspect-climate-form' };
 
 interface RuntimeAction {
   readonly sortKey: string;
@@ -309,6 +315,10 @@ export class PublicGameProjection {
       case 'use-extinguisher':
         this.attempt.useExtinguisher(operation.targetId);
         return;
+      case 'inspect-climate':
+        this.attempt.inspectClimate();
+        if (operation.value.refresh) this.attempt.refreshClimate();
+        return;
     }
   }
 
@@ -442,9 +452,38 @@ function collectObjectActions(
       return collectExtinguisherObjectActions(snapshot, player, object.id, object.cellId);
     case 'service-point':
       return collectServicePointActions(player, object.id, object.cellId);
+    case 'climate-control':
+      return collectClimateActions(attempt, snapshot, player, object.id, object.cellId);
     default:
       return [];
   }
+}
+
+function collectClimateActions(
+  attempt: GameAttempt,
+  snapshot: GameAttemptSnapshot,
+  player: EntityState,
+  objectId: string,
+  cellId: string,
+): RuntimeAction[] {
+  if (player.position.kind !== 'cell') return [];
+  if (!withinInteractionRange(attempt, snapshot, player.position.cellId, cellId)) return [];
+  const climate = attempt.inspectClimate();
+  return [
+    {
+      sortKey: 'climate/inspect',
+      view: {
+        uiKind: 'form',
+        label: 'Открыть климат-контроль',
+        target: { kind: 'object', objectId },
+        form: {
+          kind: 'climate-control',
+          value: { ...climate, canRefresh: climate.connection === 'connected' },
+        },
+      },
+      operation: { kind: 'inspect-climate-form' },
+    },
+  ];
 }
 
 function collectFireActions(
@@ -666,6 +705,9 @@ function resolveOperation(template: RuntimeOperation, input: unknown): RecordedG
   }
   if (template.kind === 'inspect-extinguisher-form') {
     return { kind: 'inspect-extinguisher', value: extinguisherInspectionInputSchema.parse(input) };
+  }
+  if (template.kind === 'inspect-climate-form') {
+    return { kind: 'inspect-climate', value: climateControlInputSchema.parse(input) };
   }
   if (input !== undefined) throw new RangeError('This action does not accept input');
   return template;
