@@ -239,6 +239,88 @@ describe('PublicGameProjection', () => {
     ]);
   });
 
+  it('supports mounted and held extinguisher inspection and extinguishes the baseline fire', () => {
+    const projection = createProjection();
+    projection.snapshot();
+    completeJournal(projection);
+    projection.advanceTo(secondsToSimTimeUs(5 * 60));
+    for (const cellId of ['platform-origin.door', 'carriage.entry', 'carriage.cabin']) {
+      moveToCell(projection, cellId);
+    }
+
+    const wallOffer = projection.queryActions({
+      protocolVersion: GAME_PROTOCOL_VERSION,
+      type: 'query-actions',
+      requestId: 'query-extinguisher-wall',
+      knownRevision: projection.revision,
+      target: { kind: 'object', objectId: 'extinguisher' },
+    });
+    expect(wallOffer.actions.map((action) => action.label)).toEqual([
+      'Осмотреть огнетушитель',
+      'Взять огнетушитель',
+    ]);
+    const take = wallOffer.actions.find((action) => action.label === 'Взять огнетушитель');
+    expect(
+      projection.invoke({
+        protocolVersion: GAME_PROTOCOL_VERSION,
+        type: 'invoke-action',
+        requestId: 'take-extinguisher',
+        knownRevision: projection.revision,
+        actionHandle: take?.handle ?? 'missing',
+      }).result.status,
+    ).toBe('accepted');
+
+    const selfOffer = projection.queryActions({
+      protocolVersion: GAME_PROTOCOL_VERSION,
+      type: 'query-actions',
+      requestId: 'query-extinguisher-held',
+      knownRevision: projection.revision,
+      target: { kind: 'entity', entityId: 'player' },
+    });
+    const inspect = selfOffer.actions.find(
+      (action) => action.form?.kind === 'extinguisher-inspection',
+    );
+    expect(inspect?.form).toMatchObject({
+      kind: 'extinguisher-inspection',
+      value: { pin: 'present', seal: 'intact', canRemovePin: true },
+    });
+    expect(
+      projection.invoke({
+        protocolVersion: GAME_PROTOCOL_VERSION,
+        type: 'invoke-action',
+        requestId: 'remove-pin',
+        knownRevision: projection.revision,
+        actionHandle: inspect?.handle ?? 'missing',
+        input: { removePin: true },
+      }).result.status,
+    ).toBe('accepted');
+
+    const fireUpdate = projection.advanceTo(secondsToSimTimeUs(45 * 60));
+    expect(fireUpdate.changes.world?.objects).toContainEqual({
+      id: 'fire:carriage.cabin',
+      kind: 'fire',
+      visualId: 'effect.fire',
+      cellId: 'carriage.cabin',
+    });
+    const fireOffer = projection.queryActions({
+      protocolVersion: GAME_PROTOCOL_VERSION,
+      type: 'query-actions',
+      requestId: 'query-fire',
+      knownRevision: projection.revision,
+      target: { kind: 'object', objectId: 'fire:carriage.cabin' },
+    });
+    expect(fireOffer.actions.map((action) => action.label)).toEqual(['Применить огнетушитель']);
+    const used = projection.invoke({
+      protocolVersion: GAME_PROTOCOL_VERSION,
+      type: 'invoke-action',
+      requestId: 'use-extinguisher',
+      knownRevision: projection.revision,
+      actionHandle: fireOffer.actions[0]?.handle ?? 'missing',
+    });
+    expect(used.result.status).toBe('accepted');
+    expect(used.snapshot?.state.world.objects.some((object) => object.kind === 'fire')).toBe(false);
+  });
+
   it('offers service actions only after an explicit target query', () => {
     const projection = createProjection();
     projection.snapshot();

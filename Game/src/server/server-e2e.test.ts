@@ -6,6 +6,7 @@ import {
   type ServerMessage,
   serverMessageSchema,
 } from '../common/game-wire.ts';
+import { secondsToSimTimeUs } from '../simulation/sim-time.ts';
 import { parseServerConfig } from './config.ts';
 import { BaselineContentRegistry } from './content-registry.ts';
 import { createGameHttpServer } from './http-server.ts';
@@ -54,6 +55,92 @@ function expectType<T extends ServerMessage['type']>(
 ): Extract<ServerMessage, { type: T }> {
   if (message?.type !== type) throw new Error(`Expected ${type}`);
   return message as Extract<ServerMessage, { type: T }>;
+}
+
+function requireOfferedAction(
+  offer: Extract<ServerMessage, { type: 'action-offer' }>,
+  predicate: (
+    action: Extract<ServerMessage, { type: 'action-offer' }>['actions'][number],
+  ) => boolean,
+  description: string,
+) {
+  const action = offer.actions.find(predicate);
+  if (action === undefined) throw new Error(`Expected ${description} action`);
+  return action;
+}
+
+function completeJournalForIncidentSetup(
+  worker: NonNullable<ReturnType<GameSessionHost['worker']>>,
+): void {
+  let offer = worker.projection.queryActions({
+    protocolVersion: GAME_PROTOCOL_VERSION,
+    type: 'query-actions',
+    requestId: 'setup-journal-take',
+    knownRevision: worker.projection.revision,
+    target: { kind: 'object', objectId: 'acceptance-journal' },
+  });
+  const takeJournal = requireOfferedAction(
+    offer,
+    (action) => action.label === 'Взять журнал приёмки',
+    'journal take',
+  );
+  worker.projection.invoke({
+    protocolVersion: GAME_PROTOCOL_VERSION,
+    type: 'invoke-action',
+    requestId: 'setup-journal-take-invoke',
+    knownRevision: worker.projection.revision,
+    actionHandle: takeJournal.handle,
+  });
+
+  offer = worker.projection.queryActions({
+    protocolVersion: GAME_PROTOCOL_VERSION,
+    type: 'query-actions',
+    requestId: 'setup-journal-edit',
+    knownRevision: worker.projection.revision,
+    target: { kind: 'entity', entityId: 'player' },
+  });
+  const editJournal = requireOfferedAction(
+    offer,
+    (action) => action.form?.kind === 'acceptance-journal',
+    'journal form',
+  );
+  worker.projection.invoke({
+    protocolVersion: GAME_PROTOCOL_VERSION,
+    type: 'invoke-action',
+    requestId: 'setup-journal-edit-invoke',
+    knownRevision: worker.projection.revision,
+    actionHandle: editJournal.handle,
+    input: {
+      communication: 'ok',
+      extinguisher: 'ok',
+      climate: 'ok',
+      emergencyBrake: 'ok',
+      sanitation: 'clean',
+      note: '',
+      accepted: true,
+    },
+  });
+
+  offer = worker.projection.queryActions({
+    protocolVersion: GAME_PROTOCOL_VERSION,
+    type: 'query-actions',
+    requestId: 'setup-journal-return',
+    knownRevision: worker.projection.revision,
+    target: { kind: 'entity', entityId: 'player' },
+  });
+  const returnJournal = requireOfferedAction(
+    offer,
+    (action) => action.label === 'Сдать журнал приёмки',
+    'journal return',
+  );
+  worker.projection.invoke({
+    protocolVersion: GAME_PROTOCOL_VERSION,
+    type: 'invoke-action',
+    requestId: 'setup-journal-return-invoke',
+    knownRevision: worker.projection.revision,
+    actionHandle: returnJournal.handle,
+  });
+  worker.projection.advanceTo(secondsToSimTimeUs(5 * 60), worker.publicClock());
 }
 
 async function authenticate(
@@ -352,6 +439,177 @@ describe('game server protocol integration', () => {
       const delta = expectType(rawDelta, 'delta');
       const player = delta.changes.entities?.upsert.find((entity) => entity.kind === 'player');
       expect(player?.heldItem).toBeDefined();
+    } finally {
+      socket.close();
+      await app.close();
+    }
+  });
+
+  it('round-trips held extinguisher preparation and fire suppression through the real socket', async () => {
+    const host = new GameSessionHost({
+      platformGateway: new MockPlatformGateway({
+        attemptId: 'attempt-fire',
+        gameLevelId: 'vsm-baseline-01',
+        mode: mockMode('live'),
+      }),
+      contentRegistry: new BaselineContentRegistry(),
+      resumeTokens: new InMemoryResumeTokenRegistry(),
+      disconnectDebounceMs: 1_000,
+      reconnectGraceMs: 30_000,
+    });
+    const app = createGameHttpServer(
+      parseServerConfig({ GAME_SERVER_PORT: '4174' }),
+      new CommonGameProtocolAdapter({ host }),
+    );
+    await app.listen(0);
+    const address = app.server.address() as AddressInfo;
+    const socket = new WebSocket(`ws://127.0.0.1:${address.port}/game-ws`);
+
+    try {
+      await open(socket);
+      const ready = await authenticate(socket, 'hello-fire');
+      const worker = host.worker('attempt-fire');
+      if (worker === undefined) throw new Error('Expected worker');
+
+      // The journal has its own real-socket test above. Complete that prerequisite
+      // through the projection contract, then resynchronize the real client before
+      // exercising the extinguisher/fire path entirely through WebSocket messages.
+      completeJournalForIncidentSetup(worker);
+
+      const setupSnapshotPromise = nextMessage(socket);
+      socket.send(
+        JSON.stringify({
+          protocolVersion: GAME_PROTOCOL_VERSION,
+          type: 'resync',
+          requestId: 'resync-fire-setup',
+          knownRevision: ready.snapshot.state.revision,
+        }),
+      );
+      let revision = expectType(await setupSnapshotPromise, 'snapshot').state.revision;
+
+      for (const [index, targetCellId] of [
+        'platform-origin.door',
+        'carriage.entry',
+        'carriage.cabin',
+      ].entries()) {
+        revision = await moveAndComplete(socket, worker, revision, targetCellId, 100 + index);
+      }
+
+      const wallOfferPromise = nextMessage(socket);
+      socket.send(
+        JSON.stringify({
+          protocolVersion: GAME_PROTOCOL_VERSION,
+          type: 'query-actions',
+          requestId: 'query-extinguisher-wall-e2e',
+          knownRevision: revision,
+          target: { kind: 'object', objectId: 'extinguisher' },
+        }),
+      );
+      const wallOffer = expectType(await wallOfferPromise, 'action-offer');
+      const takeExtinguisher = requireOfferedAction(
+        wallOffer,
+        (action) => action.label === 'Взять огнетушитель',
+        'take extinguisher',
+      );
+
+      const takeResultPromise = nextMessages(socket, 2);
+      socket.send(
+        JSON.stringify({
+          protocolVersion: GAME_PROTOCOL_VERSION,
+          type: 'invoke-action',
+          requestId: 'take-extinguisher-e2e',
+          knownRevision: revision,
+          actionHandle: takeExtinguisher.handle,
+        }),
+      );
+      const [, takeDeltaRaw] = await takeResultPromise;
+      revision = expectType(takeDeltaRaw, 'delta').revision;
+
+      const heldOfferPromise = nextMessage(socket);
+      socket.send(
+        JSON.stringify({
+          protocolVersion: GAME_PROTOCOL_VERSION,
+          type: 'query-actions',
+          requestId: 'query-held-extinguisher-e2e',
+          knownRevision: revision,
+          target: { kind: 'entity', entityId: 'player' },
+        }),
+      );
+      const heldOffer = expectType(await heldOfferPromise, 'action-offer');
+      const inspectHeld = requireOfferedAction(
+        heldOffer,
+        (action) => action.form?.kind === 'extinguisher-inspection',
+        'held extinguisher form',
+      );
+      expect(inspectHeld.form).toMatchObject({
+        kind: 'extinguisher-inspection',
+        value: { pin: 'present', canRemovePin: true },
+      });
+
+      const prepareResultPromise = nextMessages(socket, 2);
+      socket.send(
+        JSON.stringify({
+          protocolVersion: GAME_PROTOCOL_VERSION,
+          type: 'invoke-action',
+          requestId: 'remove-pin-e2e',
+          knownRevision: revision,
+          actionHandle: inspectHeld.handle,
+          input: { removePin: true },
+        }),
+      );
+      const [, prepareDeltaRaw] = await prepareResultPromise;
+      revision = expectType(prepareDeltaRaw, 'delta').revision;
+
+      worker.projection.advanceTo(secondsToSimTimeUs(45 * 60), worker.publicClock());
+      const fireSnapshotPromise = nextMessage(socket);
+      socket.send(
+        JSON.stringify({
+          protocolVersion: GAME_PROTOCOL_VERSION,
+          type: 'resync',
+          requestId: 'resync-fire-active',
+          knownRevision: revision,
+        }),
+      );
+      const fireSnapshot = expectType(await fireSnapshotPromise, 'snapshot');
+      revision = fireSnapshot.state.revision;
+      expect(fireSnapshot.state.world.objects).toContainEqual({
+        id: 'fire:carriage.cabin',
+        kind: 'fire',
+        visualId: 'effect.fire',
+        cellId: 'carriage.cabin',
+      });
+
+      const fireOfferPromise = nextMessage(socket);
+      socket.send(
+        JSON.stringify({
+          protocolVersion: GAME_PROTOCOL_VERSION,
+          type: 'query-actions',
+          requestId: 'query-fire-e2e',
+          knownRevision: revision,
+          target: { kind: 'object', objectId: 'fire:carriage.cabin' },
+        }),
+      );
+      const fireOffer = expectType(await fireOfferPromise, 'action-offer');
+      const useExtinguisher = requireOfferedAction(
+        fireOffer,
+        (action) => action.label === 'Применить огнетушитель',
+        'extinguisher use',
+      );
+
+      const useResultPromise = nextMessages(socket, 2);
+      socket.send(
+        JSON.stringify({
+          protocolVersion: GAME_PROTOCOL_VERSION,
+          type: 'invoke-action',
+          requestId: 'use-extinguisher-e2e',
+          knownRevision: revision,
+          actionHandle: useExtinguisher.handle,
+        }),
+      );
+      const [useResultRaw, useDeltaRaw] = await useResultPromise;
+      expect(expectType(useResultRaw, 'command-result')).toMatchObject({ status: 'accepted' });
+      const useDelta = expectType(useDeltaRaw, 'delta');
+      expect(useDelta.changes.world?.objects?.some((object) => object.kind === 'fire')).toBe(false);
     } finally {
       socket.close();
       await app.close();

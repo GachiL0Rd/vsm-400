@@ -88,6 +88,30 @@ describe('field world', () => {
     expect(sourced.snapshot()[0]?.fire).toBe(0.5);
   });
 
+  it('burns finite fuel with dt and gates neighbour spread from remaining fuel', () => {
+    const fields = createFieldWorld(twoCells([link('ab', 'a', 'b', 1, 0)]), {
+      cells: [
+        material('a', {
+          initialFire: 1,
+          initialFuel: 1,
+          burnRate: 0.2,
+          growth: 0.2,
+          flammability: 1,
+        }),
+        material('b', {
+          initialFuel: 0.2,
+          spreadFuelScale: 1,
+          spreadGateThreshold: 0.5,
+          spreadGain: 0.5,
+        }),
+      ],
+    });
+
+    fields.step(2);
+    expect(fields.snapshot()[0]).toMatchObject({ fuel: 0.6, fire: 1.4 });
+    expect(fields.snapshot()[1]?.fire).toBeCloseTo(0.3);
+  });
+
   it('applies pressure permeability, leak, and a runtime door scale', () => {
     const fields = createFieldWorld(twoCells([link('ab', 'a', 'b', 0, 1)]), {
       cells: [

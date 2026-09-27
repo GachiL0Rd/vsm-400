@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { GameAttempt } from './game-attempt';
+import { BASELINE_LEVEL } from './level';
+import { BASELINE_SCENARIO_DEFINITION, loadScenarioDefinition } from './scenario';
 import { secondsToSimTimeUs } from './sim-time';
 
 function follow(attempt: GameAttempt, edgeIds: readonly string[]): void {
@@ -27,6 +29,18 @@ function completeJournal(
   attempt.returnJournal();
 }
 
+function scenarioWithoutIncidents() {
+  return loadScenarioDefinition({ ...BASELINE_SCENARIO_DEFINITION, incidents: [] }, BASELINE_LEVEL);
+}
+
+function prepareForBaselineFire(attempt: GameAttempt): void {
+  completeJournal(attempt);
+  attempt.advanceTo(secondsToSimTimeUs(5 * 60));
+  follow(attempt, ['origin-desk-door:forward', 'origin-door-entry:forward', 'entry-cabin:forward']);
+  attempt.takeExtinguisher();
+  attempt.prepareExtinguisher();
+}
+
 describe('GameAttempt', () => {
   it('runs the baseline scenario from pre-departure through the normal route end', () => {
     const attempt = new GameAttempt({ rootSeed: 17 });
@@ -35,8 +49,7 @@ describe('GameAttempt', () => {
     expect(attempt.snapshot().entities.map((entity) => entity.id)).toEqual(['player']);
     expect(attempt.snapshot().activeRegionIds).toEqual(['carriage-main', 'platform-origin']);
 
-    completeJournal(attempt);
-    attempt.advanceTo(secondsToSimTimeUs(5 * 60));
+    prepareForBaselineFire(attempt);
     expect(attempt.phase).toEqual({ kind: 'origin-stop' });
     expect(attempt.snapshot().entities.map((entity) => entity.id)).toEqual([
       'passenger-1',
@@ -47,6 +60,16 @@ describe('GameAttempt', () => {
     for (const passengerId of ['passenger-1', 'passenger-2', 'passenger-3']) {
       expect(attempt.entities.get(passengerId).currentAction).toBeDefined();
     }
+
+    const fireAt = secondsToSimTimeUs(45 * 60);
+    attempt.advanceTo(fireAt);
+    expect(
+      attempt.snapshot().fields.find((field) => field.cellId === 'carriage.cabin')?.fire,
+    ).toBeGreaterThan(0);
+    attempt.useExtinguisher('fire:carriage.cabin');
+    expect(attempt.snapshot().fields.find((field) => field.cellId === 'carriage.cabin')?.fire).toBe(
+      0,
+    );
 
     attempt.advanceTo(attempt.scenario.normalEndTimeUs);
     expect(attempt.phase).toEqual({ kind: 'finished' });
@@ -149,7 +172,7 @@ describe('GameAttempt', () => {
   });
 
   it('can complete a delayed acceptance and shifts the remaining route from the actual handover time', () => {
-    const attempt = new GameAttempt({ rootSeed: 9 });
+    const attempt = new GameAttempt({ rootSeed: 9, scenario: scenarioWithoutIncidents() });
     const delayedAt = secondsToSimTimeUs(6 * 60);
     attempt.advanceTo(delayedAt);
     expect(attempt.phase).toEqual({ kind: 'pre-departure' });
@@ -188,6 +211,20 @@ describe('GameAttempt', () => {
       outcomeId: 'wagon-unserviceable',
     });
     expect(attempt.snapshot().items.journal.submitted).toBe(true);
+  });
+
+  it('terminates when the baseline fire is ignored until it becomes critical', () => {
+    const attempt = new GameAttempt({ rootSeed: 12 });
+    completeJournal(attempt);
+    attempt.advanceTo(secondsToSimTimeUs(50 * 60));
+
+    expect(attempt.termination).toEqual({
+      kind: 'terminal-rule',
+      at: attempt.termination?.at,
+      ruleId: 'fire-unsalvageable',
+      outcomeId: 'wagon-unsalvageable',
+    });
+    expect(attempt.termination?.at).toBeGreaterThan(secondsToSimTimeUs(45 * 60));
   });
 
   it('keeps terminal-rule outcome separate from route completion', () => {

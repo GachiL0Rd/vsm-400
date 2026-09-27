@@ -3,6 +3,7 @@ import type {
   ActionOfferMessage,
   AvailableActionView,
   CommandResultMessage,
+  ExtinguisherInspectionInput,
   GameDeltaMessage,
   GameSnapshotMessage,
   InvokeActionCommand,
@@ -15,13 +16,18 @@ import type {
   QueryActionsCommand,
   SessionModeView,
 } from '../common/game-wire';
-import { acceptanceJournalInputSchema, GAME_PROTOCOL_VERSION } from '../common/game-wire';
+import {
+  acceptanceJournalInputSchema,
+  extinguisherInspectionInputSchema,
+  GAME_PROTOCOL_VERSION,
+} from '../common/game-wire';
 import type { EntityId, EntityState } from '../simulation/entity-store';
 import type { GameAttempt, GameAttemptSnapshot } from '../simulation/game-attempt';
 import {
   type AcceptanceJournalState,
   acceptanceJournalIsComplete,
   type ConsumableKind,
+  type ExtinguisherState,
   type ItemSnapshot,
 } from '../simulation/item-store';
 import type { SimTimeUs } from '../simulation/sim-time';
@@ -32,11 +38,19 @@ export type RecordedGameplayCommand =
   | { readonly kind: 'give-held-item'; readonly targetId: EntityId }
   | { readonly kind: 'take-journal' }
   | { readonly kind: 'edit-journal'; readonly value: AcceptanceJournalInput }
-  | { readonly kind: 'return-journal' };
+  | { readonly kind: 'return-journal' }
+  | { readonly kind: 'take-extinguisher' }
+  | { readonly kind: 'inspect-extinguisher'; readonly value: ExtinguisherInspectionInput }
+  | { readonly kind: 'return-extinguisher' }
+  | { readonly kind: 'use-extinguisher'; readonly targetId: string };
 
 type RuntimeOperation =
-  | Exclude<RecordedGameplayCommand, { readonly kind: 'edit-journal' }>
-  | { readonly kind: 'edit-journal-form' };
+  | Exclude<
+      RecordedGameplayCommand,
+      { readonly kind: 'edit-journal' } | { readonly kind: 'inspect-extinguisher' }
+    >
+  | { readonly kind: 'edit-journal-form' }
+  | { readonly kind: 'inspect-extinguisher-form' };
 
 interface RuntimeAction {
   readonly sortKey: string;
@@ -282,6 +296,19 @@ export class PublicGameProjection {
       case 'return-journal':
         this.attempt.returnJournal();
         return;
+      case 'take-extinguisher':
+        this.attempt.takeExtinguisher();
+        return;
+      case 'inspect-extinguisher':
+        this.attempt.inspectExtinguisher();
+        if (operation.value.removePin) this.attempt.prepareExtinguisher();
+        return;
+      case 'return-extinguisher':
+        this.attempt.returnExtinguisher();
+        return;
+      case 'use-extinguisher':
+        this.attempt.useExtinguisher(operation.targetId);
+        return;
     }
   }
 
@@ -328,13 +355,22 @@ function projectWorld(attempt: GameAttempt, snapshot: GameAttemptSnapshot): Publ
       (object) => activeCells.has(object.cellId) && objectIsVisible(object.id, snapshot.items),
     )
     .filter((object) => object.publicVisualId !== undefined)
-    .sort((a, b) => compareIds(a.id, b.id))
     .map((object) => ({
       id: object.id,
       kind: object.kind,
       visualId: requireValue(object.publicVisualId, `Visual id for object ${object.id}`),
       cellId: object.cellId,
     }));
+  for (const field of snapshot.fields) {
+    if (field.fire <= 0.01 || !activeCells.has(field.cellId)) continue;
+    objects.push({
+      id: `fire:${field.cellId}`,
+      kind: 'fire',
+      visualId: 'effect.fire',
+      cellId: field.cellId,
+    });
+  }
+  objects.sort((a, b) => compareIds(a.id, b.id));
   return { regions, cells, edges, objects };
 }
 
@@ -393,26 +429,108 @@ function collectObjectActions(
   player: EntityState,
   objectId: string,
 ): RuntimeAction[] {
-  const object = attempt.level.definition.objects.find((candidate) => candidate.id === objectId);
-  if (object === undefined || player.position.kind !== 'cell') return [];
-  if (object.kind === 'acceptance-journal') {
-    if (snapshot.phase.kind !== 'pre-departure') return [];
-    if (snapshot.items.journal.location !== 'anchor' || snapshot.items.journal.submitted) return [];
-    if (player.position.cellId !== object.cellId || player.heldItemId !== undefined) return [];
-    return [
-      {
-        sortKey: 'journal/take',
-        view: {
-          uiKind: 'interaction',
-          label: 'Взять журнал приёмки',
-          target: { kind: 'object', objectId },
-        },
-        operation: { kind: 'take-journal' },
-      },
-    ];
+  if (player.position.kind !== 'cell') return [];
+  if (objectId.startsWith('fire:')) {
+    return collectFireActions(attempt, snapshot, player, objectId);
   }
-  if (object.kind !== 'service-point') return [];
-  if (player.position.cellId !== object.cellId) return [];
+  const object = attempt.level.definition.objects.find((candidate) => candidate.id === objectId);
+  if (object === undefined) return [];
+  switch (object.kind) {
+    case 'acceptance-journal':
+      return collectJournalObjectActions(snapshot, player, object.id, object.cellId);
+    case 'extinguisher':
+      return collectExtinguisherObjectActions(snapshot, player, object.id, object.cellId);
+    case 'service-point':
+      return collectServicePointActions(player, object.id, object.cellId);
+    default:
+      return [];
+  }
+}
+
+function collectFireActions(
+  attempt: GameAttempt,
+  snapshot: GameAttemptSnapshot,
+  player: EntityState,
+  objectId: string,
+): RuntimeAction[] {
+  if (player.position.kind !== 'cell') return [];
+  const cellId = objectId.slice('fire:'.length);
+  const fire = snapshot.fields.find((field) => field.cellId === cellId);
+  const extinguisher = snapshot.items.extinguisher;
+  if (fire === undefined || fire.fire <= 0.01) return [];
+  if (
+    player.heldItemId !== extinguisher.id ||
+    extinguisher.pin !== 'removed' ||
+    extinguisher.used
+  ) {
+    return [];
+  }
+  if (!withinInteractionRange(attempt, snapshot, player.position.cellId, cellId)) return [];
+  return [
+    {
+      sortKey: `fire/use-extinguisher/${cellId}`,
+      view: {
+        uiKind: 'interaction',
+        label: 'Применить огнетушитель',
+        target: { kind: 'object', objectId },
+      },
+      operation: { kind: 'use-extinguisher', targetId: objectId },
+    },
+  ];
+}
+
+function collectJournalObjectActions(
+  snapshot: GameAttemptSnapshot,
+  player: EntityState,
+  objectId: string,
+  cellId: string,
+): RuntimeAction[] {
+  if (player.position.kind !== 'cell' || snapshot.phase.kind !== 'pre-departure') return [];
+  if (snapshot.items.journal.location !== 'anchor' || snapshot.items.journal.submitted) return [];
+  if (player.position.cellId !== cellId || player.heldItemId !== undefined) return [];
+  return [
+    {
+      sortKey: 'journal/take',
+      view: {
+        uiKind: 'interaction',
+        label: 'Взять журнал приёмки',
+        target: { kind: 'object', objectId },
+      },
+      operation: { kind: 'take-journal' },
+    },
+  ];
+}
+
+function collectExtinguisherObjectActions(
+  snapshot: GameAttemptSnapshot,
+  player: EntityState,
+  objectId: string,
+  cellId: string,
+): RuntimeAction[] {
+  if (player.position.kind !== 'cell') return [];
+  if (snapshot.items.extinguisher.location !== 'mounted' || player.position.cellId !== cellId) {
+    return [];
+  }
+  const target = { kind: 'object' as const, objectId };
+  const actions: RuntimeAction[] = [
+    extinguisherInspectionAction(snapshot.items.extinguisher, target),
+  ];
+  if (player.heldItemId === undefined) {
+    actions.push({
+      sortKey: 'extinguisher/take',
+      view: { uiKind: 'interaction', label: 'Взять огнетушитель', target },
+      operation: { kind: 'take-extinguisher' },
+    });
+  }
+  return actions;
+}
+
+function collectServicePointActions(
+  player: EntityState,
+  objectId: string,
+  cellId: string,
+): RuntimeAction[] {
+  if (player.position.kind !== 'cell' || player.position.cellId !== cellId) return [];
   if (player.heldItemId !== undefined) return [];
   const target = { kind: 'object' as const, objectId };
   return [
@@ -457,10 +575,26 @@ function collectEntityActions(
 }
 
 function collectPlayerActions(snapshot: GameAttemptSnapshot, player: EntityState): RuntimeAction[] {
+  const target = { kind: 'entity' as const, entityId: player.id };
+  if (player.heldItemId === snapshot.items.extinguisher.id) {
+    const actions: RuntimeAction[] = [
+      extinguisherInspectionAction(snapshot.items.extinguisher, target),
+    ];
+    if (
+      player.position.kind === 'cell' &&
+      player.position.cellId === snapshot.items.extinguisher.mountCellId
+    ) {
+      actions.push({
+        sortKey: 'extinguisher/return',
+        view: { uiKind: 'interaction', label: 'Вернуть огнетушитель', target },
+        operation: { kind: 'return-extinguisher' },
+      });
+    }
+    return actions;
+  }
   if (snapshot.phase.kind !== 'pre-departure' || player.heldItemId !== snapshot.items.journal.id) {
     return [];
   }
-  const target = { kind: 'entity' as const, entityId: player.id };
   const actions: RuntimeAction[] = [
     {
       sortKey: 'journal/edit',
@@ -488,6 +622,32 @@ function collectPlayerActions(snapshot: GameAttemptSnapshot, player: EntityState
   return actions;
 }
 
+function extinguisherInspectionAction(
+  extinguisher: ExtinguisherState,
+  target: PublicTargetRef,
+): RuntimeAction {
+  return {
+    sortKey: 'extinguisher/inspect',
+    view: {
+      uiKind: 'form',
+      label: 'Осмотреть огнетушитель',
+      target,
+      form: {
+        kind: 'extinguisher-inspection',
+        value: {
+          pin: extinguisher.pin,
+          seal: extinguisher.seal,
+          pressure: extinguisher.pressure,
+          bodyDamage: extinguisher.bodyDamage,
+          used: extinguisher.used,
+          canRemovePin: extinguisher.location === 'held' && extinguisher.pin === 'present',
+        },
+      },
+    },
+    operation: { kind: 'inspect-extinguisher-form' },
+  };
+}
+
 function journalInput(journal: AcceptanceJournalState): AcceptanceJournalInput {
   return {
     communication: journal.communication,
@@ -503,6 +663,9 @@ function journalInput(journal: AcceptanceJournalState): AcceptanceJournalInput {
 function resolveOperation(template: RuntimeOperation, input: unknown): RecordedGameplayCommand {
   if (template.kind === 'edit-journal-form') {
     return { kind: 'edit-journal', value: acceptanceJournalInputSchema.parse(input) };
+  }
+  if (template.kind === 'inspect-extinguisher-form') {
+    return { kind: 'inspect-extinguisher', value: extinguisherInspectionInputSchema.parse(input) };
   }
   if (input !== undefined) throw new RangeError('This action does not accept input');
   return template;

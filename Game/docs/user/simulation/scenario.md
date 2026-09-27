@@ -1,7 +1,7 @@
 # Scenario: конфигурация конкретной игровой попытки
 
-**Версия документа:** 0.6.0  
-**Статус:** Draft / implementation baseline  
+**Версия документа:** 0.7.0
+**Статус:** Draft / implementation baseline
 **Дата редакции:** 2026-09-27
 
 ## 1. Ответственность
@@ -250,7 +250,29 @@ passenger[awake]:not([hungry])
 
 Selector semantics вынесены в `simulation/selectors.md`.
 
-## 11. Scenario operations baseline
+## 11. Scripted incidents
+
+Scenario может планировать небольшой набор явных incident definitions отдельно от route stages. Baseline сейчас использует `fire` incident:
+
+```ts
+interface FireScenarioIncident {
+  id: string;
+  kind: "fire";
+  startAfterDepartureUs: SimTimeUs;
+  failureLocationId: string;
+  initialFire: number;
+  sourcePerSecond: number;
+  criticalFire: number;
+}
+```
+
+`failureLocationId` обязан ссылаться на Level failure location, разрешающую `fire`. Время отсчитывается от **фактического отправления**, поэтому позднее завершение приёмки сдвигает incident вместе с оставшимся расписанием.
+
+При старте incident GameAttempt включает source и начальную интенсивность, затем планирует periodic field steps. Достижение `criticalFire` подаёт signal в обычный terminal-rule механизм; incident сам по себе не содержит отдельный workflow.
+
+Текущий baseline задаёт один `cabin-fire` через 10 минут после отправления в `fire.cabin`.
+
+## 12. Scenario operations baseline
 
 Baseline operations:
 
@@ -265,7 +287,7 @@ schedule another scenario operation/event
 
 Scenario не получает универсальный `patch SimulationState` и не исполняет произвольный JS/TS code.
 
-## 12. Terminal rules
+## 13. Terminal rules
 
 Досрочное завершение не требует отдельного emergency stage.
 

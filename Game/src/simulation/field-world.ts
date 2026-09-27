@@ -14,6 +14,12 @@ export interface CellFieldMaterial {
   readonly initialPressure?: number;
   readonly fireThreshold?: number;
   readonly pressureThreshold?: number;
+  /** Finite combustible reserve. Omit for the legacy/unbounded fire model. */
+  readonly initialFuel?: number;
+  readonly burnRate?: number;
+  readonly spreadFuelScale?: number;
+  readonly spreadGateThreshold?: number;
+  readonly spreadGain?: number;
 }
 
 export interface FieldWorldDefinition {
@@ -31,6 +37,7 @@ export interface CellFieldState {
   readonly pressure: number;
   readonly fireSource: number;
   readonly pressureSource: number;
+  readonly fuel: number | null;
 }
 
 export interface FieldThresholdEvent {
@@ -45,7 +52,8 @@ export interface FieldWorld {
   readonly stepCount: number;
   snapshot(): readonly CellFieldState[];
   /** One synchronous stencil step. Neighbor values come from the previous step. */
-  step(): readonly FieldThresholdEvent[];
+  step(dtSeconds?: number): readonly FieldThresholdEvent[];
+  addFire(cellId: string, amount: number): readonly FieldThresholdEvent[];
   setFireSource(cellId: string, amount: number): void;
   setPressureSource(cellId: string, amount: number): void;
   /** Extinguisher-style discrete reduction. May emit a cleared threshold immediately. */
@@ -67,6 +75,11 @@ interface RuntimeCell {
   pressure: number;
   readonly fireThreshold: number | null;
   readonly pressureThreshold: number | null;
+  readonly burnRate: number;
+  readonly spreadFuelScale: number;
+  readonly spreadGateThreshold: number;
+  readonly spreadGain: number;
+  fuel: number | null;
 }
 
 interface RuntimeEdge {
@@ -122,6 +135,11 @@ export function createFieldWorld(grid: GridWorld, definition: FieldWorldDefiniti
       pressure: material.initialPressure ?? 0,
       fireThreshold: material.fireThreshold ?? null,
       pressureThreshold: material.pressureThreshold ?? null,
+      burnRate: material.burnRate ?? 0,
+      spreadFuelScale: material.spreadFuelScale ?? 0,
+      spreadGateThreshold: material.spreadGateThreshold ?? 1,
+      spreadGain: material.spreadGain ?? 1,
+      fuel: material.initialFuel ?? null,
     }));
 
   return new FieldRuntime(cells, new Map(edges.map((edge) => [edge.id, edge])), incoming);
@@ -147,22 +165,22 @@ class FieldRuntime implements FieldWorld {
       pressure: cell.pressure,
       fireSource: cell.fireSource,
       pressureSource: cell.pressureSource,
+      fuel: cell.fuel,
     }));
   }
 
-  step(): readonly FieldThresholdEvent[] {
+  step(dtSeconds = 1): readonly FieldThresholdEvent[] {
+    const dt = assertPositiveFinite(dtSeconds, 'Field step dt');
     const previousFire = new Map(this.cells.map((cell) => [cell.cellId, cell.fire]));
     const previousPressure = new Map(this.cells.map((cell) => [cell.cellId, cell.pressure]));
     const next = this.cells.map((cell) => {
-      const fire = assertNonnegative(
-        cellFire(cell, this.incoming.get(cell.cellId) ?? [], previousFire),
-        'Next fire value',
-      );
+      const result = cellFire(cell, this.incoming.get(cell.cellId) ?? [], previousFire, dt);
+      const fire = assertNonnegative(result.fire, 'Next fire value');
       const pressure = assertNonnegative(
-        cellPressure(cell, this.incoming.get(cell.cellId) ?? [], previousPressure),
+        cellPressure(cell, this.incoming.get(cell.cellId) ?? [], previousPressure, dt),
         'Next pressure value',
       );
-      return { fire, pressure };
+      return { fire, pressure, fuel: result.fuel };
     });
     this.completedSteps += 1;
     const events: FieldThresholdEvent[] = [];
@@ -190,8 +208,24 @@ class FieldRuntime implements FieldWorld {
       );
       cell.fire = updated.fire;
       cell.pressure = updated.pressure;
+      cell.fuel = updated.fuel;
     }
     return events;
+  }
+
+  addFire(cellId: string, amount: number): readonly FieldThresholdEvent[] {
+    const cell = this.requireCell(cellId);
+    const addition = assertNonnegative(amount, 'Fire addition');
+    const before = cell.fire;
+    cell.fire = assertNonnegative(before + addition, 'Fire value');
+    return crossings(
+      cell.cellId,
+      'fire',
+      before,
+      cell.fire,
+      cell.fireThreshold,
+      this.completedSteps,
+    );
   }
 
   setFireSource(cellId: string, amount: number): void {
@@ -246,26 +280,42 @@ function cellFire(
   cell: RuntimeCell,
   incoming: readonly RuntimeEdge[],
   previous: ReadonlyMap<string, number>,
-): number {
+  dt: number,
+): { fire: number; fuel: number | null } {
+  const fuel = cell.fuel === null ? null : Math.max(0, cell.fuel - cell.burnRate * dt * cell.fire);
+  const combustible = fuel === null || fuel > 0;
+  const gate =
+    fuel === null ? 1 : Math.max(0, cell.spreadGateThreshold - cell.spreadFuelScale * fuel);
   let transferred = 0;
   for (const edge of incoming) {
-    transferred += (previous.get(edge.from) ?? 0) * edge.fireWeight * edge.fireScale;
+    transferred +=
+      (previous.get(edge.from) ?? 0) *
+      edge.fireWeight *
+      edge.fireScale *
+      cell.spreadGain *
+      gate *
+      dt;
   }
-  const grown = cell.fire * cell.flammability * cell.growth;
-  return Math.max(0, cell.fire + grown + transferred + cell.fireSource - cell.decay);
+  const grown = combustible ? cell.fire * cell.flammability * cell.growth * dt : 0;
+  const source = combustible ? cell.fireSource * dt : 0;
+  return {
+    fire: Math.max(0, cell.fire + grown + transferred + source - cell.decay * dt),
+    fuel,
+  };
 }
 
 function cellPressure(
   cell: RuntimeCell,
   incoming: readonly RuntimeEdge[],
   previous: ReadonlyMap<string, number>,
+  dt: number,
 ): number {
   let transferred = 0;
   for (const edge of incoming) {
     const weight = edge.pressureWeight * edge.pressureScale * cell.permeability;
-    transferred += (previous.get(edge.from) ?? 0) * weight;
+    transferred += (previous.get(edge.from) ?? 0) * weight * dt;
   }
-  return Math.max(0, cell.pressure + transferred + cell.pressureSource - cell.leak);
+  return Math.max(0, cell.pressure + transferred + cell.pressureSource * dt - cell.leak * dt);
 }
 
 function crossings(
@@ -312,7 +362,19 @@ function validateMaterial(
   if (material.pressureThreshold !== undefined) {
     assertNonnegative(material.pressureThreshold, 'Pressure threshold');
   }
+  if (material.initialFuel !== undefined) assertNonnegative(material.initialFuel, 'Initial fuel');
+  if (material.burnRate !== undefined) assertNonnegative(material.burnRate, 'Burn rate');
+  if (material.spreadFuelScale !== undefined)
+    assertNonnegative(material.spreadFuelScale, 'Spread fuel scale');
+  if (material.spreadGateThreshold !== undefined)
+    assertNonnegative(material.spreadGateThreshold, 'Spread gate threshold');
+  if (material.spreadGain !== undefined) assertNonnegative(material.spreadGain, 'Spread gain');
   return cellId;
+}
+
+function assertPositiveFinite(value: number, label: string): number {
+  if (!Number.isFinite(value) || value <= 0) throw new RangeError(`${label} must be positive`);
+  return value;
 }
 
 function assertId(value: string, label: string): string {

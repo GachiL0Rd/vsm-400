@@ -22,6 +22,7 @@ import {
   type TraitGrantRule,
 } from './entity-store';
 import { EventQueue, type ScheduledEvent } from './event-queue';
+import { type CellFieldState, createFieldWorld, type FieldWorld } from './field-world';
 import {
   type AcceptanceJournalEdit,
   type AcceptanceJournalState,
@@ -67,6 +68,7 @@ export interface GameAttemptSnapshot {
   readonly activeRegionIds: readonly string[];
   readonly entities: readonly EntityState[];
   readonly items: ItemSnapshot;
+  readonly fields: readonly CellFieldState[];
   readonly termination: AttemptTermination | null;
 }
 
@@ -87,7 +89,9 @@ type AttemptEvent =
   | { readonly kind: 'enter-origin-stop' }
   | { readonly kind: 'leave-origin-stop' }
   | { readonly kind: 'arrive-stop'; readonly stopIndex: number }
-  | { readonly kind: 'leave-stop'; readonly stopIndex: number };
+  | { readonly kind: 'leave-stop'; readonly stopIndex: number }
+  | { readonly kind: 'fire-start'; readonly incidentId: string }
+  | { readonly kind: 'field-step' };
 
 /**
  * First authoritative attempt runtime. Transport and public projection are
@@ -100,6 +104,7 @@ export class GameAttempt {
   readonly entities: EntityStore;
   readonly spatial: SpatialWorld;
   readonly items: ItemStore;
+  readonly fields: FieldWorld;
   readonly actions: ActionRuntime;
   readonly catalog: ActionCatalog;
   readonly random: SimulationRandom;
@@ -144,6 +149,7 @@ export class GameAttempt {
       microsecondsPerCostUnit: options.microsecondsPerMovementCost ?? 1_000_000,
     });
     this.items = createItemStore(this.entities, itemConfig(this.level, this.scenario));
+    this.fields = createFieldWorld(this.level.grid, fieldDefinition(this.level));
     this.actions = createActionRuntime({
       catalog: this.catalog,
       entities: this.entities,
@@ -200,6 +206,7 @@ export class GameAttempt {
       activeRegionIds: [...this.activeRegions].sort(compareIds),
       entities: this.entities.list(),
       items: this.items.snapshot(),
+      fields: this.fields.snapshot(),
       termination: this.terminationState,
     };
   }
@@ -269,6 +276,40 @@ export class GameAttempt {
     return returned;
   }
 
+  inspectExtinguisher() {
+    this.requireRunning();
+    return this.items.inspectExtinguisher(this.playerId);
+  }
+
+  takeExtinguisher() {
+    this.requireRunning();
+    return this.items.takeExtinguisher(this.playerId);
+  }
+
+  returnExtinguisher() {
+    this.requireRunning();
+    return this.items.returnExtinguisher(this.playerId);
+  }
+
+  prepareExtinguisher() {
+    this.requireRunning();
+    return this.items.prepareExtinguisher(this.playerId);
+  }
+
+  useExtinguisher(targetId: string): ItemEvent {
+    this.requireRunning();
+    const cellId = fireCellId(targetId);
+    const player = this.entities.get(this.playerId);
+    if (player.position.kind !== 'cell') throw new RangeError('Player must be in a cell');
+    this.requireCellInteractionRange(player.position.cellId, cellId);
+    const fire = this.fields.snapshot().find((cell) => cell.cellId === cellId);
+    if (fire === undefined || fire.fire <= 0) throw new RangeError('Fire target is not active');
+    const event = this.items.useExtinguisher(this.playerId, targetId);
+    this.fields.setFireSource(cellId, 0);
+    this.fields.reduceFire(cellId, 5);
+    return event;
+  }
+
   takeDrink(): void {
     this.requireRunning();
     this.items.takeDrink(this.playerId);
@@ -334,6 +375,12 @@ export class GameAttempt {
       case 'leave-stop':
         this.leaveStop(event.stopIndex, scheduled.at);
         return;
+      case 'fire-start':
+        this.startFire(event.incidentId, scheduled.at);
+        return;
+      case 'field-step':
+        this.stepFields(scheduled.at);
+        return;
     }
   }
 
@@ -357,6 +404,12 @@ export class GameAttempt {
 
   private leaveOriginStop(at: SimTimeUs): void {
     this.departureAt = at;
+    for (const incident of this.scenario.definition.incidents) {
+      this.queue.schedule(addTime(at, incident.startAfterDepartureUs), {
+        kind: 'fire-start',
+        incidentId: incident.id,
+      });
+    }
     this.beginTravel(0, at);
   }
 
@@ -386,6 +439,46 @@ export class GameAttempt {
   private finishRoute(at: SimTimeUs): void {
     this.terminationState = { kind: 'route-completed', at };
     this.phaseState = { kind: 'finished' };
+  }
+
+  private startFire(incidentId: string, at: SimTimeUs): void {
+    const incident = this.scenario.definition.incidents.find((item) => item.id === incidentId);
+    if (incident === undefined || incident.kind !== 'fire') return;
+    const location = this.level.definition.failureLocations.find(
+      (item) => item.id === incident.failureLocationId,
+    );
+    if (location === undefined)
+      throw new RangeError(`Unknown fire location ${incident.failureLocationId}`);
+    this.fields.setFireSource(location.cellId, incident.sourcePerSecond);
+    const events = this.fields.addFire(location.cellId, incident.initialFire);
+    this.handleFieldEvents(events);
+    if (this.terminationState === null) {
+      this.queue.schedule(addTime(at, secondsToFieldStepUs(1)), { kind: 'field-step' });
+    }
+  }
+
+  private stepFields(at: SimTimeUs): void {
+    const events = this.fields.step(1);
+    this.handleFieldEvents(events);
+    if (this.terminationState !== null) return;
+    const active = this.fields.snapshot().some((cell) => cell.fire > 0 || cell.fireSource > 0);
+    if (active) this.queue.schedule(addTime(at, secondsToFieldStepUs(1)), { kind: 'field-step' });
+  }
+
+  private handleFieldEvents(_events: readonly unknown[]): void {
+    const fields = new Map(this.fields.snapshot().map((field) => [field.cellId, field]));
+    for (const incident of this.scenario.definition.incidents) {
+      if (incident.kind !== 'fire') continue;
+      const location = this.level.definition.failureLocations.find(
+        (item) => item.id === incident.failureLocationId,
+      );
+      if (location === undefined) continue;
+      const field = fields.get(location.cellId);
+      if (field !== undefined && field.fire >= incident.criticalFire) {
+        this.signal('fire-unsalvageable');
+        return;
+      }
+    }
   }
 
   private applyPassengerFlow(
@@ -459,8 +552,10 @@ export class GameAttempt {
     if (actor.position.kind !== 'cell' || target.position.kind !== 'cell') {
       throw new RangeError('Interaction requires entities to be in cells');
     }
-    const actorCellId = actor.position.cellId;
-    const targetCellId = target.position.cellId;
+    this.requireCellInteractionRange(actor.position.cellId, target.position.cellId);
+  }
+
+  private requireCellInteractionRange(actorCellId: string, targetCellId: string): void {
     if (actorCellId === targetCellId) return;
     const blocked = new Set(
       this.level.constraintsFor([...this.activeRegions]).blockedEdgeIds ?? [],
@@ -511,6 +606,39 @@ function requireJournalReadyForSubmission(journal: AcceptanceJournalState): void
     throw new RangeError('Acceptance journal checklist is incomplete');
   }
   if (!journal.accepted) throw new RangeError('Acceptance journal is not accepted');
+}
+
+function fireCellId(targetId: string): string {
+  const prefix = 'fire:';
+  if (!targetId.startsWith(prefix) || targetId.length === prefix.length) {
+    throw new RangeError('Extinguisher target is not a fire');
+  }
+  return targetId.slice(prefix.length);
+}
+
+function secondsToFieldStepUs(seconds: number): SimTimeUs {
+  return assertSimTimeUs(seconds * 1_000_000);
+}
+
+function fieldDefinition(level: LoadedLevel) {
+  const carriageCells = new Set(
+    level.definition.regions.find((region) => region.id === 'carriage-main')?.cellIds ?? [],
+  );
+  return {
+    cells: level.grid.cells.map((cell) => ({
+      cellId: cell.id,
+      flammability: carriageCells.has(cell.id) ? 0.7 : 0,
+      growth: carriageCells.has(cell.id) ? 0.035 : 0,
+      decay: 0.01,
+      permeability: 1,
+      leak: 0.05,
+      initialFuel: carriageCells.has(cell.id) ? 1 : 0,
+      burnRate: carriageCells.has(cell.id) ? 0.01 : 0,
+      spreadFuelScale: 0.5,
+      spreadGateThreshold: 0.5,
+      spreadGain: 0.04,
+    })),
+  };
 }
 
 function itemConfig(level: LoadedLevel, scenario: LoadedScenario): ItemWorldConfig {

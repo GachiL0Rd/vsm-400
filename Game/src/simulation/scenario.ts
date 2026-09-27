@@ -43,6 +43,18 @@ const terminalRuleSchema = z.object({
   outcomeId: idSchema,
 });
 
+const fireIncidentSchema = z.object({
+  id: idSchema,
+  kind: z.literal('fire'),
+  startAfterDepartureUs: simTimeSchema,
+  failureLocationId: idSchema,
+  initialFire: z.number().nonnegative(),
+  sourcePerSecond: z.number().nonnegative(),
+  criticalFire: z.number().positive(),
+});
+
+const incidentSchema = z.discriminatedUnion('kind', [fireIncidentSchema]);
+
 export const scenarioDefinitionSchema = z.object({
   schemaVersion: z.literal(1),
   id: idSchema,
@@ -67,6 +79,7 @@ export const scenarioDefinitionSchema = z.object({
   }),
   passengers: z.array(passengerSchema),
   servicePlan: z.object({ windows: z.array(serviceWindowSchema) }).default({ windows: [] }),
+  incidents: z.array(incidentSchema).default([]),
   terminalRules: z.array(terminalRuleSchema).default([]),
 });
 
@@ -74,6 +87,7 @@ export type ScenarioDefinition = z.infer<typeof scenarioDefinitionSchema>;
 export type ScenarioPassengerDefinition = ScenarioDefinition['passengers'][number];
 export type ScenarioStopDefinition = ScenarioDefinition['route']['stops'][number];
 export type TerminalRuleDefinition = ScenarioDefinition['terminalRules'][number];
+export type ScenarioIncidentDefinition = ScenarioDefinition['incidents'][number];
 
 export interface LoadedScenario {
   readonly definition: ScenarioDefinition;
@@ -181,6 +195,17 @@ export const BASELINE_SCENARIO_DEFINITION = {
       appearanceId: 'passenger.demo-3',
     },
   ],
+  incidents: [
+    {
+      id: 'cabin-fire',
+      kind: 'fire',
+      startAfterDepartureUs: secondsToSimTimeUs(10 * 60),
+      failureLocationId: 'fire.cabin',
+      initialFire: 0.35,
+      sourcePerSecond: 0.015,
+      criticalFire: 2.5,
+    },
+  ],
   servicePlan: {
     windows: [
       {
@@ -230,6 +255,7 @@ function validateScenarioReferences(definition: ScenarioDefinition, level: Loade
   validateFlows(definition);
   validateScenarioIds(definition);
   validateServiceWindows(definition);
+  validateIncidents(definition, level);
 }
 
 function validateLevelCompatibility(definition: ScenarioDefinition, level: LoadedLevel): void {
@@ -309,6 +335,23 @@ function validateScenarioIds(definition: ScenarioDefinition): void {
     definition.terminalRules.map((item) => item.signal),
     'terminal signal',
   );
+}
+
+function validateIncidents(definition: ScenarioDefinition, level: LoadedLevel): void {
+  assertUnique(
+    definition.incidents.map((item) => item.id),
+    'incident',
+  );
+  const failures = new Map(level.definition.failureLocations.map((item) => [item.id, item]));
+  for (const incident of definition.incidents) {
+    const location = failures.get(incident.failureLocationId);
+    if (location === undefined) {
+      throw new RangeError(`Unknown failure location ${incident.failureLocationId}`);
+    }
+    if (incident.kind === 'fire' && !location.kinds.includes('fire')) {
+      throw new RangeError(`Failure location ${incident.failureLocationId} does not allow fire`);
+    }
+  }
 }
 
 function validateServiceWindows(definition: ScenarioDefinition): void {

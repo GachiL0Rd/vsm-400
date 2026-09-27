@@ -144,12 +144,33 @@ export const acceptanceJournalInputSchema = z
   .strict();
 export type AcceptanceJournalInput = z.infer<typeof acceptanceJournalInputSchema>;
 
+export const extinguisherInspectionValueSchema = z.object({
+  pin: z.enum(['present', 'removed']),
+  seal: z.enum(['intact', 'broken']),
+  pressure: z.enum(['low', 'normal', 'high']),
+  bodyDamage: z.enum(['none', 'scratch', 'dent']),
+  used: z.boolean(),
+  canRemovePin: z.boolean(),
+});
+export type ExtinguisherInspectionValue = z.infer<typeof extinguisherInspectionValueSchema>;
+
+export const extinguisherInspectionInputSchema = z.object({ removePin: z.boolean() }).strict();
+export type ExtinguisherInspectionInput = z.infer<typeof extinguisherInspectionInputSchema>;
+
 const acceptanceJournalFormSchema = z.object({
   kind: z.literal('acceptance-journal'),
   value: acceptanceJournalInputSchema,
 });
 
-export const actionFormSchema = z.discriminatedUnion('kind', [acceptanceJournalFormSchema]);
+const extinguisherInspectionFormSchema = z.object({
+  kind: z.literal('extinguisher-inspection'),
+  value: extinguisherInspectionValueSchema,
+});
+
+export const actionFormSchema = z.discriminatedUnion('kind', [
+  acceptanceJournalFormSchema,
+  extinguisherInspectionFormSchema,
+]);
 export type ActionFormView = z.infer<typeof actionFormSchema>;
 
 export const publicClockSchema = z.object({
