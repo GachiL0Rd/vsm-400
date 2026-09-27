@@ -1221,6 +1221,12 @@ export interface components {
             sessionId: string;
             ticket: string;
             wsUrl: string;
+            /**
+             * Абсолютный URL игрового клиента с `?sessionKey=`.
+             * Вписано вручную, пока Backend не отдаёт поле в OpenAPI.
+             * После мержа той ветки: `npm run api:types`.
+             */
+            launchUrl: string;
             seedCommit: string;
             plan: {
                 train: string;

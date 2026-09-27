@@ -281,6 +281,35 @@ export function useBrigadePlace() {
   return useQuery(brigadePlaceQuery);
 }
 
+function isLaunchUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'http:' || url.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+/** Открывает WS-смену. В кэш мутации попадает только адрес запуска. */
+export function useStartShift() {
+  return useMutation({
+    mutationFn: async () => {
+      const opened = payload<Schemas['OpenedSessionDto']>(
+        await client.POST('/api/v1/game-sessions', { body: { transport: 'WS' } }),
+      );
+      if (!isLaunchUrl(opened.launchUrl)) {
+        throw new ApiError(
+          502,
+          'LAUNCH_URL',
+          'Смена не открылась',
+          'Не удалось начать смену. Попробуйте ещё раз.',
+        );
+      }
+      return { launchUrl: opened.launchUrl };
+    },
+  });
+}
+
 function markRead(cache: NoticeCache, id: string): NoticeCache {
   let found = false;
   const pages = cache.pages.map((page) => {

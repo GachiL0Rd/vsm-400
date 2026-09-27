@@ -151,16 +151,23 @@ function RunBody({ run }: { run: Run }) {
         id="decisions-title"
         title="Разбор решений"
         aside={
-          <span className="label">
-            {run.decisions.length} {plural(run.decisions.length, ['решение', 'решения', 'решений'])}
-          </span>
+          run.decisions.length > 0 ? (
+            <span className="label">
+              {run.decisions.length}{' '}
+              {plural(run.decisions.length, ['решение', 'решения', 'решений'])}
+            </span>
+          ) : undefined
         }
       >
-        <ol className="log">
-          {run.decisions.map((decision) => (
-            <DecisionEntry decision={decision} key={decision.id} />
-          ))}
-        </ol>
+        {run.decisions.length === 0 ? (
+          <p className="log__empty">Разбор решений для этого рейса пока недоступен.</p>
+        ) : (
+          <ol className="log">
+            {run.decisions.map((decision) => (
+              <DecisionEntry decision={decision} key={decision.id} />
+            ))}
+          </ol>
+        )}
       </Section>
     </>
   );
