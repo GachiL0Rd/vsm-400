@@ -235,6 +235,15 @@ ride→enroute). Повтор отчёта — 200 и тот же `runId`. От�
 публикуют `vsm:game:<sessionId>`. Раз в минуту просроченные `PENDING`/`ACTIVE`
 становятся `EXPIRED`.
 
+### Перефразы LLM
+
+Пул формулировок для сценариев с блоком `llm`. Провайдер `LLM_PROVIDER`:
+`none` (по умолчанию, очередь не пополняется), `openai-compatible` или `gigachat`.
+Методист и администратор: `GET /api/v1/admin/scenarios/:id/variants`,
+`POST .../variants/:variantId/approve`, `POST .../variants/:variantId/reject`,
+`POST .../variants/generate`, `GET /api/v1/admin/llm/status`.
+Подробности, промпт и сертификат GigaChat — в [docs/llm.md](docs/llm.md).
+
 ## Демо-учётки
 
 Сид печатает те же логины. `mustChangePassword=false` только у них. Админа сид не создаёт: если ADMIN нет, его заводит старт приложения и один раз печатает пароль.
