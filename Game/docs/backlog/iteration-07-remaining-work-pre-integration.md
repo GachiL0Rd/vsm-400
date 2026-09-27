@@ -64,7 +64,7 @@
 существуют. Дальше приоритет смещался с изолированной реализации модулей на
 укрепление их реальной связки. Детальный historical checklist и последующий
 documentation gate находятся в
-[`../agent/integration-hardening.md`](../agent/integration-hardening.md).
+[`integration-hardening-2026-09-27.md`](integration-hardening-2026-09-27.md).
 
 Ближайший порядок:
 
