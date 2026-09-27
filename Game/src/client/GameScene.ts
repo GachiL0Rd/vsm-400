@@ -155,12 +155,12 @@ export class GameScene extends Phaser.Scene {
   private fitCamera(): void {
     const width = this.scale.width;
     const height = this.scale.height;
-    // Short landscape is full-bleed so the DOM HUD can overlay the canvas.
+    // The DOM HUD overlays the canvas (PSD layout); only narrow portrait keeps reserved bands.
     const phoneLandscape = height <= 500 && width > height;
     const narrow = width <= 760 && !phoneLandscape;
-    const left = narrow || phoneLandscape ? 0 : 330;
-    const top = phoneLandscape ? 0 : narrow ? 166 : 0;
-    const bottom = phoneLandscape ? 0 : narrow ? 82 : 0;
+    const left = 0;
+    const top = narrow ? 166 : 0;
+    const bottom = narrow ? 82 : 0;
     const viewportWidth = Math.max(1, width - left);
     const viewportHeight = Math.max(220, height - top - bottom);
     const camera = this.cameras.main;
