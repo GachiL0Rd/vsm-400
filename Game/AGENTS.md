@@ -8,12 +8,13 @@
 
 Перед изменением прочитайте:
 
-- `../docs/user/README.md` — индекс действующих требований;
-- `../docs/user/vsm_baseline_vertical_slice.md` — первый целевой срез;
-- `../docs/user/project_direction.md` — границы модулей и переносимой логики.
+- `docs/user/README.md` — индекс действующих требований;
+- `docs/user/vsm_baseline_vertical_slice.md` — первый целевой срез;
+- `docs/user/project_direction.md` — границы модулей и переносимой логики.
 
-В ветке `feature/mechanics-playground` первичная реализация ведётся по
-[`docs/agent/mechanics-playground-plan.md`](docs/agent/mechanics-playground-plan.md).
+Для текущей реализации приоритет имеют документы
+[`docs/user/`](docs/user/README.md).
+Актуальные рабочие инструкции находятся в `docs/agent/`; исторический контекст перенесён в `docs/backlog/`.
 
 Необязательные локальные инструменты и их параметры описаны в
 `docs/agent/tools.md`.
@@ -77,7 +78,5 @@ npm run verify
 - Доменное поведение после его появления проверяйте без запуска Phaser, если
   внешний контракт позволяет это сделать.
 - Перед runtime-зависимостью проверьте Phaser, Web API и стандартный TypeScript.
-- Vitest подключается вместе с первой содержательной доменной логикой, Knip —
-  после роста проекта, Playwright — после появления стабильного сквозного
-  сценария.
+- Vitest используется для simulation unit-тестов; Knip доступен для аудита dead code, Playwright — для будущего стабильного сквозного сценария.
 - `node_modules/` и `dist/` не входят в Git.

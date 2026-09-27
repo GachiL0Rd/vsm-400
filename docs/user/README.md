@@ -1,22 +1,10 @@
-# Пользовательская документация
+# Пользовательская документация верхнего уровня
 
-Этот каталог содержит актуальные продуктовые требования и сводную фактическую
-базу. Документы здесь имеют приоритет над материалами из `../backlog/`.
+В этом каталоге остаётся фактическая исследовательская база, общая для проекта:
 
-## С чего начать
+- [`conductor_research.md`](conductor_research.md) — сводка о работе проводника;
+- [`conductor_working_environment.md`](conductor_working_environment.md) — рабочее окружение и объекты.
 
-1. [`vsm_baseline_vertical_slice.md`](vsm_baseline_vertical_slice.md) — первый
-   полностью проходимый вертикальный срез.
-2. [`vsm_conductor_game_concept.md`](vsm_conductor_game_concept.md) — общая
-   концепция игрового процесса.
-3. [`project_direction.md`](project_direction.md) — границы будущих модулей и
-   переносимой игровой логики.
-4. [`conductor_research.md`](conductor_research.md) — упрощённая фактическая
-   база о работе проводника.
-5. [`conductor_working_environment.md`](conductor_working_environment.md) —
-   объекты и рабочее окружение.
+Актуальные продуктовые, архитектурные и implementation-требования самой игры находятся в [`../../Game/docs/user/`](../../Game/docs/user/README.md).
 
-Фактические документы намеренно являются самодостаточными сводками. Полный
-массив оригинальных нормативных материалов в игровой репозиторий не входит.
-Если сводки недостаточно для конкретной механики, деталь остаётся
-неподтверждённой до отдельного исследования.
+Старые игровые `project_direction`, baseline и game concept перенесены в [`../backlog/legacy-game-user/`](../backlog/legacy-game-user/) и не являются действующими требованиями.
