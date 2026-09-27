@@ -278,6 +278,23 @@ describe('прогрессия в базе', () => {
 
     const runs = await prisma.run.findMany({ where: { sessionId: session.id } });
     expect(runs).toHaveLength(1);
+    const storedDecisions = await prisma.runDecision.findMany({
+      where: { runId: runs[0]?.id },
+      orderBy: { idx: 'asc' },
+    });
+    expect(storedDecisions).toEqual([
+      expect.objectContaining({
+        idx: 0,
+        scenarioId,
+        nodeId: 'n1',
+        choiceId: 'look',
+        verdict: 'ok',
+        stage: 'enroute',
+        situation: 'Проверка',
+        action: 'Осмотрел',
+        gameTime: '09:00',
+      }),
+    ]);
     expect(runs[0]?.points).toBe(105);
     expect(runs[0]?.playSeconds).toBe(600);
     expect(runs[0]?.outcomeNote).toBe('Рейс завершён');

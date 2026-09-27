@@ -89,7 +89,7 @@ function reactionMs(reactionSec: number | undefined): number | null {
   return Math.round(reactionSec * 1000);
 }
 
-function countMissed(decisions: readonly JournalEntry[]): number {
+export function countMissed(decisions: readonly JournalEntry[]): number {
   let count = 0;
   for (const decision of decisions) {
     if (decision.verdict === 'missed') {
@@ -99,7 +99,7 @@ function countMissed(decisions: readonly JournalEntry[]): number {
   return count;
 }
 
-function averageReaction(decisions: readonly JournalEntry[]): number {
+export function averageReaction(decisions: readonly JournalEntry[]): number {
   let sum = 0;
   let count = 0;
   for (const decision of decisions) {

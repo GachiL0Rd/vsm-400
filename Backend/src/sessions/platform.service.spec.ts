@@ -411,6 +411,46 @@ describe('PlatformSessionService.finish', () => {
     expect(harness.emitAsync).toHaveBeenCalledTimes(1);
   });
 
+  it('кладёт факты в decisions события и не трогает шкалы', async () => {
+    const harness = finishHarness(row({ status: 'ACTIVE' }));
+    const body = finished(sessionId, {
+      assessment: {
+        setVersion: 'baseline-v1',
+        durationUs: 60_000_000,
+        facts: [
+          {
+            id: 'fire:cabin',
+            kind: 'fire',
+            at: 60_000_000,
+            verdict: 'correct',
+            scoreDelta: { safety: 4, customerSatisfaction: -1 },
+            detail: { incidentId: 'cabin-fire', extinguished: true, critical: false },
+          },
+        ],
+      },
+    });
+    await harness.service.finish(sessionId, body);
+    expect(harness.emitAsync).toHaveBeenCalledWith(
+      RUN_COMPLETED,
+      expect.objectContaining({
+        summary: expect.objectContaining({
+          outcome: 'completed',
+          safety: 96,
+          loyalty: 84,
+          decisions: [
+            expect.objectContaining({
+              nodeId: 'fire:cabin',
+              choiceId: 'fire',
+              verdict: 'best',
+              stage: 'enroute',
+              scenarioId: 'vsm-baseline-01',
+            }),
+          ],
+        }),
+      }),
+    );
+  });
+
   it('тот же payload с другим порядком ключей не шлёт второе событие', async () => {
     const harness = finishHarness(row({ status: 'ACTIVE' }));
     const body = finished(sessionId);
