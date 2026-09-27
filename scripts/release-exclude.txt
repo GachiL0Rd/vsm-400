@@ -1,0 +1,17 @@
+# Пути (git pathspec), которые не попадают в ветку release.
+# release собирается из проверенного main скриптом scripts/make-release.sh.
+# Здесь только то, что не нужно для установки, проверки, сборки и запуска.
+
+# Инструменты и рабочие заметки агентов
+.agents
+skills-lock.json
+docs/agent/iteration-07-remaining-work.md
+docs/agent/tools.md
+Game/docs/agent
+
+# Архив устаревших документов
+docs/backlog
+Game/docs/backlog
+
+# Фото-референсы художников: игра их не загружает
+Game/assets/references
