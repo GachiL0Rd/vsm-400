@@ -1,0 +1,142 @@
+{
+  "schemaVersion": 1,
+  "source": "assets/map/train2-long.tmx",
+  "tileSize": 64,
+  "levelId": "vsm-train2-01",
+  "levelVersion": "1.0.0",
+  "movementCostPerTile": 0.25,
+  "transitionCapacity": 2,
+  "fireTransferWeight": 0.2,
+  "pressureTransferWeight": 0.5,
+  "capacities": {
+    "platform": 3,
+    "carriage": 2,
+    "seat": 1
+  },
+  "anchorSnapRule": "The anchor cell is the zone tile containing the Tiled point when that tile is walkable. Otherwise it is the nearest zone tile by Manhattan distance. Ties resolve to the larger y, then the smaller x, then a default-active region, then the smaller cell id. Seat cells are not snap targets. A tile index is floor(pixel / tileSize), including negative coordinates.",
+  "doorLinkRule": "The train nose is not walkable, so each platform region gets one bidirectional edge from tile (-1, 8) to the boarding_door cell. Cost is Manhattan tile distance times movementCostPerTile. Edge ids end with :door.",
+  "seatAccess": {
+    "aisleY": 8,
+    "zoneLayer": "WalkableZones",
+    "seatLayer": "PassengerSeats",
+    "anchorLayer": "InteractionAnchors",
+    "solidLayer": "Collision",
+    "solidType": "SeatSolid"
+  },
+  "regions": [
+    {
+      "id": "carriage-main",
+      "defaultActive": true,
+      "publicVisualId": "map.train2-long.carriage",
+      "zones": ["boarding_vestibule", "central_aisle", "service_zone"],
+      "includeSeats": true,
+      "cellIdPrefix": "carriage",
+      "capacity": "carriage"
+    },
+    {
+      "id": "platform-origin",
+      "defaultActive": true,
+      "publicVisualId": "map.train2-long.platform",
+      "zones": ["origin_platform"],
+      "includeSeats": false,
+      "cellIdPrefix": "platform-origin",
+      "capacity": "platform"
+    },
+    {
+      "id": "platform-standard",
+      "defaultActive": false,
+      "publicVisualId": "map.train2-long.platform",
+      "zones": ["origin_platform"],
+      "includeSeats": false,
+      "cellIdPrefix": "platform-standard",
+      "capacity": "platform"
+    }
+  ],
+  "anchors": [
+    { "id": "platform.acceptance-desk", "tmxObject": "journal_platform" },
+    { "id": "carriage.entry-door", "tmxObject": "boarding_door" },
+    { "id": "carriage.emergency-brake", "tmxObject": "entry_control_panel" },
+    { "id": "carriage.extinguisher-1", "tmxObject": "fire_extinguisher" },
+    { "id": "carriage.climate-control", "tmxObject": "technical_panel" },
+    { "id": "carriage.driver-comms", "tmxObject": "technical_panel" },
+    { "id": "carriage.service-point", "tmxObject": "service_counter" }
+  ],
+  "objects": [
+    {
+      "id": "acceptance-journal",
+      "kind": "acceptance-journal",
+      "anchorId": "platform.acceptance-desk",
+      "publicVisualId": "item.acceptance-journal"
+    },
+    {
+      "id": "extinguisher",
+      "kind": "extinguisher",
+      "anchorId": "carriage.extinguisher-1",
+      "publicVisualId": "item.extinguisher"
+    },
+    {
+      "id": "climate-control",
+      "kind": "climate-control",
+      "anchorId": "carriage.climate-control",
+      "publicVisualId": "object.climate-control"
+    },
+    {
+      "id": "emergency-brake",
+      "kind": "emergency-brake",
+      "anchorId": "carriage.emergency-brake",
+      "publicVisualId": "object.emergency-brake"
+    },
+    {
+      "id": "driver-comms",
+      "kind": "driver-comms",
+      "anchorId": "carriage.driver-comms",
+      "publicVisualId": "object.driver-comms"
+    },
+    {
+      "id": "service-point",
+      "kind": "service-point",
+      "anchorId": "carriage.service-point",
+      "publicVisualId": "object.service-point"
+    }
+  ],
+  "failureLocations": [
+    { "id": "fire.cabin", "tmxObject": "fire_scenario", "kinds": ["fire"] },
+    { "id": "pressure.entry", "tmxObject": "boarding_door", "kinds": ["pressure-leak"] }
+  ],
+  "sanitationLocations": [
+    {
+      "id": "sanitation.entry",
+      "placement": "tmx-object",
+      "tmxObject": "boarding_door",
+      "visualIds": ["sanitation.stain", "sanitation.trash"]
+    },
+    {
+      "id": "sanitation.service",
+      "placement": "nearest-zone-tile",
+      "zone": "central_aisle",
+      "toTmxObject": "service_counter",
+      "visualIds": ["sanitation.stain"],
+      "note": "service_counter is in service_zone at tile (69, 8). The nearest central_aisle tile is (66, 8), one step west of the service zone."
+    }
+  ],
+  "doorLinks": [
+    {
+      "fromRegionId": "platform-origin",
+      "fromTile": { "x": -1, "y": 8 },
+      "toTmxObject": "boarding_door"
+    },
+    {
+      "fromRegionId": "platform-standard",
+      "fromTile": { "x": -1, "y": 8 },
+      "toTmxObject": "boarding_door"
+    }
+  ],
+  "clientMap": {
+    "originX": -16,
+    "originY": 0,
+    "maxXExclusive": 80,
+    "maxYExclusive": 16,
+    "voidLayerName": "Void",
+    "output": "src/client/assets/map/train2-long.map.json"
+  }
+}

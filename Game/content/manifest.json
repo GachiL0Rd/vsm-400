@@ -9,6 +9,15 @@
       "scenario": "vsm-baseline-01/scenario.json",
       "actions": "vsm-baseline-01/actions.json",
       "assessment": "vsm-baseline-01/assessment.json"
+    },
+    {
+      "gameLevelId": "vsm-train2-01",
+      "gameLevelVersion": "vsm-train2-01",
+      "simulationCompatibilityVersion": "0.1.0",
+      "level": "vsm-train2-01/level.json",
+      "scenario": "vsm-train2-01/scenario.json",
+      "actions": "vsm-train2-01/actions.json",
+      "assessment": "vsm-train2-01/assessment.json"
     }
   ]
 }

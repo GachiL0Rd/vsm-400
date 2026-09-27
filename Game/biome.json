@@ -7,7 +7,7 @@
     "root": "../"
   },
   "files": {
-    "includes": ["src/**/*.ts", "vite.config.ts", "*.json", "*.html"]
+    "includes": ["src/**/*.ts", "scripts/**/*.ts", "vite.config.ts", "*.json", "*.html"]
   },
   "formatter": {
     "enabled": true,

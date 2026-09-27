@@ -7,7 +7,11 @@ import { BASELINE_ASSESSMENT_CONFIG } from '../simulation/assessment-config.ts';
 import { BASELINE_ACTION_CONTENT } from '../simulation/baseline-content.ts';
 import { BASELINE_LEVEL_DEFINITION } from '../simulation/level.ts';
 import { BASELINE_SCENARIO_DEFINITION } from '../simulation/scenario.ts';
+import { parseServerConfig } from './config.ts';
 import { FileGameContentRegistry } from './content-registry.ts';
+import { MockPlatformGateway, mockMode } from './platform-gateway.ts';
+import { InMemoryResumeTokenRegistry } from './resume-token-registry.ts';
+import { GameSessionHost } from './session-host.ts';
 
 const contentDirectory = fileURLToPath(new URL('../../content/', import.meta.url));
 
@@ -32,6 +36,43 @@ describe('FileGameContentRegistry', () => {
     expect(json('vsm-baseline-01/scenario.json')).toEqual(BASELINE_SCENARIO_DEFINITION);
     expect(json('vsm-baseline-01/actions.json')).toEqual(BASELINE_ACTION_CONTENT);
     expect(json('vsm-baseline-01/assessment.json')).toEqual(BASELINE_ASSESSMENT_CONFIG);
+    expect(json('vsm-train2-01/actions.json')).toEqual(BASELINE_ACTION_CONTENT);
+    expect(json('vsm-train2-01/assessment.json')).toEqual(BASELINE_ASSESSMENT_CONFIG);
+  });
+
+  it('loads both content bundles', () => {
+    const registry = new FileGameContentRegistry(contentDirectory);
+    expect(registry.resolve('vsm-baseline-01').gameLevelVersion).toBe('vsm-baseline-01');
+    const train2 = registry.resolve('vsm-train2-01');
+    expect(train2.gameLevelVersion).toBe('vsm-train2-01');
+    expect(train2.simulationCompatibilityVersion).toBe('0.1.0');
+    const attempt = train2.createAttempt(17, { kind: 'live' });
+    expect(attempt.level.definition.id).toBe('vsm-train2-01');
+    expect(attempt.entities.get('player').position).toEqual({
+      kind: 'cell',
+      cellId: 'platform-origin.x-3y8',
+    });
+  });
+
+  it('resolves a mock session to the default train2 level', async () => {
+    const config = parseServerConfig({});
+    expect(config.mock.gameLevelId).toBe('vsm-train2-01');
+    const host = new GameSessionHost({
+      platformGateway: new MockPlatformGateway({
+        attemptId: config.mock.attemptId,
+        gameLevelId: config.mock.gameLevelId,
+        mode: mockMode(config.mock.mode),
+      }),
+      contentRegistry: new FileGameContentRegistry(contentDirectory),
+      resumeTokens: new InMemoryResumeTokenRegistry(),
+      disconnectDebounceMs: 1_000,
+      reconnectGraceMs: 30_000,
+      simulationStepMs: 60_000,
+    });
+    await host.attachWithSessionKey('local-session', 'connection-1');
+    const worker = host.worker(config.mock.attemptId);
+    expect(worker?.projection.attempt.level.definition.id).toBe('vsm-train2-01');
+    host.shutdown();
   });
 
   it('rejects manifest paths that escape the configured content root', () => {

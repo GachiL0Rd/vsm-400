@@ -99,6 +99,8 @@ Baseline допускает диагональные переходы как exp
 
 `64 px` является presentation convention Client и не участвует в server-side physics/navigation.
 
+Для `vsm-train2-01` серверные `x`/`y` всё же совпадают с координатами тайлов Tiled: одна клетка = один тайл, а непроходимый нос закрыт door-link. См. [`grid-world.md`](grid-world.md), раздел 4.1. `vsm-baseline-01` остаётся короткой абстрактной сеткой.
+
 Baseline occupancy:
 
 - обычная свободная клетка имеет capacity `2` человека;
@@ -232,6 +234,5 @@ Scenario может объявлять requirements/capabilities Level, вклю
 ## 16. Открытые вопросы
 
 - первый authoring format: YAML или JSON;
-- public world coordinates для Phaser;
 - нужен ли отдельный level editor после стабилизации schema;
 - достаточно ли одного reusable platform region или позже понадобятся разные station presets.

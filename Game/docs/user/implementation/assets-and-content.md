@@ -48,7 +48,15 @@ content/
     scenario.json
     actions.json
     assessment.json
+  vsm-train2-01/
+    map-bindings.json
+    level.json          # generated from assets/map/train2-long.tmx
+    scenario.json
+    actions.json
+    assessment.json
 ```
+
+`vsm-train2-01/level.json` пишет `npm run map:build`. Правка вручную расходится с картой; `npm run map:check` это ловит. Правило «1 клетка = 1 тайл» — в [`../simulation/grid-world.md`](../simulation/grid-world.md), раздел 4.1.
 
 `GAME_CONTENT_DIR` может указывать на отдельный read-only bundle. Точный контракт описан в [`../deployment/content-bundle.md`](../deployment/content-bundle.md). Dialogue/service extensions могут позднее добавляться как новые versioned files/references manifest-а.
 

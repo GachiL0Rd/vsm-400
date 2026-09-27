@@ -219,6 +219,10 @@ Client разрешает эти IDs через локальный asset registr
 
 Один simulation object может иметь несколько presentation forms (`world`, `held`, `modal`) без дублирования domain entity.
 
+## 9.2. Client world
+
+Клиент не держит свою сетку и не считает маршрут. Публичная клетка `(x, y)` рисуется на тайле `(x, y)` размером 64×64. Для `vsm-train2-01` это конечная карта `train2-long.map.json`, собранная из `assets/map/train2-long.tmx`; origin берётся из свойств карты `originX` / `originY`. Уровень без префикса `map.train2-long` получает квадрат на каждую публичную клетку, origin — минимум координат. Клик по клетке отправляет один `move-to` с id этой клетки. Сервер сам строит путь и публикует `moving` по рёбрам.
+
 ## 10. Client → Server intents
 
 Release `0.1.0` client input сводится к небольшому набору intent/request сообщений:

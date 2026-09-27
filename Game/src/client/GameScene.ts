@@ -4,7 +4,8 @@ import type { InteractionController } from './input/interaction-controller';
 import { GameHud } from './presentation/game-hud';
 import type { PresentationStore } from './presentation/presentation-store';
 import { preloadCharacterArt } from './rendering/character-art';
-import { WORLD_HEIGHT, WORLD_WIDTH } from './rendering/grid-layout';
+import { TILE_SIZE } from './rendering/tile-layout';
+import { preloadTrain2Map } from './rendering/train2-map';
 import { WorldRenderer } from './rendering/world-renderer';
 
 export interface GameSceneDependencies {
@@ -14,10 +15,16 @@ export interface GameSceneDependencies {
   downloadLog?(): void;
 }
 
+const MAP_ROWS = 16;
+const MOBILE_MIN_ZOOM = 0.55;
+const SHORT_LANDSCAPE_HEIGHT = 450;
+
 /** Browser view of server state. Clicks are sent as intents, never applied locally. */
 export class GameScene extends Phaser.Scene {
   private worldRenderer: WorldRenderer | null = null;
   private hud: GameHud | null = null;
+  private followTarget: Phaser.GameObjects.Rectangle | null = null;
+  private followStarted = false;
   private unsubscribe: (() => void) | null = null;
   private lastState: PublicGameState | null = null;
   private lastWorld: PublicGameState['world'] | null = null;
@@ -30,6 +37,7 @@ export class GameScene extends Phaser.Scene {
 
   preload(): void {
     preloadCharacterArt(this);
+    preloadTrain2Map(this);
   }
 
   create(): void {
@@ -37,15 +45,17 @@ export class GameScene extends Phaser.Scene {
       viewportWidth: this.scale.width,
       viewportHeight: this.scale.height,
     });
+    this.followTarget = this.add.rectangle(0, 0, 1, 1, 0xffffff, 0).setVisible(false);
     this.worldRenderer = new WorldRenderer(this);
     const parent = this.game.canvas.parentElement;
-    if (parent !== null)
+    if (parent !== null) {
       this.hud = new GameHud(
         parent,
         this.dependencies.store,
         this.dependencies.interactions,
         this.dependencies.downloadLog,
       );
+    }
     this.input.mouse?.disableContextMenu();
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
       this.handlePointer(pointer);
@@ -56,16 +66,17 @@ export class GameScene extends Phaser.Scene {
     this.scale.on('resize', this.fitCamera, this);
     this.unsubscribe = this.dependencies.store.subscribe((state) => {
       const publicState = state.publicState;
+      const worldChanged = publicState?.world !== this.lastWorld;
       if (publicState !== this.lastState) {
         this.lastState = publicState;
         this.receivedAtMs = performance.now();
       }
-      if (publicState?.world !== this.lastWorld) {
-        this.lastWorld = publicState?.world ?? null;
-        this.fitCamera();
-      }
       this.redraw();
+      if (!worldChanged) return;
+      this.lastWorld = publicState?.world ?? null;
+      this.fitCamera();
     });
+    this.fitCamera();
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.dependencies.log?.('render', 'scene-shutdown', {});
       this.unsubscribe?.();
@@ -75,6 +86,8 @@ export class GameScene extends Phaser.Scene {
       this.hud = null;
       this.worldRenderer?.clear();
       this.worldRenderer = null;
+      this.followTarget = null;
+      this.followStarted = false;
     });
   }
 
@@ -89,8 +102,9 @@ export class GameScene extends Phaser.Scene {
       state.clock.paused ||
       state.termination !== null ||
       state.phase.kind === 'finished'
-    )
+    ) {
       return state.timeUs;
+    }
     const elapsedMs = Math.min(2_000, Math.max(0, performance.now() - this.receivedAtMs));
     return state.timeUs + elapsedMs * 1_000 * state.clock.timeScale;
   }
@@ -106,7 +120,7 @@ export class GameScene extends Phaser.Scene {
     const visualTimeUs = this.visualTimeUs(state);
     this.worldRenderer.render(state, visualTimeUs);
     const player = this.worldRenderer.playerPoint(state, visualTimeUs);
-    if (player !== null) this.cameras.main.centerOn(player.x, player.y);
+    if (player !== null) this.followTarget?.setPosition(player.x, player.y);
     this.logPlayerFrame(state, visualTimeUs, player);
     this.hud?.setVisualTime(visualTimeUs);
   }
@@ -145,23 +159,44 @@ export class GameScene extends Phaser.Scene {
     const left = narrow ? 0 : 330;
     const top = narrow ? 166 : 0;
     const bottom = narrow ? 82 : 0;
-    const viewportWidth = width - left;
+    const viewportWidth = Math.max(1, width - left);
     const viewportHeight = Math.max(220, height - top - bottom);
     const camera = this.cameras.main;
-    camera.setBounds(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
+    const frame = this.worldRenderer?.worldFrame() ?? {
+      x: 0,
+      y: 0,
+      width: TILE_SIZE * MAP_ROWS,
+      height: TILE_SIZE * MAP_ROWS,
+    };
+    camera.setBounds(frame.x, frame.y, frame.width, frame.height);
     camera.setViewport(left, top, viewportWidth, viewportHeight);
-    camera.setZoom(
-      narrow
-        ? Math.max(0.8, Math.min(1.05, width / 430))
-        : Math.max(
-            0.72,
-            Math.min(1.05, viewportWidth / WORLD_WIDTH, viewportHeight / WORLD_HEIGHT),
-          ),
-    );
+    camera.setZoom(viewZoom(viewportHeight, compactViewport(width, height, narrow)));
+    this.placeFollow(this.focusPoint(), true);
+  }
+
+  private placeFollow(point: { x: number; y: number }, snap: boolean): void {
+    const target = this.followTarget;
+    if (target === null) return;
+    target.setPosition(point.x, point.y);
+    const camera = this.cameras.main;
+    if (!this.followStarted) {
+      camera.startFollow(target, true, 0.1, 0.1);
+      this.followStarted = true;
+      return;
+    }
+    if (snap) camera.centerOn(point.x, point.y);
+  }
+
+  private focusPoint(): { x: number; y: number } {
     const state = this.dependencies.store.snapshot.publicState;
     const player =
-      state === null ? null : this.worldRenderer?.playerPoint(state, this.visualTimeUs(state));
-    camera.centerOn(player?.x ?? WORLD_WIDTH / 2, player?.y ?? WORLD_HEIGHT / 2);
+      state === null || this.worldRenderer === null
+        ? null
+        : this.worldRenderer.playerPoint(state, this.visualTimeUs(state));
+    if (player !== null) return player;
+    const frame = this.worldRenderer?.worldFrame();
+    if (frame === undefined) return { x: 0, y: 0 };
+    return { x: frame.x + frame.width / 2, y: frame.y + frame.height / 2 };
   }
 
   private handlePointer(pointer: Phaser.Input.Pointer): void {
@@ -171,13 +206,14 @@ export class GameScene extends Phaser.Scene {
       return;
     }
     const { worldX, worldY } = pointer;
+    const cell = this.worldRenderer.cellAt(state, worldX, worldY);
+    this.worldRenderer.setHoveredCell(cell?.id ?? null);
     const target = this.worldRenderer.targetAt(state, worldX, worldY, this.visualTimeUs(state));
     if (target !== null && !pointer.rightButtonDown() && !pointer.event.shiftKey) {
       this.logPointer(pointer, 'click-target', { target, revision: state.revision });
       this.dependencies.interactions.queryActions(target);
       return;
     }
-    const cell = this.worldRenderer.layout.cellAt(state.world.cells, worldX, worldY);
     if (cell === null) {
       this.logPointer(pointer, 'click-outside-world', { revision: state.revision });
       return;
@@ -187,9 +223,6 @@ export class GameScene extends Phaser.Scene {
       this.dependencies.interactions.queryActions({ kind: 'cell', cellId: cell.id });
       return;
     }
-    // Objects are picked by their drawn footprint in targetAt above. A server cell
-    // spans many drawn floor tiles, so a floor click inside an object's cell is a
-    // move request, not an object query.
     this.logPointer(pointer, 'click-move', { cellId: cell.id, revision: state.revision });
     this.dependencies.interactions.moveTo(cell.id);
   }
@@ -213,6 +246,8 @@ export class GameScene extends Phaser.Scene {
   private handleHover(pointer: Phaser.Input.Pointer): void {
     const state = this.dependencies.store.snapshot.publicState;
     if (state === null || this.worldRenderer === null) return;
+    const cell = this.worldRenderer.cellAt(state, pointer.worldX, pointer.worldY);
+    this.worldRenderer.setHoveredCell(cell?.id ?? null);
     const target = this.worldRenderer.targetAt(
       state,
       pointer.worldX,
@@ -229,13 +264,18 @@ export class GameScene extends Phaser.Scene {
       this.hud?.setTarget(entity?.kind === 'player' ? 'Проводник' : 'Пассажир');
       return;
     }
-    const cell = this.worldRenderer.layout.cellAt(
-      state.world.cells,
-      pointer.worldX,
-      pointer.worldY,
-    );
     this.hud?.setTarget(cell === null ? null : 'Кликните, чтобы переместиться сюда');
   }
+}
+
+function compactViewport(width: number, height: number, narrow: boolean): boolean {
+  return narrow || (width > height && height <= SHORT_LANDSCAPE_HEIGHT);
+}
+
+function viewZoom(viewportHeight: number, compact: boolean): number {
+  const fit = viewportHeight / (MAP_ROWS * TILE_SIZE);
+  if (!Number.isFinite(fit) || fit <= 0) return compact ? MOBILE_MIN_ZOOM : 1;
+  return compact ? Math.max(MOBILE_MIN_ZOOM, fit) : fit;
 }
 
 function objectName(kind: string): string {

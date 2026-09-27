@@ -1,0 +1,239 @@
+{
+  "schemaVersion": 1,
+  "id": "vsm-train2-01",
+  "version": "1.0.0",
+  "levelId": "vsm-train2-01",
+  "levelVersion": "1.0.0",
+  "preDeparture": {
+    "durationUs": 300000000,
+    "platformRegionId": "platform-origin",
+    "journalObjectId": "acceptance-journal",
+    "journalHomeAnchorId": "platform.acceptance-desk"
+  },
+  "originStop": {
+    "dwellUs": 1800000000,
+    "platformRegionId": "platform-origin",
+    "passengerFlow": {
+      "boardPassengerIds": [
+        "passenger-1",
+        "passenger-2",
+        "passenger-3"
+      ],
+      "leavePassengerIds": []
+    }
+  },
+  "route": {
+    "stops": [
+      {
+        "id": "stop-1",
+        "travelBeforeUs": 3600000000,
+        "dwellUs": 120000000,
+        "platformRegionId": "platform-standard",
+        "passengerFlow": {
+          "boardPassengerIds": [],
+          "leavePassengerIds": [
+            "passenger-1"
+          ]
+        }
+      },
+      {
+        "id": "stop-final",
+        "travelBeforeUs": 1080000000,
+        "dwellUs": 0,
+        "platformRegionId": "platform-standard",
+        "passengerFlow": {
+          "boardPassengerIds": [],
+          "leavePassengerIds": [
+            "passenger-2",
+            "passenger-3"
+          ]
+        }
+      }
+    ]
+  },
+  "passengers": [
+    {
+      "id": "passenger-1",
+      "serviceClass": "basic",
+      "traits": [
+        "awake"
+      ],
+      "seatCellId": "carriage.seat.bay_02_far_L",
+      "boardingCellId": "platform-origin.x-1y8",
+      "appearanceId": "passenger.demo-1",
+      "documents": {
+        "ticket": {
+          "passengerName": "Иван Петров",
+          "train": "ВСМ-001",
+          "date": "2026-09-27",
+          "departureTime": "12:00",
+          "carriage": "1",
+          "seat": "1A",
+          "documentType": "Паспорт",
+          "documentNumberMasked": "**** 1234",
+          "qrCode": "ticket-passenger-1",
+          "route": "Москва — Санкт-Петербург"
+        },
+        "identity": {
+          "type": "passport",
+          "passengerName": "Иван Петров",
+          "birthDate": "1990-04-12",
+          "numberMasked": "**** 1234",
+          "photoVisualId": "portrait.passenger.demo-1"
+        }
+      },
+      "expectedBoardingDecision": "admit"
+    },
+    {
+      "id": "passenger-2",
+      "serviceClass": "comfort",
+      "traits": [
+        "awake",
+        "hungry"
+      ],
+      "seatCellId": "carriage.seat.bay_06_near_R",
+      "boardingCellId": "platform-origin.x-1y8",
+      "appearanceId": "passenger.demo-2",
+      "documents": {
+        "ticket": {
+          "passengerName": "Мария Волкова",
+          "train": "ВСМ-001",
+          "date": "2026-09-27",
+          "departureTime": "12:00",
+          "carriage": "1",
+          "seat": "2A",
+          "documentType": "Паспорт",
+          "documentNumberMasked": "**** 5678",
+          "qrCode": "ticket-passenger-2",
+          "route": "Москва — Санкт-Петербург"
+        },
+        "identity": {
+          "type": "passport",
+          "passengerName": "Мария Волкова",
+          "birthDate": "1988-11-03",
+          "numberMasked": "**** 5678",
+          "photoVisualId": "portrait.passenger.demo-2"
+        }
+      },
+      "expectedBoardingDecision": "admit"
+    },
+    {
+      "id": "passenger-3",
+      "serviceClass": "business",
+      "traits": [
+        "awake",
+        "thirsty",
+        "impatient"
+      ],
+      "seatCellId": "carriage.seat.bay_10_far_R",
+      "boardingCellId": "platform-origin.x-1y8",
+      "appearanceId": "passenger.demo-3",
+      "documents": {
+        "ticket": {
+          "passengerName": "Алексей Сидоров",
+          "train": "ВСМ-001",
+          "date": "2026-09-27",
+          "departureTime": "12:00",
+          "carriage": "1",
+          "seat": "3A",
+          "documentType": "Паспорт",
+          "documentNumberMasked": "**** 9012",
+          "qrCode": "ticket-passenger-3",
+          "route": "Москва — Санкт-Петербург"
+        },
+        "identity": {
+          "type": "passport",
+          "passengerName": "Андрей Сидоров",
+          "birthDate": "1994-07-21",
+          "numberMasked": "**** 9012",
+          "photoVisualId": "portrait.passenger.demo-3"
+        }
+      },
+      "expectedBoardingDecision": "reject"
+    }
+  ],
+  "incidents": [
+    {
+      "id": "cabin-fire",
+      "kind": "fire",
+      "startAfterDepartureUs": 600000000,
+      "failureLocationId": "fire.cabin",
+      "initialFire": 0.35,
+      "sourcePerSecond": 0.015,
+      "criticalFire": 2.5
+    },
+    {
+      "id": "entry-pressure-leak",
+      "kind": "pressure-leak",
+      "startAfterDepartureUs": 2100000000,
+      "failureLocationId": "pressure.entry",
+      "baseCabinPressureKPa": 101.3,
+      "attenuationKPaPerMeter": 5,
+      "whistleDistanceM": 1.5,
+      "earsBlockedDistanceM": 1,
+      "criticalCabinPressureKPa": 80,
+      "stages": [
+        {
+          "afterStartUs": 0,
+          "pressureLossAtSourceKPa": 4
+        },
+        {
+          "afterStartUs": 120000000,
+          "pressureLossAtSourceKPa": 12
+        },
+        {
+          "afterStartUs": 240000000,
+          "pressureLossAtSourceKPa": 18
+        }
+      ]
+    }
+  ],
+  "servicePlan": {
+    "windows": [
+      {
+        "id": "meal-service",
+        "startAfterDepartureUs": 900000000,
+        "endAfterDepartureUs": 2700000000,
+        "passengerTraits": [
+          "comfort",
+          "business"
+        ],
+        "services": [
+          "meal",
+          "drink"
+        ]
+      },
+      {
+        "id": "arrival-preparation",
+        "startAfterDepartureUs": 3900000000,
+        "endAfterDepartureUs": 4680000000,
+        "passengerTraits": [],
+        "services": [
+          "arrival-information"
+        ]
+      }
+    ]
+  },
+  "terminalRules": [
+    {
+      "id": "emergency-brake",
+      "signal": "emergency-brake-used",
+      "outcomeId": "route-safely-interrupted"
+    },
+    {
+      "id": "predeparture-critical",
+      "signal": "critical-predeparture-fault",
+      "outcomeId": "wagon-unserviceable"
+    },
+    {
+      "id": "fire-unsalvageable",
+      "signal": "fire-unsalvageable",
+      "outcomeId": "wagon-unsalvageable"
+    },
+    {
+      "id": "pressure-critical",
+      "signal": "pressure-critical",
+      "outcomeId": "wagon-unserviceable"
+    }
+  ]
+}

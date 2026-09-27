@@ -6,15 +6,22 @@ import {
   type PublicTargetRef,
 } from '../../common';
 import type { ClientLogLevel } from '../diagnostics/client-log';
-import type { PresentationStore } from '../presentation/presentation-store';
+import type { PresentationState, PresentationStore } from '../presentation/presentation-store';
 
 type NavigationLog = (level: ClientLogLevel, event: string, data?: Record<string, unknown>) => void;
 
+interface PlayerCell {
+  readonly cellId: string;
+}
+
+/** Sends one move-to for the clicked cell. The server routes the path. */
 export class InteractionController {
   private requestSequence = 0;
   private destinationCellId: string | null = null;
+  private sentDestination: string | null = null;
+  private sentFromCellId: string | null = null;
+  private awaitingDeparture = false;
   private pendingMove: { requestId: string; targetCellId: string } | null = null;
-  private awaitingArrivalCellId: string | null = null;
 
   constructor(
     private readonly store: PresentationStore,
@@ -37,6 +44,7 @@ export class InteractionController {
       )?.position,
     });
     this.destinationCellId = targetCellId;
+    this.sentDestination = null;
     this.advanceMovement();
   }
 
@@ -93,49 +101,60 @@ export class InteractionController {
       return;
     }
     this.observeMoveResult();
+    this.sendMove(state);
+  }
 
+  private sendMove(state: PresentationState): void {
+    const destinationCellId = this.destinationCellId;
     const publicState = state.publicState;
-    const player = publicState?.entities.find((entity) => entity.kind === 'player');
-    if (this.awaitingArrivalCellId !== null) {
-      if (player?.position.kind !== 'cell' || player.position.cellId !== this.awaitingArrivalCellId)
-        return;
-      this.log?.('info', 'step-arrived', {
-        cellId: this.awaitingArrivalCellId,
-        revision: state.revision,
-      });
-      this.awaitingArrivalCellId = null;
-    }
-    if (this.destinationCellId === null || this.pendingMove !== null || publicState === null)
-      return;
-    if (player?.position.kind !== 'cell') return;
-    if (player.position.cellId === this.destinationCellId) {
+    const player = standingPlayer(publicState);
+    if (destinationCellId === null || this.pendingMove !== null || publicState === null) return;
+    if (player === null) return;
+    if (this.stillAwaitingDeparture(player)) return;
+    if (player.cellId === destinationCellId) {
       this.log?.('info', 'route-completed', {
-        cellId: this.destinationCellId,
+        cellId: destinationCellId,
         revision: state.revision,
       });
       this.destinationCellId = null;
+      this.sentDestination = null;
+      this.awaitingDeparture = false;
       return;
     }
-
+    if (this.sentDestination === destinationCellId) return;
     const revision = this.activeRevision();
     if (revision === null) return;
-    const nextCellId = nextStep(publicState, player.position.cellId, this.destinationCellId);
-    if (nextCellId === null) {
+    if (!publicState.world.cells.some((cell) => cell.id === destinationCellId)) {
       this.log?.('warn', 'route-unavailable', {
-        fromCellId: player.position.cellId,
-        destinationCellId: this.destinationCellId,
+        fromCellId: player.cellId,
+        destinationCellId,
         revision,
       });
       this.destinationCellId = null;
       return;
     }
+    this.emitMove(destinationCellId, player.cellId, revision);
+  }
+
+  private stillAwaitingDeparture(player: PlayerCell): boolean {
+    if (!this.awaitingDeparture) return false;
+    if (player.cellId !== this.sentFromCellId) {
+      this.awaitingDeparture = false;
+      return false;
+    }
+    return true;
+  }
+
+  private emitMove(destinationCellId: string, fromCellId: string, revision: number): void {
     const requestId = this.nextRequestId();
-    this.pendingMove = { requestId, targetCellId: nextCellId };
-    this.log?.('info', 'step-sent', {
+    this.pendingMove = { requestId, targetCellId: destinationCellId };
+    this.sentDestination = destinationCellId;
+    this.sentFromCellId = fromCellId;
+    this.awaitingDeparture = true;
+    this.log?.('info', 'move-sent', {
       requestId,
-      fromCellId: player.position.cellId,
-      targetCellId: nextCellId,
-      destinationCellId: this.destinationCellId,
+      fromCellId,
+      targetCellId: destinationCellId,
       revision,
     });
     this.send({
@@ -143,47 +162,47 @@ export class InteractionController {
       type: 'move-to',
       requestId,
       knownRevision: revision,
-      targetCellId: nextCellId,
+      targetCellId: destinationCellId,
     });
   }
 
   private observeMoveResult(): void {
     const result = this.store.snapshot.lastCommandResult;
     if (this.pendingMove === null || result?.requestId !== this.pendingMove.requestId) return;
-    if (result.status === 'accepted') {
-      this.awaitingArrivalCellId = this.pendingMove.targetCellId;
-      this.log?.('info', 'step-accepted', {
-        requestId: result.requestId,
-        targetCellId: this.pendingMove.targetCellId,
-        revision: result.revision,
-      });
-    } else {
-      this.log?.('warn', 'step-rejected', {
-        requestId: result.requestId,
-        targetCellId: this.pendingMove.targetCellId,
-        revision: result.revision,
-        code: result.code,
-        message: result.message,
-      });
-      this.destinationCellId = null;
-    }
+    const targetCellId = this.pendingMove.targetCellId;
     this.pendingMove = null;
+    if (result.status === 'accepted') {
+      this.log?.('info', 'move-accepted', {
+        requestId: result.requestId,
+        targetCellId,
+        revision: result.revision,
+      });
+      return;
+    }
+    this.log?.('warn', 'move-rejected', {
+      requestId: result.requestId,
+      targetCellId,
+      revision: result.revision,
+      code: result.code,
+      message: result.message,
+    });
+    if (this.destinationCellId === targetCellId) this.destinationCellId = null;
+    if (this.sentDestination === targetCellId) this.sentDestination = null;
+    this.awaitingDeparture = false;
   }
 
   private clearNavigation(): void {
-    if (
-      this.destinationCellId !== null ||
-      this.pendingMove !== null ||
-      this.awaitingArrivalCellId !== null
-    )
+    if (this.destinationCellId !== null || this.pendingMove !== null || this.awaitingDeparture) {
       this.log?.('warn', 'route-cancelled-on-disconnect', {
         destinationCellId: this.destinationCellId,
         pendingRequestId: this.pendingMove?.requestId,
-        awaitingArrivalCellId: this.awaitingArrivalCellId,
       });
+    }
     this.destinationCellId = null;
+    this.sentDestination = null;
+    this.sentFromCellId = null;
+    this.awaitingDeparture = false;
     this.pendingMove = null;
-    this.awaitingArrivalCellId = null;
   }
 
   private activeRevision(): number | null {
@@ -192,8 +211,9 @@ export class InteractionController {
       state.sessionState?.state === 'finishing' ||
       state.sessionState?.state === 'finished' ||
       state.sessionState?.state === 'aborted'
-    )
+    ) {
       return null;
+    }
     return state.revision;
   }
 
@@ -203,52 +223,8 @@ export class InteractionController {
   }
 }
 
-/** The server accepts one directed edge per move-to command. */
-function nextStep(
-  state: PublicGameState,
-  fromCellId: string,
-  destinationCellId: string,
-): string | null {
-  const availableCells = new Set(state.world.cells.map((cell) => cell.id));
-  if (!availableCells.has(fromCellId) || !availableCells.has(destinationCellId)) return null;
-  const neighbors = adjacencyFor(state, availableCells);
-  const previous = new Map<string, string | null>([[fromCellId, null]]);
-  const queue = [fromCellId];
-  for (const current of queue) {
-    for (const neighbor of neighbors.get(current) ?? []) {
-      if (previous.has(neighbor)) continue;
-      previous.set(neighbor, current);
-      if (neighbor === destinationCellId) return firstStep(previous, fromCellId, neighbor);
-      queue.push(neighbor);
-    }
-  }
-  return null;
-}
-
-function adjacencyFor(
-  state: PublicGameState,
-  availableCells: ReadonlySet<string>,
-): Map<string, string[]> {
-  const neighbors = new Map<string, string[]>();
-  for (const edge of state.world.edges) {
-    if (!availableCells.has(edge.fromCellId) || !availableCells.has(edge.toCellId)) continue;
-    const destinations = neighbors.get(edge.fromCellId) ?? [];
-    destinations.push(edge.toCellId);
-    neighbors.set(edge.fromCellId, destinations);
-  }
-  return neighbors;
-}
-
-function firstStep(
-  previous: ReadonlyMap<string, string | null>,
-  fromCellId: string,
-  toCellId: string,
-): string | null {
-  let step = toCellId;
-  while (previous.get(step) !== fromCellId) {
-    const parent = previous.get(step);
-    if (parent === undefined || parent === null) return null;
-    step = parent;
-  }
-  return step;
+function standingPlayer(state: PublicGameState | null): PlayerCell | null {
+  const player = state?.entities.find((entity) => entity.kind === 'player');
+  if (player?.position.kind !== 'cell') return null;
+  return { cellId: player.position.cellId };
 }

@@ -33,7 +33,8 @@ dist/
 │   └── assets/...
 ├── content/
 │   ├── manifest.json
-│   └── vsm-baseline-01/...
+│   ├── vsm-baseline-01/...
+│   └── vsm-train2-01/...
 └── server/
     └── main.mjs
 ```
@@ -80,7 +81,7 @@ All process environment parsing is centralized in `src/server/config.ts`.
 | `GAME_SHUTDOWN_GRACE_MS` | `5000` | no | Grace period before remaining connections are force-terminated during shutdown. |
 | `GAME_LOG_LEVEL` | `info` | no | Pino level: `trace`, `debug`, `info`, `warn`, `error`, `fatal`, or `silent`. Use `debug` while investigating client/server integration and `trace` only for short tick-level captures. |
 | `GAME_MOCK_ATTEMPT_ID` | `local-attempt` | mock only | Attempt ID returned by local mock PlatformGateway. |
-| `GAME_MOCK_LEVEL_ID` | `vsm-baseline-01` | mock only | Level ID returned in local mock mode. |
+| `GAME_MOCK_LEVEL_ID` | `vsm-train2-01` | mock only | Level ID returned in local mock mode. |
 | `GAME_MOCK_MODE` | `live` | mock only | `live` or `guided`. |
 
 ### Platform mode selection
