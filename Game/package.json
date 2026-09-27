@@ -9,6 +9,7 @@
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "server": "tsx src/server/main.ts",
+    "server:pretty": "tsx src/server/main.ts | pino-pretty",
     "build": "node scripts/build-production.mjs",
     "preview": "vite preview --host 0.0.0.0",
     "format": "biome format --write .",
@@ -27,6 +28,7 @@
     "graphology": "0.26.0",
     "graphology-shortest-path": "2.1.0",
     "phaser": "4.2.1",
+    "pino": "10.3.1",
     "pure-rand": "8.4.2",
     "ws": "8.21.3",
     "zod": "4.6.5"
@@ -35,6 +37,7 @@
     "@biomejs/biome": "2.5.14",
     "@types/ws": "8.18.1",
     "knip": "6.38.0",
+    "pino-pretty": "13.0.0",
     "tsx": "4.23.15",
     "typescript": "5.9.3",
     "vite": "8.3.1",
