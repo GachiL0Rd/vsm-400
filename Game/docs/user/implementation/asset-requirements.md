@@ -1,7 +1,7 @@
 # Требования к ассетам текущего demo
 
-**Версия документа:** 0.2.0  
-**Статус:** Draft / artist handoff  
+**Версия документа:** 0.3.0
+**Статус:** Draft / artist handoff
 **Дата редакции:** 2026-09-27
 
 ## 1. Общий принцип
@@ -137,3 +137,8 @@ QR/код может быть отдельным placeholder или генери
 На текущем этапе отдельные художественные ассеты еды, напитков, посуды и мусора не обязательны. Service point может использовать простой UI, а held food/drink — временную иконку или условное обозначение.
 
 Это сознательное ограничение baseline и не должно блокировать service gameplay.
+
+
+## 11. Хранение и manifest
+
+Организация media assets, manifest и optional remote asset bundle описаны в [`assets-and-content.md`](assets-and-content.md). Production media может не храниться в git; tracked content должен ссылаться на stable visual IDs, а не на случайные локальные file paths.

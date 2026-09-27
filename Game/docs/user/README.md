@@ -1,7 +1,7 @@
 # Документация симулятора проводника ВСМ
 
-**Версия набора:** 0.7.0  
-**Статус:** Draft / implementation baseline  
+**Версия набора:** 0.8.0
+**Статус:** Draft / implementation baseline
 **Дата редакции:** 2026-09-27
 
 Этот каталог содержит действующие продуктовые, архитектурные и implementation-документы модуля Game и является его нормативным источником.
@@ -13,13 +13,14 @@
 1. [`project_direction.md`](project_direction.md) — общая граница модулей.
 2. [`vsm_conductor_game_concept.md`](vsm_conductor_game_concept.md) — продуктовая концепция.
 3. [`vsm_baseline_vertical_slice.md`](vsm_baseline_vertical_slice.md) — первый вертикальный срез.
-4. [`architecture/client-server.md`](architecture/client-server.md) — Browser ↔ Game Server ↔ Platform Server.
-5. [`architecture/platform-contract.md`](architecture/platform-contract.md) — минимальный контракт внешней платформы.
-6. [`architecture/session-modes.md`](architecture/session-modes.md) — live/guided/replay и protocol extensions.
-7. [`architecture/replay.md`](architecture/replay.md) — deterministic replay, seek и checkpoints.
-8. [`simulation/README.md`](simulation/README.md) — карта документов движка, включая минимальную Entity/Traits/Actions модель.
-9. [`implementation/README.md`](implementation/README.md) — конкретная реализация текущего demo: объекты, модалки, held-items, ассеты, environment-state, уровни обслуживания и план рейса.
-10. [`engineering/library-candidates.md`](engineering/library-candidates.md) — ненормативные dependency candidates.
+4. [`architecture/repository-structure.md`](architecture/repository-structure.md) — границы `common / simulation / server / client`.
+5. [`architecture/client-server.md`](architecture/client-server.md) — Browser ↔ Game Server ↔ Platform Server.
+6. [`architecture/platform-contract.md`](architecture/platform-contract.md) — минимальный контракт внешней платформы.
+7. [`architecture/session-modes.md`](architecture/session-modes.md) — live/guided/replay и protocol extensions.
+8. [`architecture/replay.md`](architecture/replay.md) — deterministic replay, seek и checkpoints.
+9. [`simulation/README.md`](simulation/README.md) — карта документов движка, включая минимальную Entity/Traits/Actions модель.
+10. [`implementation/README.md`](implementation/README.md) — конкретная реализация текущего demo: объекты, модалки, held-items, ассеты, environment-state, уровни обслуживания и план рейса.
+11. [`engineering/library-candidates.md`](engineering/library-candidates.md) — ненормативные dependency candidates.
 
 ## Нормативная граница
 

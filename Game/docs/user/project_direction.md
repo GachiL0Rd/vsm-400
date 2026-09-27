@@ -1,7 +1,7 @@
 # Направление развития и границы модулей
 
-**Версия документа:** 0.6.0  
-**Статус:** Draft  
+**Версия документа:** 0.7.0
+**Статус:** Draft
 **Дата редакции:** 2026-09-27
 
 ## 1. Текущее направление
@@ -42,6 +42,8 @@ Trait definitions
 Action definitions
 Dialogue/presentation assets
 ```
+
+Внутри `Game` код разделяется на `common / simulation / server / client`. `server` является composition root: он использует authoritative `simulation` и browser-safe `common`; Client импортирует `common`, но никогда не импортирует `simulation`. Подробности — `architecture/repository-structure.md`.
 
 Platform Server передаёт внешний `gameLevelId`, а Game Server разрешает его в локальный versioned config.
 

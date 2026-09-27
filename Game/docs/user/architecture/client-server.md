@@ -1,7 +1,7 @@
 # Взаимодействие клиента, игрового сервера и Platform Server
 
-**Версия документа:** 0.3.2  
-**Статус:** Draft  
+**Версия документа:** 0.4.0
+**Статус:** Draft
 **Дата редакции:** 2026-09-27
 
 ## 1. Область документа
@@ -143,18 +143,49 @@ Simulation / Replay controller
 
 ## 7. Server → Client
 
-Baseline protocol поддерживает:
+Protocol разделяет долговечное presentation state, transient presentation events и request/response.
+
+### 7.1. Durable state
+
+`snapshot` и `delta/delta-batch` описывают состояние, которое должно сохраняться до следующего изменения:
 
 ```text
-snapshot
-delta / delta-batch
-presentation event
-command-result
-session-state
-error
+entity position / motion
+held item
+active regions
+world objects and observable object state
+current time scale / session state
+persistent modal/view data при необходимости
 ```
 
-Presentation events могут иметь optional mode-specific `extensions`, описанные в `session-modes.md`.
+Server не должен отправлять императивное `move sprite X`; он меняет public motion/state, а Client интерполирует его.
+
+### 7.2. Transient presentation events
+
+Кратковременные эффекты передаются отдельными events:
+
+```text
+speech bubble show/hide
+guided hint
+notification
+short-lived visual/audio effect
+optional open/focus presentation request
+```
+
+Они не являются authoritative simulation events.
+
+### 7.3. Request/response
+
+Некоторые операции удобнее моделировать как запрос клиента к серверу, а не как постоянно публикуемое состояние. Baseline пример — запрос доступных действий после клика по объекту/сущности.
+
+```text
+Client:  query-actions(requestId, targetId)
+Server:  action-offer(requestId, targetId, revision, actions[])
+Client:  invoke-action(actionHandle, optionalInput)
+Server:  command-result + subsequent state diff/events
+```
+
+`actionHandle` opaque и проверяется повторно при invoke. Offer может стать невалидным после изменения revision/state.
 
 Internal simulation events автоматически наружу не передаются.
 
@@ -197,20 +228,23 @@ Client разрешает эти IDs через локальный asset registr
 
 Один simulation object может иметь несколько presentation forms (`world`, `held`, `modal`) без дублирования domain entity.
 
-## 10. Client actions
+## 10. Client → Server intents
 
-Контекстное игровое действие:
+Baseline client input сводится к небольшому набору intent/request сообщений:
 
-```ts
-interface InvokeActionCommand {
-  kind: "invoke-action";
-  actionId: string;
-}
+```text
+move-to(target position/cell)
+query-actions(targetId)
+invoke-action(actionHandle, optionalInput)
+set-time-scale(requestedScale)
+replay controls: play/pause/seek/inspect (только replay policy)
 ```
 
-`actionId` — opaque runtime handle. Game Server заново проверяет preconditions.
+Клик по объекту сам по себе не выполняет доменное действие: он может только запросить доступные server actions.
 
-Mode-specific commands (например `seek` в replay) проходят через отдельную input policy.
+Client не посылает команды вида `give-item-state`, `remove-scene-object` или `move-NPC`: это Server → Client public state changes.
+
+Mode-specific commands проходят через отдельную input policy.
 
 ## 11. Input time
 

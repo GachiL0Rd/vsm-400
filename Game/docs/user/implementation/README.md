@@ -45,3 +45,5 @@ Game Client
 ```
 
 Client asset registry может свободно менять конкретные изображения без изменения simulation semantics, пока стабильные asset/state IDs сохраняют смысл.
+
+- [`assets-and-content.md`](assets-and-content.md) — разделение versioned content/media, asset manifest и optional remote загрузка.

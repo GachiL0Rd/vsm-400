@@ -48,3 +48,15 @@
 - [ ] Запустить `npm run verify` из `Game/` после интеграции и провести ручную браузерную проверку. Текущая проверка примитивов не заменяет эти сквозные сценарии.
 
 **Критерий закрытия списка:** весь путь из [baseline vertical slice](../user/vsm_baseline_vertical_slice.md) работает на новом authoritative GameAttempt через public projection, даёт воспроизводимый replay source и официальный результат. Несколько типов вагонов, полноценный поезд, многослотовый inventory, точная физика пожара/давления, runtime LLM, reversible event log и сохранённые checkpoints в baseline не требуются.
+
+## 5. Предпочтительный порядок ближайших коротких итераций
+
+Чтобы не смешивать несколько границ за один проход, дальнейшую работу вести небольшими patch-сессиями:
+
+1. **Public projection + `common` wire schemas.** Зафиксировать browser-safe DTO, snapshot/diff и `query-actions → action-offer → invoke-action` без WebSocket lifecycle.
+2. **Server package skeleton.** Добавить composition root, `GameSessionWorker`, mock `PlatformGateway` и HTTP/WebSocket boundary поверх готового `GameAttempt`; без полного клиента.
+3. **Platform OpenAPI draft.** Описать `resolveSession` и `finishSession` в Swagger/OpenAPI так, чтобы отдельный разработчик Platform Server мог начать работу независимо.
+4. **Asset/content skeleton.** Добавить tracked content directories, asset manifest schema и placeholder policy; downloader production assets оставить отдельной задачей.
+5. **Client protocol spike.** После стабилизации common contract — минимальный Client, который применяет snapshot/diff, делает `move-to`, `query-actions`, `invoke-action` и отображает placeholders.
+
+Не объединять эти пункты в один большой patch без необходимости. Каждый слой должен иметь contract/unit tests до перехода к следующему.
