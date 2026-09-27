@@ -183,6 +183,38 @@ export const emergencyBrakeInputSchema = z
   .strict();
 export type EmergencyBrakeInput = z.infer<typeof emergencyBrakeInputSchema>;
 
+export const passengerDocumentsValueSchema = z.object({
+  passengerId: idSchema,
+  serviceClass: z.enum(['basic', 'comfort', 'business']),
+  ticket: z.object({
+    passengerName: z.string().min(1),
+    train: z.string().min(1),
+    date: z.string().min(1),
+    departureTime: z.string().min(1),
+    carriage: z.string().min(1),
+    seat: z.string().min(1),
+    documentType: z.string().min(1),
+    documentNumberMasked: z.string().min(1),
+    qrCode: z.string().min(1),
+    route: z.string().min(1).optional(),
+  }),
+  identity: z.object({
+    type: z.enum(['passport', 'identity-card']),
+    passengerName: z.string().min(1),
+    birthDate: z.string().min(1),
+    numberMasked: z.string().min(1),
+    photoVisualId: idSchema.optional(),
+  }),
+  canAdmit: z.boolean(),
+  canReject: z.boolean(),
+});
+export type PassengerDocumentsValue = z.infer<typeof passengerDocumentsValueSchema>;
+
+export const passengerBoardingInputSchema = z
+  .object({ decision: z.enum(['admit', 'reject']) })
+  .strict();
+export type PassengerBoardingInput = z.infer<typeof passengerBoardingInputSchema>;
+
 const acceptanceJournalFormSchema = z.object({
   kind: z.literal('acceptance-journal'),
   value: acceptanceJournalInputSchema,
@@ -203,11 +235,17 @@ const emergencyBrakeFormSchema = z.object({
   value: emergencyBrakeValueSchema,
 });
 
+const passengerDocumentsFormSchema = z.object({
+  kind: z.literal('passenger-documents'),
+  value: passengerDocumentsValueSchema,
+});
+
 export const actionFormSchema = z.discriminatedUnion('kind', [
   acceptanceJournalFormSchema,
   extinguisherInspectionFormSchema,
   climateControlFormSchema,
   emergencyBrakeFormSchema,
+  passengerDocumentsFormSchema,
 ]);
 export type ActionFormView = z.infer<typeof actionFormSchema>;
 

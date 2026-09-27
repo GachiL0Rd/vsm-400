@@ -69,7 +69,7 @@ function requireOfferedAction(
   return action;
 }
 
-function completeJournalForIncidentSetup(
+function completeJournalOnlyForSetup(
   worker: NonNullable<ReturnType<GameSessionHost['worker']>>,
 ): void {
   let offer = worker.projection.queryActions({
@@ -141,6 +141,16 @@ function completeJournalForIncidentSetup(
     actionHandle: returnJournal.handle,
   });
   worker.projection.advanceTo(secondsToSimTimeUs(5 * 60), worker.publicClock());
+}
+
+function completeJournalForIncidentSetup(
+  worker: NonNullable<ReturnType<GameSessionHost['worker']>>,
+): void {
+  completeJournalOnlyForSetup(worker);
+  worker.projection.attempt.decidePassengerBoarding('passenger-1', 'admit');
+  worker.projection.attempt.decidePassengerBoarding('passenger-2', 'admit');
+  worker.projection.attempt.decidePassengerBoarding('passenger-3', 'reject');
+  worker.projection.refresh(worker.publicClock());
 }
 
 async function authenticate(
@@ -439,6 +449,125 @@ describe('game server protocol integration', () => {
       const delta = expectType(rawDelta, 'delta');
       const player = delta.changes.entities?.upsert.find((entity) => entity.kind === 'player');
       expect(player?.heldItem).toBeDefined();
+    } finally {
+      socket.close();
+      await app.close();
+    }
+  });
+
+  it('round-trips passenger document inspection and boarding decisions through the real socket', async () => {
+    const host = new GameSessionHost({
+      platformGateway: new MockPlatformGateway({
+        attemptId: 'attempt-boarding',
+        gameLevelId: 'vsm-baseline-01',
+        mode: mockMode('live'),
+      }),
+      contentRegistry: new BaselineContentRegistry(),
+      resumeTokens: new InMemoryResumeTokenRegistry(),
+      disconnectDebounceMs: 1_000,
+      reconnectGraceMs: 30_000,
+    });
+    const app = createGameHttpServer(
+      parseServerConfig({ GAME_SERVER_PORT: '4174' }),
+      new CommonGameProtocolAdapter({ host }),
+    );
+    await app.listen(0);
+    const address = app.server.address() as AddressInfo;
+    const socket = new WebSocket(`ws://127.0.0.1:${address.port}/game-ws`);
+
+    try {
+      await open(socket);
+      const ready = await authenticate(socket, 'hello-boarding');
+      const worker = host.worker(ready.attemptId);
+      if (worker === undefined) throw new Error('Expected boarding worker');
+      completeJournalOnlyForSetup(worker);
+
+      const setupPromise = nextMessage(socket);
+      socket.send(
+        JSON.stringify({
+          protocolVersion: GAME_PROTOCOL_VERSION,
+          type: 'resync',
+          requestId: 'resync-boarding',
+          knownRevision: ready.snapshot.state.revision,
+        }),
+      );
+      let snapshot = expectType(await setupPromise, 'snapshot');
+      let revision = snapshot.state.revision;
+      expect(snapshot.state.phase).toEqual({ kind: 'origin-stop' });
+      expect(
+        snapshot.state.entities.find((entity) => entity.id === 'passenger-1')?.position,
+      ).toEqual({
+        kind: 'cell',
+        cellId: 'platform-origin.door',
+      });
+
+      for (const [passengerId, decision] of [
+        ['passenger-1', 'admit'],
+        ['passenger-2', 'admit'],
+        ['passenger-3', 'reject'],
+      ] as const) {
+        const offerPromise = nextMessage(socket);
+        socket.send(
+          JSON.stringify({
+            protocolVersion: GAME_PROTOCOL_VERSION,
+            type: 'query-actions',
+            requestId: `query-${passengerId}`,
+            knownRevision: revision,
+            target: { kind: 'entity', entityId: passengerId },
+          }),
+        );
+        const offer = expectType(await offerPromise, 'action-offer');
+        const documents = requireOfferedAction(
+          offer,
+          (action) => action.form?.kind === 'passenger-documents',
+          'passenger documents',
+        );
+        expect(JSON.stringify(documents)).not.toContain('expectedBoardingDecision');
+        if (passengerId === 'passenger-3') {
+          expect(documents.form).toMatchObject({
+            kind: 'passenger-documents',
+            value: {
+              ticket: { passengerName: 'Алексей Сидоров' },
+              identity: { passengerName: 'Андрей Сидоров' },
+            },
+          });
+        }
+
+        const resultPromise = nextMessages(socket, 2);
+        socket.send(
+          JSON.stringify({
+            protocolVersion: GAME_PROTOCOL_VERSION,
+            type: 'invoke-action',
+            requestId: `decide-${passengerId}`,
+            knownRevision: revision,
+            actionHandle: documents.handle,
+            input: { decision },
+          }),
+        );
+        const [resultRaw, deltaRaw] = await resultPromise;
+        expect(expectType(resultRaw, 'command-result')).toMatchObject({ status: 'accepted' });
+        revision = expectType(deltaRaw, 'delta').revision;
+      }
+
+      worker.projection.advanceTo(secondsToSimTimeUs(35 * 60), worker.publicClock());
+      const finalPromise = nextMessage(socket);
+      socket.send(
+        JSON.stringify({
+          protocolVersion: GAME_PROTOCOL_VERSION,
+          type: 'resync',
+          requestId: 'resync-after-boarding',
+          knownRevision: revision,
+        }),
+      );
+      snapshot = expectType(await finalPromise, 'snapshot');
+      expect(snapshot.state.phase).toEqual({ kind: 'travel', nextStopIndex: 0 });
+      expect(snapshot.state.entities.some((entity) => entity.id === 'passenger-3')).toBe(false);
+      expect(
+        snapshot.state.entities.find((entity) => entity.id === 'passenger-1')?.position,
+      ).toEqual({
+        kind: 'cell',
+        cellId: 'carriage.seat-1',
+      });
     } finally {
       socket.close();
       await app.close();

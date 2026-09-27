@@ -8,12 +8,39 @@ const versionSchema = z.string().min(1);
 const simTimeSchema = z.number().int().nonnegative();
 const serviceClassSchema = z.enum(['basic', 'comfort', 'business']);
 
+const ticketDocumentSchema = z.object({
+  passengerName: z.string().min(1),
+  train: z.string().min(1),
+  date: z.string().min(1),
+  departureTime: z.string().min(1),
+  carriage: z.string().min(1),
+  seat: z.string().min(1),
+  documentType: z.string().min(1),
+  documentNumberMasked: z.string().min(1),
+  qrCode: z.string().min(1),
+  route: z.string().min(1).optional(),
+});
+
+const identityDocumentSchema = z.object({
+  type: z.enum(['passport', 'identity-card']),
+  passengerName: z.string().min(1),
+  birthDate: z.string().min(1),
+  numberMasked: z.string().min(1),
+  photoVisualId: idSchema.optional(),
+});
+
 const passengerSchema = z.object({
   id: idSchema,
   serviceClass: serviceClassSchema,
   traits: z.array(idSchema).default([]),
   seatCellId: idSchema,
+  boardingCellId: idSchema,
   appearanceId: idSchema.optional(),
+  documents: z.object({
+    ticket: ticketDocumentSchema,
+    identity: identityDocumentSchema,
+  }),
+  expectedBoardingDecision: z.enum(['admit', 'reject']),
 });
 
 const passengerFlowSchema = z.object({
@@ -201,21 +228,90 @@ export const BASELINE_SCENARIO_DEFINITION = {
       serviceClass: 'basic',
       traits: ['awake'],
       seatCellId: 'carriage.seat-1',
+      boardingCellId: 'platform-origin.door',
       appearanceId: 'passenger.demo-1',
+      documents: {
+        ticket: {
+          passengerName: 'Иван Петров',
+          train: 'ВСМ-001',
+          date: '2026-09-27',
+          departureTime: '12:00',
+          carriage: '1',
+          seat: '1A',
+          documentType: 'Паспорт',
+          documentNumberMasked: '**** 1234',
+          qrCode: 'ticket-passenger-1',
+          route: 'Москва — Санкт-Петербург',
+        },
+        identity: {
+          type: 'passport',
+          passengerName: 'Иван Петров',
+          birthDate: '1990-04-12',
+          numberMasked: '**** 1234',
+          photoVisualId: 'portrait.passenger.demo-1',
+        },
+      },
+      expectedBoardingDecision: 'admit',
     },
     {
       id: 'passenger-2',
       serviceClass: 'comfort',
       traits: ['awake', 'hungry'],
       seatCellId: 'carriage.seat-2',
+      boardingCellId: 'platform-origin.door',
       appearanceId: 'passenger.demo-2',
+      documents: {
+        ticket: {
+          passengerName: 'Мария Волкова',
+          train: 'ВСМ-001',
+          date: '2026-09-27',
+          departureTime: '12:00',
+          carriage: '1',
+          seat: '2A',
+          documentType: 'Паспорт',
+          documentNumberMasked: '**** 5678',
+          qrCode: 'ticket-passenger-2',
+          route: 'Москва — Санкт-Петербург',
+        },
+        identity: {
+          type: 'passport',
+          passengerName: 'Мария Волкова',
+          birthDate: '1988-11-03',
+          numberMasked: '**** 5678',
+          photoVisualId: 'portrait.passenger.demo-2',
+        },
+      },
+      expectedBoardingDecision: 'admit',
     },
     {
       id: 'passenger-3',
       serviceClass: 'business',
       traits: ['awake', 'thirsty', 'impatient'],
       seatCellId: 'carriage.seat-3',
+      boardingCellId: 'platform-origin.door',
       appearanceId: 'passenger.demo-3',
+      documents: {
+        ticket: {
+          passengerName: 'Алексей Сидоров',
+          train: 'ВСМ-001',
+          date: '2026-09-27',
+          departureTime: '12:00',
+          carriage: '1',
+          seat: '3A',
+          documentType: 'Паспорт',
+          documentNumberMasked: '**** 9012',
+          qrCode: 'ticket-passenger-3',
+          route: 'Москва — Санкт-Петербург',
+        },
+        identity: {
+          type: 'passport',
+          passengerName: 'Андрей Сидоров',
+          birthDate: '1994-07-21',
+          numberMasked: '**** 9012',
+          photoVisualId: 'portrait.passenger.demo-3',
+        },
+      },
+      expectedBoardingDecision: 'reject',
     },
   ],
   incidents: [
@@ -335,6 +431,7 @@ function validatePassengers(definition: ScenarioDefinition, level: LoadedLevel):
   const levelCells = new Set(level.grid.cells.map((cell) => cell.id));
   for (const passenger of definition.passengers) {
     requireKnown(levelCells, passenger.seatCellId, `seat for ${passenger.id}`);
+    requireKnown(levelCells, passenger.boardingCellId, `boarding cell for ${passenger.id}`);
     if (passenger.traits.includes(passenger.serviceClass)) {
       throw new RangeError(`Passenger ${passenger.id} duplicates its service-class trait`);
     }

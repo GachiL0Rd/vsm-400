@@ -10,6 +10,7 @@ import type {
   GameSnapshotMessage,
   InvokeActionCommand,
   MoveToCommand,
+  PassengerBoardingInput,
   PublicClockView,
   PublicEntityView,
   PublicGameState,
@@ -24,6 +25,7 @@ import {
   emergencyBrakeInputSchema,
   extinguisherInspectionInputSchema,
   GAME_PROTOCOL_VERSION,
+  passengerBoardingInputSchema,
 } from '../common/game-wire';
 import type { EntityId, EntityState } from '../simulation/entity-store';
 import type { GameAttempt, GameAttemptSnapshot } from '../simulation/game-attempt';
@@ -48,7 +50,12 @@ export type RecordedGameplayCommand =
   | { readonly kind: 'return-extinguisher' }
   | { readonly kind: 'use-extinguisher'; readonly targetId: string }
   | { readonly kind: 'inspect-climate'; readonly value: ClimateControlInput }
-  | { readonly kind: 'inspect-emergency-brake'; readonly value: EmergencyBrakeInput };
+  | { readonly kind: 'inspect-emergency-brake'; readonly value: EmergencyBrakeInput }
+  | {
+      readonly kind: 'decide-passenger-boarding';
+      readonly targetId: EntityId;
+      readonly value: PassengerBoardingInput;
+    };
 
 type RuntimeOperation =
   | Exclude<
@@ -57,11 +64,13 @@ type RuntimeOperation =
       | { readonly kind: 'inspect-extinguisher' }
       | { readonly kind: 'inspect-climate' }
       | { readonly kind: 'inspect-emergency-brake' }
+      | { readonly kind: 'decide-passenger-boarding' }
     >
   | { readonly kind: 'edit-journal-form' }
   | { readonly kind: 'inspect-extinguisher-form' }
   | { readonly kind: 'inspect-climate-form' }
-  | { readonly kind: 'inspect-emergency-brake-form' };
+  | { readonly kind: 'inspect-emergency-brake-form' }
+  | { readonly kind: 'decide-passenger-boarding-form'; readonly targetId: EntityId };
 
 interface RuntimeAction {
   readonly sortKey: string;
@@ -328,6 +337,9 @@ export class PublicGameProjection {
         this.attempt.inspectEmergencyBrake();
         if (operation.value.action === 'remove-seal') this.attempt.removeEmergencyBrakeSeal();
         else this.attempt.activateEmergencyBrake();
+        return;
+      case 'decide-passenger-boarding':
+        this.attempt.decidePassengerBoarding(operation.targetId, operation.value.decision);
         return;
     }
   }
@@ -638,11 +650,40 @@ function collectEntityActions(
   targetId: EntityId,
 ): RuntimeAction[] {
   if (targetId === player.id) return collectPlayerActions(snapshot, player);
-  if (player.heldItemId === undefined || player.position.kind !== 'cell') return [];
+  if (player.position.kind !== 'cell') return [];
   const target = snapshot.entities.find((entity) => entity.id === targetId);
   if (target?.kind !== 'passenger' || target.position.kind !== 'cell') return [];
-  if (!withinInteractionRange(attempt, snapshot, player.position.cellId, target.position.cellId))
+  if (!withinInteractionRange(attempt, snapshot, player.position.cellId, target.position.cellId)) {
     return [];
+  }
+
+  if (snapshot.phase.kind === 'origin-stop' && attempt.boardingDecision(target.id) === 'pending') {
+    const passenger = attempt.scenario.passenger(target.id);
+    return [
+      {
+        sortKey: `boarding/documents/${target.id}`,
+        view: {
+          uiKind: 'form',
+          label: 'Проверить документы',
+          target: { kind: 'entity', entityId: target.id },
+          form: {
+            kind: 'passenger-documents',
+            value: {
+              passengerId: passenger.id,
+              serviceClass: passenger.serviceClass,
+              ticket: passenger.documents.ticket,
+              identity: passenger.documents.identity,
+              canAdmit: true,
+              canReject: true,
+            },
+          },
+        },
+        operation: { kind: 'decide-passenger-boarding-form', targetId: target.id },
+      },
+    ];
+  }
+
+  if (player.heldItemId === undefined) return [];
   const consumable = snapshot.items.consumables.find((item) => item.id === player.heldItemId);
   if (consumable === undefined || consumable.location !== 'held') return [];
   return [
@@ -756,6 +797,13 @@ function resolveOperation(template: RuntimeOperation, input: unknown): RecordedG
   }
   if (template.kind === 'inspect-emergency-brake-form') {
     return { kind: 'inspect-emergency-brake', value: emergencyBrakeInputSchema.parse(input) };
+  }
+  if (template.kind === 'decide-passenger-boarding-form') {
+    return {
+      kind: 'decide-passenger-boarding',
+      targetId: template.targetId,
+      value: passengerBoardingInputSchema.parse(input),
+    };
   }
   if (input !== undefined) throw new RangeError('This action does not accept input');
   return template;

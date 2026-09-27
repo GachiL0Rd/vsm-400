@@ -29,6 +29,20 @@ function completeJournal(
   attempt.returnJournal();
 }
 
+function resolveOriginBoarding(
+  attempt: GameAttempt,
+  decisions: Partial<
+    Record<'passenger-1' | 'passenger-2' | 'passenger-3', 'admit' | 'reject'>
+  > = {},
+): void {
+  for (const passengerId of ['passenger-1', 'passenger-2', 'passenger-3'] as const) {
+    attempt.decidePassengerBoarding(
+      passengerId,
+      decisions[passengerId] ?? (passengerId === 'passenger-3' ? 'reject' : 'admit'),
+    );
+  }
+}
+
 function scenarioWithoutIncidents() {
   return loadScenarioDefinition({ ...BASELINE_SCENARIO_DEFINITION, incidents: [] }, BASELINE_LEVEL);
 }
@@ -36,6 +50,7 @@ function scenarioWithoutIncidents() {
 function prepareForBaselineFire(attempt: GameAttempt): void {
   completeJournal(attempt);
   attempt.advanceTo(secondsToSimTimeUs(5 * 60));
+  resolveOriginBoarding(attempt);
   follow(attempt, ['origin-desk-door:forward', 'origin-door-entry:forward', 'entry-cabin:forward']);
   attempt.takeExtinguisher();
   attempt.prepareExtinguisher();
@@ -54,12 +69,12 @@ describe('GameAttempt', () => {
     expect(attempt.snapshot().entities.map((entity) => entity.id)).toEqual([
       'passenger-1',
       'passenger-2',
-      'passenger-3',
       'player',
     ]);
-    for (const passengerId of ['passenger-1', 'passenger-2', 'passenger-3']) {
+    for (const passengerId of ['passenger-1', 'passenger-2']) {
       expect(attempt.entities.get(passengerId).currentAction).toBeDefined();
     }
+    expect(() => attempt.entities.get('passenger-3')).toThrow(/Unknown entity/);
 
     const fireAt = secondsToSimTimeUs(45 * 60);
     attempt.advanceTo(fireAt);
@@ -105,6 +120,7 @@ describe('GameAttempt', () => {
     const attempt = new GameAttempt({ rootSeed: 4 });
     completeJournal(attempt);
     attempt.advanceTo(secondsToSimTimeUs(5 * 60));
+    resolveOriginBoarding(attempt, { 'passenger-3': 'admit' });
 
     const passenger = attempt.entities.get('passenger-3');
     expect(passenger.traits).toContain('thirsty');
@@ -136,6 +152,34 @@ describe('GameAttempt', () => {
     expect(completesAt).not.toBeNull();
     attempt.advanceTo(completesAt ?? attempt.time);
     expect(attempt.entities.get('passenger-3').traits).not.toContain('thirsty');
+  });
+
+  it('gates origin departure on explicit passenger document decisions', () => {
+    const attempt = new GameAttempt({ rootSeed: 31, scenario: scenarioWithoutIncidents() });
+    completeJournal(attempt);
+    attempt.advanceTo(secondsToSimTimeUs(5 * 60));
+
+    expect(attempt.phase).toEqual({ kind: 'origin-stop' });
+    expect(attempt.boardingDecision('passenger-1')).toBe('pending');
+    expect(attempt.entities.get('passenger-1').position).toEqual({
+      kind: 'cell',
+      cellId: 'platform-origin.door',
+    });
+
+    attempt.advanceTo(secondsToSimTimeUs(35 * 60));
+    expect(attempt.phase).toEqual({ kind: 'origin-stop' });
+
+    expect(attempt.decidePassengerBoarding('passenger-1', 'admit')).toBe('admit');
+    expect(attempt.entities.get('passenger-1').position).toEqual({
+      kind: 'cell',
+      cellId: 'carriage.seat-1',
+    });
+    expect(attempt.entities.get('passenger-1').currentAction).toBeDefined();
+
+    attempt.decidePassengerBoarding('passenger-2', 'admit');
+    attempt.decidePassengerBoarding('passenger-3', 'reject');
+    expect(() => attempt.entities.get('passenger-3')).toThrow(/Unknown entity/);
+    expect(attempt.phase).toEqual({ kind: 'travel', nextStopIndex: 0 });
   });
 
   it('gates departure on a completed and returned acceptance journal', () => {
@@ -179,6 +223,7 @@ describe('GameAttempt', () => {
 
     completeJournal(attempt);
     expect(attempt.phase).toEqual({ kind: 'origin-stop' });
+    resolveOriginBoarding(attempt);
 
     const shiftedEnd =
       attempt.scenario.normalEndTimeUs +
@@ -216,6 +261,8 @@ describe('GameAttempt', () => {
   it('terminates when the baseline fire is ignored until it becomes critical', () => {
     const attempt = new GameAttempt({ rootSeed: 12 });
     completeJournal(attempt);
+    attempt.advanceTo(secondsToSimTimeUs(5 * 60));
+    resolveOriginBoarding(attempt);
     attempt.advanceTo(secondsToSimTimeUs(50 * 60));
 
     expect(attempt.termination).toEqual({
@@ -272,6 +319,8 @@ describe('GameAttempt', () => {
     const scenario = loadScenarioDefinition(definition, BASELINE_LEVEL);
     const attempt = new GameAttempt({ rootSeed: 22, scenario });
     completeJournal(attempt);
+    attempt.advanceTo(secondsToSimTimeUs(5 * 60));
+    resolveOriginBoarding(attempt);
     attempt.advanceTo(secondsToSimTimeUs(35 * 60 + 2));
 
     expect(attempt.termination).toMatchObject({
@@ -284,6 +333,8 @@ describe('GameAttempt', () => {
   it('requires the emergency-brake seal to be removed before a controlled stop', () => {
     const attempt = new GameAttempt({ rootSeed: 24, scenario: scenarioWithoutIncidents() });
     completeJournal(attempt);
+    attempt.advanceTo(secondsToSimTimeUs(5 * 60));
+    resolveOriginBoarding(attempt);
     attempt.advanceTo(secondsToSimTimeUs(35 * 60));
 
     expect(attempt.phase).toEqual({ kind: 'travel', nextStopIndex: 0 });
