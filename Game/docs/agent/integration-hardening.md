@@ -66,9 +66,9 @@ The following remain baseline/product work, not blockers for freezing integratio
 
 Once the hardening batches above are stable, create and maintain the following normative integration documentation.
 
-### D1 — WebSocket protocol reference
+### D1 — WebSocket protocol reference: complete
 
-Target: `docs/user/api/websocket-protocol.md`.
+Implemented at `docs/user/api/websocket-protocol.md`.
 
 Document the actual protocol implemented by `src/common` and the server adapter:
 
@@ -84,7 +84,7 @@ Document the actual protocol implemented by `src/common` and the server adapter:
 
 The document must follow schemas/tests; it must not become a second manually maintained protocol definition.
 
-### D2 — Platform Server OpenAPI/Swagger
+### D2 — Platform Server OpenAPI/Swagger: in progress
 
 Targets:
 

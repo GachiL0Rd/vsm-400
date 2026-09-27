@@ -8,7 +8,7 @@
 
 Документ определяет границу Browser Client, Game Server и внешнего Platform Server.
 
-Детальный HTTP/service contract вынесен в `architecture/platform-contract.md`. Режимы live/guided/replay — в `architecture/session-modes.md`.
+Детальный Browser ↔ Game Server wire contract зафиксирован в [`../api/websocket-protocol.md`](../api/websocket-protocol.md). HTTP/service contract Platform Server вынесен в `architecture/platform-contract.md` и [`../api/platform-openapi.yaml`](../api/platform-openapi.yaml). Режимы live/guided/replay — в `architecture/session-modes.md`.
 
 ## 2. Ответственность компонентов
 

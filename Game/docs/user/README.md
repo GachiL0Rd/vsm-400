@@ -15,12 +15,14 @@
 3. [`vsm_baseline_vertical_slice.md`](vsm_baseline_vertical_slice.md) — первый вертикальный срез.
 4. [`architecture/repository-structure.md`](architecture/repository-structure.md) — границы `common / simulation / server / client`.
 5. [`architecture/client-server.md`](architecture/client-server.md) — Browser ↔ Game Server ↔ Platform Server.
-6. [`architecture/platform-contract.md`](architecture/platform-contract.md) — минимальный контракт внешней платформы.
-7. [`architecture/session-modes.md`](architecture/session-modes.md) — live/guided/replay и protocol extensions.
-8. [`architecture/replay.md`](architecture/replay.md) — deterministic replay, seek и checkpoints.
-9. [`simulation/README.md`](simulation/README.md) — карта документов движка, включая минимальную Entity/Traits/Actions модель.
-10. [`implementation/README.md`](implementation/README.md) — конкретная реализация текущего demo: объекты, модалки, held-items, ассеты, environment-state, уровни обслуживания и план рейса.
-11. [`engineering/library-candidates.md`](engineering/library-candidates.md) — ненормативные dependency candidates.
+6. [`api/websocket-protocol.md`](api/websocket-protocol.md) — фактический Browser ↔ Game Server protocol v1.
+7. [`api/platform-openapi.yaml`](api/platform-openapi.yaml) — Swagger/OpenAPI Game Server ↔ Platform Server.
+8. [`architecture/platform-contract.md`](architecture/platform-contract.md) — семантика внешнего platform contract.
+9. [`architecture/session-modes.md`](architecture/session-modes.md) — live/guided/replay и protocol extensions.
+10. [`architecture/replay.md`](architecture/replay.md) — deterministic replay, seek и checkpoints.
+11. [`simulation/README.md`](simulation/README.md) — карта документов движка, включая минимальную Entity/Traits/Actions модель.
+12. [`implementation/README.md`](implementation/README.md) — конкретная реализация текущего demo: объекты, модалки, held-items, ассеты, environment-state, уровни обслуживания и план рейса.
+13. [`engineering/library-candidates.md`](engineering/library-candidates.md) — ненормативные dependency candidates.
 
 ## Нормативная граница
 
