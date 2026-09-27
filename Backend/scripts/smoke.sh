@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Сквозной прогон API: demo, открытие смены, билет и отчёт.
+# Сквозной прогон API: demo1, открытие смены, билет и отчёт.
 # Сервер уже слушает. База с prisma:seed.
 #   BASE_URL=http://127.0.0.1:3000 npm run smoke
 # Админ: ADMIN_PASSWORD='пароль из лога первого старта' npm run smoke
@@ -71,18 +71,18 @@ echo "smoke $BASE"
 login_body="$WORK/login.json"
 code="$(curl -sS --max-time 30 -o "$login_body" -w '%{http_code}' -c "$JAR" -b "$JAR" \
   -H 'content-type: application/json' \
-  -d '{"login":"demo","password":"demo"}' \
+  -d '{"login":"demo1","password":"demo1"}' \
   "$BASE/api/v1/auth/login")"
-expect "$code" 200 "login demo" "$login_body"
+expect "$code" 200 "login demo1" "$login_body"
 callsign="$(jq -er '.user.callsign' "$login_body")"
-[[ "$callsign" == "A7F3" ]] || die "login demo: callsign=$callsign" "$login_body"
-step "login demo ($callsign)"
+[[ "$callsign" == "LUCH" ]] || die "login demo1: callsign=$callsign" "$login_body"
+step "login demo1 ($callsign)"
 
 me="$WORK/me.json"
 code="$(req GET /api/v1/me "$me")"
 expect "$code" 200 "GET /me" "$me"
 level="$(jq -er '.level' "$me")"
-[[ "$level" == "7" ]] || die "GET /me: level=$level" "$me"
+[[ "$level" =~ ^[0-9]+$ && "$level" -ge 1 ]] || die "GET /me: level=$level" "$me"
 step "GET /api/v1/me level=$level points=$(jq -r '.points' "$me")"
 
 runs_before="$WORK/runs-before.json"

@@ -1,6 +1,4 @@
-import type { EventEmitter2 } from '@nestjs/event-emitter';
 import { activePoints, nearestExpiry } from '../../src/cabinet/points';
-import { ASSIGNMENT_CREATED } from '../../src/common/events';
 import { NotificationKind } from '../../src/generated/prisma/client';
 import type { NotificationsService } from '../../src/notifications/notifications.service';
 import { EXPIRY_HINT, expiryTitle } from '../../src/notifications/ru-format';
@@ -8,11 +6,9 @@ import type { PrismaService } from '../../src/prisma/prisma.service';
 import { addDays, atMoscow, moscowYmd } from './dates';
 
 const DAY_MS = 86_400_000;
-const EXPIRING_POINTS = 120;
 
 type FinishDeps = {
   prisma: PrismaService;
-  events: EventEmitter2;
   notifications: NotificationsService;
   now: Date;
 };
@@ -28,62 +24,45 @@ type NoticeDraft = {
 };
 
 /**
- * 120 баллов — ближайшее сгорание, как в кабинете demo.
- * Сумма начислений не меняется: от большого RUN отрезается кусок с более ранним expiresAt.
+ * Кабинет demo1: ближайшее сгорание — целое начисление за рейс через 3 дня.
+ * Сумма баллов не режется: у самого крупного RUN только сдвигается срок.
  */
-export async function finishDemo(deps: FinishDeps, demoId: string, chiefId: string): Promise<void> {
-  await carveExpiring(deps, demoId);
-  await ensureNotices(deps, demoId);
-  await assignTomorrow(deps, demoId, chiefId);
+export async function finishDemo(deps: FinishDeps, userId: string): Promise<void> {
+  await carveExpiring(deps, userId);
+  await ensureNotices(deps, userId);
+  await assignTomorrow(deps, userId);
 }
 
-async function carveExpiring(deps: FinishDeps, demoId: string): Promise<void> {
+async function carveExpiring(deps: FinishDeps, userId: string): Promise<void> {
   const soon = new Date(deps.now.getTime() + 3 * DAY_MS);
   const rows = await deps.prisma.pointLedger.findMany({
-    where: { userId: demoId, amount: { gt: 0 }, expiredAt: null },
+    where: { userId, amount: { gt: 0 }, reason: 'RUN', expiredAt: null },
     orderBy: { amount: 'desc' },
   });
-  const host = rows.find((row) => row.amount >= EXPIRING_POINTS);
+  const host = rows[0];
   if (!host) {
-    throw new Error('У demo нет начисления на 120 баллов');
+    throw new Error('У demo1 нет начисления за рейс');
   }
-  if (host.amount === EXPIRING_POINTS) {
-    await deps.prisma.pointLedger.update({
-      where: { id: host.id },
-      data: { expiresAt: soon },
-    });
-  } else {
-    await deps.prisma.pointLedger.update({
-      where: { id: host.id },
-      data: { amount: host.amount - EXPIRING_POINTS },
-    });
-    await deps.prisma.pointLedger.create({
-      data: {
-        userId: demoId,
-        amount: EXPIRING_POINTS,
-        reason: host.reason,
-        runId: host.runId,
-        createdAt: host.createdAt,
-        expiresAt: soon,
-      },
-    });
-  }
-  const ledger = await loadLedger(deps.prisma, demoId);
+  await deps.prisma.pointLedger.update({
+    where: { id: host.id },
+    data: { expiresAt: soon },
+  });
+  const ledger = await loadLedger(deps.prisma, userId);
   const expiry = nearestExpiry(ledger, deps.now);
-  if (expiry?.points !== EXPIRING_POINTS) {
-    throw new Error(`Сгорание demo ${expiry?.points ?? 'нет'}, нужно 120`);
+  if (expiry?.points !== host.amount) {
+    throw new Error(`Сгорание demo1 ${expiry?.points ?? 'нет'}, нужно ${host.amount}`);
   }
-  const notice = await deps.notifications.create(demoId, {
+  const notice = await deps.notifications.create(userId, {
     kind: NotificationKind.expiring,
-    title: expiryTitle(EXPIRING_POINTS, soon),
+    title: expiryTitle(host.amount, soon),
     text: EXPIRY_HINT,
-    dedupKey: 'seed:demo:expiring',
+    dedupKey: 'seed:demo1:expiring',
   });
   await deps.prisma.notification.update({
     where: { id: notice.id },
     data: { createdAt: new Date(deps.now.getTime() - 2 * 60 * 60 * 1000) },
   });
-  console.log(`demo: активные баллы ${activePoints(ledger, deps.now)}, сгорает ${expiry.points}`);
+  console.log(`demo1: активные баллы ${activePoints(ledger, deps.now)}, сгорает ${expiry.points}`);
 }
 
 async function loadLedger(prisma: PrismaService, userId: string) {
@@ -99,73 +78,106 @@ async function loadLedger(prisma: PrismaService, userId: string) {
   }));
 }
 
-async function ensureNotices(deps: FinishDeps, demoId: string): Promise<void> {
+async function ensureNotices(deps: FinishDeps, userId: string): Promise<void> {
   const run = await deps.prisma.run.findFirst({
-    where: { userId: demoId },
+    where: { userId },
     orderBy: { finishedAt: 'desc' },
     select: { id: true },
   });
   const drafts: NoticeDraft[] = [
     {
       kind: NotificationKind.advice,
-      title: 'Эскалация ниже среднего по депо',
-      text: 'В следующем рейсе будет техническая неисправность, о которой нужно доложить.',
-      dedupKey: 'seed:demo:advice',
+      title: 'Журнал приёмки',
+      text: 'Отмечать неисправность только после осмотра. Ложная отметка снимает вагон с рейса.',
+      dedupKey: 'seed:demo1:advice',
       hoursAgo: 5,
       unread: true,
     },
     {
       kind: NotificationKind.scenario,
-      title: 'Добавлены две ситуации',
-      text: 'Задымление в тамбуре и пассажир без билета на промежуточной станции.',
-      dedupKey: 'seed:demo:scenario',
+      title: 'Уровень рейса',
+      text: 'Приёмка, посадка, путь: сервис, пожар в салоне и утечка давления.',
+      dedupKey: 'seed:demo1:level',
       hoursAgo: 24,
       unread: true,
     },
     {
       kind: NotificationKind.challenge,
-      title: 'Неделя своевременных докладов',
-      text: 'Бригады депо соревнуются до воскресенья. Бригада 12 идёт второй из 14.',
-      dedupKey: 'seed:demo:challenge',
+      title: 'Неделя бригады 12',
+      text: 'До воскресенья считаются потушенные очаги и верные решения о посадке.',
+      dedupKey: 'seed:demo1:challenge',
       hoursAgo: 48,
-      unread: false,
-    },
-    {
-      kind: NotificationKind.overtaken,
-      title: '#Q81B поднялся на 2-е место в бригаде',
-      text: 'Вы на 3-м месте, разница 415 баллов.',
-      dedupKey: 'seed:demo:overtaken',
-      hoursAgo: 72,
       unread: false,
     },
   ];
   for (const draft of drafts) {
-    await putNotice(deps, demoId, draft);
+    await putNotice(deps, userId, draft);
+  }
+  const leader = await brigadeLeader(deps.prisma, userId);
+  if (leader) {
+    await putNotice(deps, userId, {
+      kind: NotificationKind.overtaken,
+      title: `#${leader.callsign} впереди в бригаде`,
+      text: `Разница ${leader.gap} баллов за текущий сезон.`,
+      dedupKey: 'seed:demo1:overtaken',
+      hoursAgo: 72,
+      unread: false,
+    });
   }
   const earned = await deps.prisma.notification.findFirst({
-    where: { userId: demoId, kind: NotificationKind.achievement },
+    where: { userId, kind: NotificationKind.achievement },
     select: { id: true },
   });
   if (!earned) {
-    await putNotice(deps, demoId, {
+    await putNotice(deps, userId, {
       kind: NotificationKind.achievement,
-      title: 'Получен знак «До посадки»',
-      text: 'Табло аварийного выхода найдено на приёмке.',
-      dedupKey: 'seed:demo:achievement',
+      title: 'Знак за рейс',
+      text: 'Знак ставится по итогам живого рейса, когда условия выполнены.',
+      dedupKey: 'seed:demo1:achievement',
       hoursAgo: 96,
       unread: false,
       ...(run ? { link: `/runs/${run.id}` } : {}),
     });
   }
-  // Иначе знаки рейсов с createdAt=now вытесняют challenge со страницы кабинета.
   const aged = new Date(deps.now.getTime() - 8 * DAY_MS);
   await deps.prisma.$executeRaw`
     UPDATE notification
     SET "createdAt" = ${aged}
-    WHERE "userId" = CAST(${demoId} AS uuid)
+    WHERE "userId" = CAST(${userId} AS uuid)
       AND kind::text <> 'assignment'
-      AND ("dedupKey" IS NULL OR "dedupKey" NOT LIKE 'seed:demo:%')
+      AND ("dedupKey" IS NULL OR "dedupKey" NOT LIKE 'seed:demo1:%')
   `;
+}
+
+async function brigadeLeader(
+  prisma: PrismaService,
+  userId: string,
+): Promise<{ callsign: string; gap: number } | null> {
+  const me = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { brigadeId: true },
+  });
+  if (!me?.brigadeId) {
+    return null;
+  }
+  const season = await prisma.season.findFirst({
+    orderBy: { startsAt: 'desc' },
+    select: { id: true },
+  });
+  if (!season) {
+    return null;
+  }
+  const rows = await prisma.seasonScore.findMany({
+    where: { seasonId: season.id, user: { brigadeId: me.brigadeId } },
+    orderBy: { points: 'desc' },
+    select: { userId: true, points: true, user: { select: { callsign: true } } },
+  });
+  const mine = rows.find((row) => row.userId === userId);
+  const top = rows.find((row) => row.userId !== userId);
+  if (!mine || !top || top.points <= mine.points) {
+    return null;
+  }
+  return { callsign: top.user.callsign, gap: top.points - mine.points };
 }
 
 async function putNotice(deps: FinishDeps, userId: string, draft: NoticeDraft): Promise<void> {
@@ -183,46 +195,21 @@ async function putNotice(deps: FinishDeps, userId: string, draft: NoticeDraft): 
   });
 }
 
-async function assignTomorrow(deps: FinishDeps, demoId: string, chiefId: string): Promise<void> {
+async function assignTomorrow(deps: FinishDeps, userId: string): Promise<void> {
   const tomorrow = addDays(moscowYmd(deps.now), 1);
-  const created = await deps.prisma.shiftAssignment.create({
+  await deps.prisma.shiftAssignment.create({
     data: {
-      userId: demoId,
-      assignedById: chiefId,
-      train: 'ВСМ 707',
+      userId,
+      train: 'ВСМ-001',
       fromStation: 'Москва',
       toStation: 'Санкт-Петербург',
-      stops: ['Тверь', 'Бологое'],
-      car: 4,
+      stops: ['Тверь'],
+      car: 1,
       carClass: 'BUSINESS',
-      departureAt: atMoscow(tomorrow, 9, 30),
-      focus: ['escalation', 'detection'],
-      scenarioIds: ['ride-pressure', 'accept-kit-fault'],
+      departureAt: atMoscow(tomorrow, 12, 0),
+      focus: ['safety', 'service'],
+      scenarioIds: [],
       status: 'PLANNED',
     },
-  });
-  await deps.events.emitAsync(ASSIGNMENT_CREATED, {
-    assignmentId: created.id,
-    userId: demoId,
-    assignedById: chiefId,
-    scenarioIds: created.scenarioIds.slice(),
-  });
-  await sleep(300);
-  const dedupKey = `assignment:${created.id}`;
-  const existing = await deps.prisma.notification.findUnique({ where: { dedupKey } });
-  if (existing) {
-    return;
-  }
-  await deps.notifications.create(demoId, {
-    kind: NotificationKind.assignment,
-    title: 'Назначен сценарий',
-    text: created.scenarioIds.join(', '),
-    dedupKey,
-  });
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(resolve, ms);
   });
 }

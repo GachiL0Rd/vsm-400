@@ -11,6 +11,7 @@ export const TEST_DATABASE_NAMES = {
   scenarios: 'vsm_scenarios',
   progression: 'vsm_progression',
   llm: 'vsm_llm_core',
+  seed: 'vsm_seed',
 } as const;
 
 export type TestDatabase = keyof typeof TEST_DATABASE_NAMES;
@@ -27,6 +28,7 @@ export const TEST_REDIS_DB: Record<TestDatabase, number> = {
   progression: 5,
   scenarios: 6,
   llm: 15,
+  seed: 7,
 };
 
 const DB_NAME = /^[a-z_][a-z0-9_]*$/;
