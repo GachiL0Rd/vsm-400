@@ -76,6 +76,43 @@ describe('loadConfig', () => {
     ).toBe(false);
   });
 
+  it('по умолчанию LLM выключен, gigachat без ключа не стартует', () => {
+    const config = loadConfig(valid);
+    expect(config.llmProvider).toBe('none');
+    expect(config.llmTimeoutMs).toBe(90_000);
+    expect(config.llmConcurrency).toBe(2);
+    expect(config.gigachatScope).toBe('GIGACHAT_API_PERS');
+
+    expect(() => loadConfig({ ...valid, LLM_PROVIDER: 'gigachat', LLM_MODEL: 'GigaChat' })).toThrow(
+      /GIGACHAT_AUTH_KEY/,
+    );
+    expect(() =>
+      loadConfig({
+        ...valid,
+        LLM_PROVIDER: 'gigachat',
+        LLM_MODEL: 'GigaChat',
+        GIGACHAT_AUTH_KEY: 'base64key',
+      }),
+    ).toThrow(/GIGACHAT_CA_FILE/);
+    expect(() =>
+      loadConfig({ ...valid, LLM_PROVIDER: 'openai-compatible', LLM_MODEL: 'local' }),
+    ).toThrow(/LLM_BASE_URL/);
+
+    const gigachat = loadConfig({
+      ...valid,
+      LLM_PROVIDER: 'gigachat',
+      LLM_MODEL: 'GigaChat',
+      GIGACHAT_AUTH_KEY: 'base64key',
+      GIGACHAT_CA_FILE: '/tmp/ca.pem',
+      GIGACHAT_SCOPE: 'GIGACHAT_API_B2B',
+      LLM_CONCURRENCY: '4',
+    });
+    expect(gigachat.llmProvider).toBe('gigachat');
+    expect(gigachat.gigachatAuthKey).toBe('base64key');
+    expect(gigachat.gigachatScope).toBe('GIGACHAT_API_B2B');
+    expect(gigachat.llmConcurrency).toBe(4);
+  });
+
   it('разбирает allowlist вебхуков и считает пустое значение открытым', () => {
     expect(loadConfig(valid).webhookAllowedHosts).toEqual([]);
     expect(

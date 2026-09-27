@@ -21,6 +21,39 @@ const cookieSecureSchema = z.preprocess(
   z.enum(['true', 'false']).transform((value) => value === 'true'),
 );
 
+const blankToUndefined = (value: unknown) =>
+  value === undefined || value === '' ? undefined : value;
+
+const llmProviderSchema = z.preprocess(
+  (value: unknown) => (value === undefined || value === '' ? 'none' : value),
+  z.enum(['openai-compatible', 'gigachat', 'none']),
+);
+
+const optionalHttpUrl = z.preprocess(
+  blankToUndefined,
+  z
+    .string()
+    .regex(/^https?:\/\/\S+$/, 'ожидается http:// или https://')
+    .optional(),
+);
+
+const optionalText = z.preprocess(blankToUndefined, z.string().min(1).optional());
+
+const llmTimeoutSchema = z.preprocess(
+  (value: unknown) => (value === undefined || value === '' ? 90_000 : value),
+  z.coerce.number().int().min(1_000).max(180_000),
+);
+
+const llmConcurrencySchema = z.preprocess(
+  (value: unknown) => (value === undefined || value === '' ? 2 : value),
+  z.coerce.number().int().min(1).max(32),
+);
+
+const gigachatScopeSchema = z.preprocess(
+  (value: unknown) => (value === undefined || value === '' ? 'GIGACHAT_API_PERS' : value),
+  z.enum(['GIGACHAT_API_PERS', 'GIGACHAT_API_B2B', 'GIGACHAT_API_CORP']),
+);
+
 const EnvSchema = z
   .object({
     NODE_ENV: nodeEnvSchema,
@@ -56,6 +89,15 @@ const EnvSchema = z
           .filter((item) => item.length > 0),
       ),
     ),
+    LLM_PROVIDER: llmProviderSchema,
+    LLM_BASE_URL: optionalHttpUrl,
+    LLM_MODEL: optionalText,
+    LLM_API_KEY: optionalText,
+    LLM_TIMEOUT_MS: llmTimeoutSchema,
+    LLM_CONCURRENCY: llmConcurrencySchema,
+    GIGACHAT_AUTH_KEY: optionalText,
+    GIGACHAT_SCOPE: gigachatScopeSchema,
+    GIGACHAT_CA_FILE: optionalText,
   })
   .superRefine((env, ctx) => {
     if (env.NODE_ENV === 'production' && env.COOKIE_SECURE !== true) {
@@ -64,6 +106,20 @@ const EnvSchema = z
         path: ['COOKIE_SECURE'],
         message: 'в production нужен true',
       });
+    }
+    if (env.LLM_PROVIDER === 'openai-compatible') {
+      requireLlmField(ctx, env.LLM_BASE_URL, 'LLM_BASE_URL', 'нужен для openai-compatible');
+      requireLlmField(ctx, env.LLM_MODEL, 'LLM_MODEL', 'нужен для openai-compatible');
+    }
+    if (env.LLM_PROVIDER === 'gigachat') {
+      requireLlmField(ctx, env.GIGACHAT_AUTH_KEY, 'GIGACHAT_AUTH_KEY', 'нужен для gigachat');
+      requireLlmField(
+        ctx,
+        env.GIGACHAT_CA_FILE,
+        'GIGACHAT_CA_FILE',
+        'нужен сертификат НУЦ Минцифры',
+      );
+      requireLlmField(ctx, env.LLM_MODEL, 'LLM_MODEL', 'нужен для gigachat');
     }
   })
   .transform((env) => ({
@@ -81,7 +137,27 @@ const EnvSchema = z
     cookieSecure: env.COOKIE_SECURE,
     trustProxy: env.TRUST_PROXY,
     webhookAllowedHosts: env.WEBHOOK_ALLOWED_HOSTS,
+    llmProvider: env.LLM_PROVIDER,
+    llmBaseUrl: env.LLM_BASE_URL,
+    llmModel: env.LLM_MODEL,
+    llmApiKey: env.LLM_API_KEY,
+    llmTimeoutMs: env.LLM_TIMEOUT_MS,
+    llmConcurrency: env.LLM_CONCURRENCY,
+    gigachatAuthKey: env.GIGACHAT_AUTH_KEY,
+    gigachatScope: env.GIGACHAT_SCOPE,
+    gigachatCaFile: env.GIGACHAT_CA_FILE,
   }));
+
+function requireLlmField(
+  ctx: z.RefinementCtx,
+  value: string | undefined,
+  path: string,
+  message: string,
+): void {
+  if (value === undefined) {
+    ctx.addIssue({ code: 'custom', path: [path], message });
+  }
+}
 
 function normalizeWebhookHost(value: string): string {
   const trimmed = value.trim().toLowerCase();
