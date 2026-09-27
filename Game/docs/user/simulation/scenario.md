@@ -227,7 +227,8 @@ Fixed passenger не получает отдельную сценарную ма
 
 ## 10. Timeline rules
 
-Scenario может применять изменения независимо от stop sequence:
+Общий timeline rule runtime является baseline extension и пока не входит в Scenario schema `1`.
+Целевая модель должна позволять применять изменения независимо от stop sequence:
 
 ```text
 at simulation time
@@ -237,7 +238,7 @@ at stop enter/leave
 on predicate/event
 ```
 
-Rule состоит из:
+Целевая форма rule:
 
 ```text
 selector
@@ -253,7 +254,9 @@ passenger[awake]:not([hungry])
   -> addTrait(hungry, lifetime=...)
 ```
 
-Selector semantics вынесены в `simulation/selectors.md`.
+В release `0.1.0` расписанные изменения представлены специализированными schema fields — route stops,
+service windows, incidents и terminal rules. Selector semantics для будущего generic rule layer вынесены
+в `simulation/selectors.md`.
 
 ## 11. Scripted incidents
 
@@ -275,11 +278,11 @@ interface FireScenarioIncident {
 
 При старте incident GameAttempt включает source и начальную интенсивность, затем планирует periodic field steps. Достижение `criticalFire` подаёт signal в обычный terminal-rule механизм; incident сам по себе не содержит отдельный workflow.
 
-Текущий baseline задаёт один `cabin-fire` через 10 минут после отправления в `fire.cabin`.
+Текущий demo Scenario задаёт `cabin-fire` и `entry-pressure-leak`; оба запускаются относительно фактического отправления и используют специализированные incident schemas.
 
 ## 12. Scenario operations baseline
 
-Baseline operations:
+Для будущего generic rule layer baseline предусматривает typed operations:
 
 ```text
 add/remove/change trait
@@ -290,21 +293,26 @@ activate/deactivate region or connection
 schedule another scenario operation/event
 ```
 
-Scenario не получает универсальный `patch SimulationState` и не исполняет произвольный JS/TS code.
+Этот список не является API Scenario schema `1`: release `0.1.0` использует специализированные
+поля и обработчики сценария. При расширении Scenario всё равно не должен получать универсальный
+`patch SimulationState` или возможность исполнять произвольный JS/TS code.
 
 ## 13. Terminal rules
 
 Досрочное завершение не требует отдельного emergency stage.
 
-Scenario содержит набор terminal rules:
+Scenario schema `1` содержит signal-driven terminal rules:
 
 ```ts
 interface TerminalRule {
   id: string;
-  when: ScenarioPredicate;
+  signal: string;
   outcomeId: string;
 }
 ```
+
+GameAttempt публикует именованный terminal signal, после чего Scenario сопоставляет его с rule.
+Более общий `when: ScenarioPredicate` может быть baseline extension, но не является текущим wire/content contract.
 
 Примеры причин завершения:
 

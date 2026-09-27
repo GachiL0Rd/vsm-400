@@ -43,7 +43,7 @@ interface Entity {
   id: EntityId;
   kind: "player" | "passenger";
 
-  position: Position;
+  position: EntityPosition;
   traits: string[];
 
   heldItemId?: ItemId;
@@ -153,7 +153,10 @@ Hard restriction никогда не заменяется большим отр�
 
 Для игрока candidate actions проходят те же server-side проверки, но softmax не используется.
 
-Server projection предоставляет клиенту opaque runtime action handles:
+Архитектурно Server projection должен предоставлять клиенту opaque runtime action handles.
+В текущем release это не отдельный универсальный action-handle protocol: часть взаимодействий
+экспортируется специализированными public interaction DTO. Поэтому схема ниже описывает целевой
+unified action boundary, а не буквальный wire contract `0.1.0`:
 
 ```text
 available action
@@ -255,7 +258,7 @@ interface CurrentAction {
   generation: number;
   startedAt: SimTimeUs;
 
-  target?: ActionTarget;
+  targetId?: string;
 
   phase:
     | { kind: "running"; completesAt: SimTimeUs }

@@ -26,7 +26,7 @@ interface EntityState {
   id: EntityId;
   kind: "player" | "passenger";
 
-  position: Position;
+  position: EntityPosition;
   traits: TraitId[];
 
   heldItemId?: ItemId;
