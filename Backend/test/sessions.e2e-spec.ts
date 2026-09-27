@@ -825,8 +825,6 @@ async function wipe(prisma: PrismaService, ids: string[]): Promise<void> {
   await prisma.runDecision.deleteMany({ where: { run: { userId: { in: ids } } } });
   await prisma.run.deleteMany({ where: { userId: { in: ids } } });
   if (sessionIds.length > 0) {
-    await prisma.gameTelemetry.deleteMany({ where: { sessionId: { in: sessionIds } } });
-    await prisma.gameEvent.deleteMany({ where: { sessionId: { in: sessionIds } } });
     await prisma.gameSession.deleteMany({ where: { id: { in: sessionIds } } });
   }
   await prisma.notification.deleteMany({ where: { userId: { in: ids } } });

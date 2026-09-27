@@ -1,11 +1,3 @@
-import {
-  DEFAULT_GAME_TIME_MIN,
-  DEFAULT_NODE_STEP_MIN,
-  PARAM_GAME_TIME_MIN,
-  PARAM_NODE_STEP_MIN,
-} from './params';
-import type { EngineState } from './types';
-
 export function formatClock(totalMinutes: number): string {
   const day = 24 * 60;
   const mod = ((Math.trunc(totalMinutes) % day) + day) % day;
@@ -25,26 +17,4 @@ export function parseClock(value: string): number | null {
     return null;
   }
   return hours * 60 + minutes;
-}
-
-/** Время узла растёт внутри сценария и не откатывается за предыдущий ход. */
-export function nextGameTime(state: EngineState): string {
-  const stepMin = state.params[PARAM_NODE_STEP_MIN] ?? DEFAULT_NODE_STEP_MIN;
-  const fallback = DEFAULT_GAME_TIME_MIN + state.scenarioIndex * 20;
-  const start = state.params[PARAM_GAME_TIME_MIN] ?? fallback;
-  let indexInScenario = 0;
-  for (const entry of state.journal) {
-    if (entry.scenarioId === state.scenarioId) {
-      indexInScenario += 1;
-    }
-  }
-  let minute = start + indexInScenario * stepMin;
-  const last = state.journal[state.journal.length - 1];
-  if (last) {
-    const prev = parseClock(last.gameTime);
-    if (prev !== null && minute <= prev) {
-      minute = prev + stepMin;
-    }
-  }
-  return formatClock(minute);
 }

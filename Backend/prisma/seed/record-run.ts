@@ -35,8 +35,6 @@ export async function recordRun(deps: Recorder, userId: string, run: SimulatedRu
       plan: asJson(run.plan),
       seedCommit: commitOf(run.seed),
       seedEnc: sealSeed(deps.seedKey, run.seed),
-      state: asJson({ seq: run.seq }),
-      seq: run.seq,
       startedAt,
       finishedAt: run.finishedAt,
       expiresAt: new Date(run.finishedAt.getTime() + 3_600_000),

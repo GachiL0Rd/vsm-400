@@ -796,7 +796,6 @@ function sessionData(userId: string, now: number) {
     plan: {},
     seedCommit: 'ab'.repeat(32),
     seedEnc: 'enc',
-    state: {},
     expiresAt: new Date(now + 86_400_000),
   };
 }

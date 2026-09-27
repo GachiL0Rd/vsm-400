@@ -408,9 +408,6 @@ model GameSession {
   textPlan       Json?             @db.JsonB
   seedCommit     String
   seedEnc        String
-  state          Json              @db.JsonB
-  seq            Int               @default(0)
-  nodeDeadlineAt DateTime?
   startedAt      DateTime?
   finishedAt     DateTime?
   expiresAt      DateTime
@@ -422,9 +419,6 @@ model GameSession {
 
   user   User             @relation(fields: [userId], references: [id])
   shift  ShiftAssignment? @relation(fields: [shiftId], references: [id])
-  events GameEvent[]
-  // seq телеметрии не общий с game_event: иначе ход с тем же номером — SEQ_MISMATCH.
-  telemetry GameTelemetry[]
   run    Run?
   textVariants ScenarioTextVariant[]
 
@@ -432,36 +426,6 @@ model GameSession {
   @@index([shiftId])
   @@index([expiresAt])
   @@map("game_session")
-}
-
-model GameEvent {
-  id        BigInt   @id @default(autoincrement())
-  sessionId String   @db.Uuid
-  seq       Int
-  type      String
-  payload   Json     @db.JsonB
-  serverAt  DateTime @default(now())
-  clientAt  DateTime?
-
-  session GameSession @relation(fields: [sessionId], references: [id])
-
-  @@unique([sessionId, seq])
-  @@map("game_event")
-}
-
-model GameTelemetry {
-  id        BigInt   @id @default(autoincrement())
-  sessionId String   @db.Uuid
-  seq       Int
-  type      String
-  payload   Json     @db.JsonB
-  serverAt  DateTime @default(now())
-  clientAt  DateTime?
-
-  session GameSession @relation(fields: [sessionId], references: [id])
-
-  @@unique([sessionId, seq])
-  @@map("game_telemetry")
 }
 
 model Run {

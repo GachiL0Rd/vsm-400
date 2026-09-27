@@ -8,7 +8,6 @@ import { PrismaClient } from '../../src/generated/prisma/client';
  * Один TRUNCATE, чтобы внешние ключи не диктовали порядок.
  */
 const TABLES = [
-  'game_event',
   'run_decision',
   'point_ledger',
   'user_achievement',
