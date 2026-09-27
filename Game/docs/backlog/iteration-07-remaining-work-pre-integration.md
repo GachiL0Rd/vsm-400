@@ -1,6 +1,15 @@
 # Что осталось реализовать по baseline 0.7
 
-**Состояние на 2026-09-27.** Проверены текущая ветка `feature/vsm-docs-iteration-07-wip`, код `Game/` и требования в [индексе документации](../user/README.md). Этот список описывает недостающую **работающую связку**, а не только отсутствие отдельных файлов. Более ранняя таблица расхождений находится в [iteration-07-gap-analysis.md](../../../docs/backlog/iteration-07-gap-analysis.md).
+> Исторический snapshot до H1–H3 hardening и нормативной integration
+> documentation. Не использовать как текущий backlog; актуальные working guide
+> находятся в [`../agent/`](../agent/README.md).
+
+**Состояние на 2026-09-27.** Проверены текущая ветка
+`feature/vsm-docs-iteration-07-wip`, код `Game/` и требования в
+[индексе документации](../user/README.md). Этот список описывает недостающую
+**работающую связку**, а не только отсутствие отдельных файлов. Более ранняя
+таблица расхождений находится в
+[`iteration-07-gap-analysis.md`](iteration-07-gap-analysis.md).
 
 ## Cleanup перед интеграцией
 
@@ -51,7 +60,11 @@
 
 ## 5. Предпочтительный порядок ближайших коротких итераций
 
-`common`, public projection, server skeleton и первый client foundation уже существуют. Дальше приоритет смещается с изолированной реализации модулей на укрепление их реальной связки. Детальный checklist и последующий documentation gate находятся в [integration-hardening.md](integration-hardening.md).
+`common`, public projection, server skeleton и первый client foundation уже
+существуют. Дальше приоритет смещался с изолированной реализации модулей на
+укрепление их реальной связки. Детальный historical checklist и последующий
+documentation gate находятся в
+[`../agent/integration-hardening.md`](../agent/integration-hardening.md).
 
 Ближайший порядок:
 

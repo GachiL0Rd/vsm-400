@@ -54,5 +54,5 @@
 ## Связанные документы
 
 - фактическая исследовательская база верхнего уровня: [`../../../docs/user/`](../../../docs/user/README.md);
-- актуальный implementation checklist: [`../agent/iteration-07-remaining-work.md`](../agent/iteration-07-remaining-work.md);
+- актуальные working guide и integration status: [`../agent/`](../agent/README.md);
 - архив старого demo и предыдущих планов: [`../backlog/`](../backlog/README.md).
