@@ -379,40 +379,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/game-sessions/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Текущий узел смены. Просроченный дедлайн REST сервер закрывает сам */
-        get: operations["SessionsController_view_v1"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/game-sessions/{id}/decisions": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Ход REST-смены. Повтор того же seq и choiceId отдаёт прежний ответ */
-        post: operations["SessionsController_decide_v1"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/game-sessions/{id}/abort": {
         parameters: {
             query?: never;
@@ -424,91 +390,6 @@ export interface paths {
         put?: never;
         /** Прервать смену. Рейс не пишется */
         post: operations["SessionsController_abort_v1"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/game-sessions/{id}/reveal": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Раскрыть seed после завершённой смены */
-        get: operations["SessionsController_reveal_v1"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/internal/v1/tickets/verify": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Проверить и погасить игровой билет */
-        post: operations["InternalSessionsController_verify"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/internal/v1/game-sessions/{id}/decisions": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Ход WS-смены от GameServer. Тот же движок, что у REST */
-        post: operations["InternalSessionsController_decide"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/internal/v1/game-sessions/{id}/events": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Пакет телеметрии. seq свой, повтор не создаёт вторую строку */
-        post: operations["InternalSessionsController_events"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/internal/v1/game-sessions/{id}/report": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Отчёт симуляции. Повтор отдаёт тот же runId */
-        post: operations["InternalSessionsController_report"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1245,8 +1126,11 @@ export interface components {
             }[];
         };
         OpenSessionDto: {
-            /** @enum {string} */
-            transport: "REST" | "WS";
+            /**
+             * @default WS
+             * @enum {string}
+             */
+            transport: "WS";
             /** @enum {string} */
             carClass?: "ECONOMY" | "FAMILY" | "BUSINESS" | "FIRST";
         };
@@ -1269,177 +1153,9 @@ export interface components {
                 titles: string[];
             };
         };
-        SessionViewDto: {
-            /** @enum {string} */
-            status: "PENDING" | "ACTIVE" | "COMPLETED" | "ABORTED" | "EXPIRED";
-            seq: number;
-            view: {
-                nodeId: string;
-                text: string;
-                timerSec: number | null;
-                choices: {
-                    id: string;
-                    text: string;
-                }[];
-                loyalty: number;
-                safety: number;
-                seq: number;
-                finished: boolean;
-                progress: {
-                    index: number;
-                    total: number;
-                };
-            };
-            scales: {
-                loyalty: number;
-                safety: number;
-                politeness: number;
-            };
-            deadlineAt: string[];
-            progress: {
-                index: number;
-                total: number;
-            };
-        };
-        DecisionDto: {
-            seq: number;
-            choiceId: string;
-            clientTs?: number;
-        };
-        DecisionViewDto: {
-            /** @enum {string} */
-            status: "PENDING" | "ACTIVE" | "COMPLETED" | "ABORTED" | "EXPIRED";
-            seq: number;
-            view: {
-                nodeId: string;
-                text: string;
-                timerSec: number | null;
-                choices: {
-                    id: string;
-                    text: string;
-                }[];
-                loyalty: number;
-                safety: number;
-                seq: number;
-                finished: boolean;
-                progress: {
-                    index: number;
-                    total: number;
-                };
-            };
-            scales: {
-                loyalty: number;
-                safety: number;
-                politeness: number;
-            };
-            deadlineAt: string[];
-            progress: {
-                index: number;
-                total: number;
-            };
-            /** @enum {string} */
-            applied: "choice" | "timeout";
-            finished: boolean;
-        };
         AbortResultDto: {
             /** @enum {string} */
             status: "ABORTED";
-        };
-        RevealDto: {
-            seed: string;
-            commit: string;
-        };
-        VerifyTicketDto: {
-            ticket: string;
-        };
-        VerifyResultDto: {
-            /** Format: uuid */
-            userId: string;
-            callsign: string;
-            /** Format: uuid */
-            sessionId: string;
-            plan: {
-                train: string;
-                route: string;
-                fromStation: string;
-                toStation: string;
-                stops: string[];
-                car: number;
-                /** @enum {string} */
-                carClass: "ECONOMY" | "FAMILY" | "BUSINESS" | "FIRST";
-                departure: string;
-                scenarios: {
-                    scenarioId: string;
-                    version: number;
-                    params: {
-                        [key: string]: number;
-                    };
-                }[];
-            };
-            /** @enum {string} */
-            status: "PENDING" | "ACTIVE" | "COMPLETED" | "ABORTED" | "EXPIRED";
-        };
-        EventsDto: {
-            events: {
-                seq: number;
-                type: string;
-                payload: {
-                    [key: string]: unknown;
-                };
-                /** Format: date-time */
-                clientAt?: string;
-            }[];
-        };
-        EventsResultDto: {
-            accepted: number;
-            duplicates: number;
-        };
-        RunReportDto: {
-            /** @enum {number} */
-            contractVersion: 1;
-            protocolVersion: number;
-            scenarioId: string;
-            simulationSeconds: number;
-            /** @enum {string} */
-            outcome: "completed" | "incident" | "terminated";
-            outcomeNote: string;
-            safety: number;
-            loyalty: number;
-            facts: {
-                prevented: number;
-                incidents: number;
-                complaints: number;
-                interventions: number;
-            };
-            decisions: {
-                id: string;
-                time: string;
-                /** @enum {string} */
-                stage: "acceptance" | "boarding" | "enroute" | "stop" | "handover" | "ride";
-                situation?: string;
-                action?: string;
-                /** @enum {string} */
-                verdict: "correct" | "late" | "incorrect" | "missed" | "best" | "ok" | "worse";
-                safety: number;
-                loyalty: number;
-                reactionSec?: number;
-                lucky?: boolean;
-                consequence?: string | null;
-                better?: string | null;
-                basis?: string | null;
-            }[];
-            checks: {
-                id: string;
-                detected: boolean;
-                reportRequired: boolean;
-                reported: boolean;
-                actionCorrect: boolean;
-                consequenceRolled: boolean;
-            }[];
-        };
-        ReportResultDto: {
-            /** Format: uuid */
-            runId: string;
         };
         ResolveSessionDto: {
             key: string;
@@ -1475,6 +1191,25 @@ export interface components {
             scores: {
                 safety: number;
                 customerSatisfaction: number;
+            };
+            assessment?: {
+                setVersion: string;
+                durationUs: number;
+                facts: {
+                    id: string;
+                    kind: string;
+                    at: number;
+                    /** @enum {string} */
+                    verdict: "correct" | "late" | "incorrect" | "missed";
+                    scoreDelta: {
+                        safety: number;
+                        customerSatisfaction: number;
+                    };
+                    reactionUs?: number;
+                    detail: {
+                        [key: string]: (string | number | boolean) | null;
+                    };
+                }[];
             };
         };
         FinishResponseDto: {
@@ -2626,52 +2361,6 @@ export interface operations {
             };
         };
     };
-    SessionsController_view_v1: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SessionViewDto"];
-                };
-            };
-        };
-    };
-    SessionsController_decide_v1: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["DecisionDto"];
-            };
-        };
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DecisionViewDto"];
-                };
-            };
-        };
-    };
     SessionsController_abort_v1: {
         parameters: {
             query?: never;
@@ -2689,125 +2378,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AbortResultDto"];
-                };
-            };
-        };
-    };
-    SessionsController_reveal_v1: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["RevealDto"];
-                };
-            };
-        };
-    };
-    InternalSessionsController_verify: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["VerifyTicketDto"];
-            };
-        };
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["VerifyResultDto"];
-                };
-            };
-        };
-    };
-    InternalSessionsController_decide: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["DecisionDto"];
-            };
-        };
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DecisionViewDto"];
-                };
-            };
-        };
-    };
-    InternalSessionsController_events: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["EventsDto"];
-            };
-        };
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["EventsResultDto"];
-                };
-            };
-        };
-    };
-    InternalSessionsController_report: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["RunReportDto"];
-            };
-        };
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ReportResultDto"];
                 };
             };
         };
