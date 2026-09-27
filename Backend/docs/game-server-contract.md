@@ -86,7 +86,10 @@ Authorization: Bearer <GAME_SERVER_TOKEN>
   "contractVersion": 1,
   "attemptId": "<GameSession.id>",
   "gameLevelId": "<GAME_LEVEL_ID>",
-  "mode": { "kind": "live" }
+  "mode": {
+    "kind": "guided",
+    "hints": { "immediateFeedback": true, "suggestions": true, "highlights": true, "explanations": true }
+  }
 }
 ```
 
@@ -244,7 +247,8 @@ Guided и replay в этом адаптере не выдаются.
 | `GAME_SERVER_TOKEN` | Секрет Bearer. На Game — `PLATFORM_SERVICE_TOKEN`. Минимум 16 символов |
 | `PUBLIC_GAME_URL` | Абсолютный `http://` или `https://` клиента Game. По умолчанию `http://127.0.0.1:4174/` |
 | `PUBLIC_APP_URL` | Абсолютный `http://` или `https://` кабинета. По умолчанию `http://127.0.0.1:5173`. Хвост слэша допустим |
-| `GAME_LEVEL_ID` | Строка уровня для resolve. Пусто — `vsm-baseline-01` |
+| `GAME_LEVEL_ID` | Строка уровня для resolve. Пусто — `vsm-train2-01` |
+| `GAME_SESSION_MODE` | `guided` (по умолчанию: Game Server выдаёт подсказки) или `live` (без подсказок) |
 | `PUBLIC_GAME_WS_URL` | Legacy `wsUrl` в ответе кабинета. Не удалять |
 
 `ws://` для `PUBLIC_GAME_URL` и `PUBLIC_APP_URL` не принимается.

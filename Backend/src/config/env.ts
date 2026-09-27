@@ -153,7 +153,7 @@ const optionalHttpUrl = z.preprocess(
     .optional(),
 );
 
-const DEFAULT_GAME_LEVEL_ID = 'vsm-baseline-01';
+const DEFAULT_GAME_LEVEL_ID = 'vsm-train2-01';
 const DEFAULT_PUBLIC_GAME_URL = 'http://127.0.0.1:4174/';
 const DEFAULT_PUBLIC_APP_URL = 'http://127.0.0.1:5173';
 
@@ -176,6 +176,12 @@ function httpUrlDefault(fallback: string) {
     absoluteHttpUrl,
   );
 }
+
+/** Режим попытки в ответе resolve: guided включает подсказки Game Server. */
+const gameSessionModeSchema = z.preprocess(
+  (value: unknown) => (value === undefined || value === '' ? 'guided' : value),
+  z.enum(['live', 'guided']),
+);
 
 const gameLevelIdSchema = z.preprocess(
   (value: unknown) => (value === undefined || value === '' ? DEFAULT_GAME_LEVEL_ID : value),
@@ -294,6 +300,7 @@ const EnvSchema = z
     PUBLIC_GAME_URL: httpUrlDefault(DEFAULT_PUBLIC_GAME_URL),
     PUBLIC_APP_URL: httpUrlDefault(DEFAULT_PUBLIC_APP_URL),
     GAME_LEVEL_ID: gameLevelIdSchema,
+    GAME_SESSION_MODE: gameSessionModeSchema,
     COOKIE_SECURE: cookieSecureSchema,
     TRUST_PROXY: trustProxySchema,
     WEBHOOK_ALLOWED_HOSTS: z.preprocess(
@@ -380,6 +387,7 @@ const EnvSchema = z
       publicGameUrl: env.PUBLIC_GAME_URL,
       publicAppUrl: env.PUBLIC_APP_URL,
       gameLevelId: env.GAME_LEVEL_ID,
+      gameSessionMode: env.GAME_SESSION_MODE,
       cookieSecure: env.COOKIE_SECURE,
       trustProxy: env.TRUST_PROXY,
       webhookAllowedHosts: env.WEBHOOK_ALLOWED_HOSTS,
