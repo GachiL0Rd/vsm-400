@@ -414,11 +414,15 @@ model GameSession {
   finishedAt     DateTime?
   expiresAt      DateTime
   flags          String[]
+  // Итог рейса {runId, suspicious, summary}. Аудит хранит только runId и suspicious.
+  result         Json?             @db.JsonB
   createdAt      DateTime          @default(now())
 
   user   User             @relation(fields: [userId], references: [id])
   shift  ShiftAssignment? @relation(fields: [shiftId], references: [id])
   events GameEvent[]
+  // seq телеметрии не общий с game_event: иначе ход с тем же номером — SEQ_MISMATCH.
+  telemetry GameTelemetry[]
   run    Run?
   textVariants ScenarioTextVariant[]
 
@@ -441,6 +445,21 @@ model GameEvent {
 
   @@unique([sessionId, seq])
   @@map("game_event")
+}
+
+model GameTelemetry {
+  id        BigInt   @id @default(autoincrement())
+  sessionId String   @db.Uuid
+  seq       Int
+  type      String
+  payload   Json     @db.JsonB
+  serverAt  DateTime @default(now())
+  clientAt  DateTime?
+
+  session GameSession @relation(fields: [sessionId], references: [id])
+
+  @@unique([sessionId, seq])
+  @@map("game_telemetry")
 }
 
 model Run {
