@@ -10,6 +10,7 @@ import {
   type WorkerClock,
   type WorkerScheduler,
 } from './game-session-worker.ts';
+import { createSilentServerLogger, type ServerLogger } from './logger.ts';
 import type { ResumeTokenRegistry } from './resume-token-registry.ts';
 import type { PlatformGateway, SessionMode } from './types.ts';
 
@@ -31,22 +32,60 @@ export interface GameSessionHostOptions {
   readonly finishRetryDelaysMs?: readonly number[];
   readonly clock?: WorkerClock;
   readonly scheduler?: WorkerScheduler;
+  readonly logger?: ServerLogger;
 }
 
 /** Maps authenticated platform attempts to durable-in-memory workers. */
 export class GameSessionHost {
   private readonly workers = new Map<string, HostedWorker>();
   private readonly clock: WorkerClock;
+  private readonly logger: ServerLogger;
 
   constructor(private readonly options: GameSessionHostOptions) {
     this.clock = options.clock ?? systemWorkerClock;
+    this.logger = (options.logger ?? createSilentServerLogger()).child({
+      component: 'session-host',
+    });
   }
 
   async attachWithSessionKey(sessionKey: string, connectionId: string): Promise<SessionAttachment> {
+    this.logger.info(
+      { event: 'session-auth-start', connectionId, auth: 'session-key' },
+      'Resolving session key',
+    );
     const resolved = await this.options.platformGateway.resolveSession(sessionKey);
+    this.logger.info(
+      {
+        event: 'session-auth-resolved',
+        connectionId,
+        attemptId: resolved.attemptId,
+        gameLevelId: resolved.gameLevelId,
+        mode: resolved.mode.kind,
+      },
+      'Session key resolved',
+    );
     const existing = this.workers.get(resolved.attemptId);
     if (existing !== undefined) {
-      assertSameResolvedSession(existing, resolved.gameLevelId, resolved.mode);
+      try {
+        assertSameResolvedSession(existing, resolved.gameLevelId, resolved.mode);
+      } catch (error) {
+        this.logger.error(
+          {
+            err: error,
+            event: 'session-resolve-conflict',
+            connectionId,
+            attemptId: resolved.attemptId,
+            gameLevelId: resolved.gameLevelId,
+            mode: resolved.mode.kind,
+          },
+          'Platform returned conflicting launch data',
+        );
+        throw error;
+      }
+      this.logger.info(
+        { event: 'worker-reused', connectionId, attemptId: resolved.attemptId },
+        'Reusing existing attempt worker',
+      );
       return existing.worker.attach(connectionId);
     }
 
@@ -85,9 +124,33 @@ export class GameSessionHost {
           : { finishRetryDelaysMs: this.options.finishRetryDelaysMs }),
         clock: this.clock,
         ...(this.options.scheduler === undefined ? {} : { scheduler: this.options.scheduler }),
-        onFinished: (attemptId) => this.workers.delete(attemptId),
-        onAborted: (attemptId) => this.workers.delete(attemptId),
+        logger: this.logger.child({ component: 'worker', attemptId: resolved.attemptId }),
+        onFinished: (attemptId) => {
+          this.logger.info(
+            { event: 'worker-released', attemptId, reason: 'finished' },
+            'Removing finished attempt worker',
+          );
+          this.workers.delete(attemptId);
+        },
+        onAborted: (attemptId) => {
+          this.logger.info(
+            { event: 'worker-released', attemptId, reason: 'aborted' },
+            'Removing aborted attempt worker',
+          );
+          this.workers.delete(attemptId);
+        },
       });
+      this.logger.info(
+        {
+          event: 'worker-created',
+          connectionId,
+          attemptId: resolved.attemptId,
+          gameLevelId: resolved.gameLevelId,
+          mode: resolved.mode.kind,
+          rootSeed: seed,
+        },
+        'Created attempt worker',
+      );
       this.workers.set(resolved.attemptId, {
         worker,
         gameLevelId: resolved.gameLevelId,
@@ -99,14 +162,35 @@ export class GameSessionHost {
 
   attachWithResumeToken(resumeToken: string, connectionId: string): SessionAttachment {
     const nowMs = this.clock.nowMs();
+    this.logger.info({ event: 'session-resume-start', connectionId }, 'Resolving resume token');
     const attemptId = this.options.resumeTokens.resolve(resumeToken, nowMs);
-    if (attemptId === null) throw new Error('Invalid or expired resume token');
+    if (attemptId === null) {
+      this.logger.warn(
+        { event: 'session-resume-rejected', connectionId, reason: 'invalid-or-expired-token' },
+        'Resume token rejected',
+      );
+      throw new Error('Invalid or expired resume token');
+    }
     const hosted = this.workers.get(attemptId);
-    if (hosted === undefined) throw new Error('Attempt is not available for resume');
+    if (hosted === undefined) {
+      this.logger.warn(
+        { event: 'session-resume-rejected', connectionId, attemptId, reason: 'worker-not-found' },
+        'Attempt is not available for resume',
+      );
+      throw new Error('Attempt is not available for resume');
+    }
+    this.logger.info(
+      { event: 'session-resume-resolved', connectionId, attemptId },
+      'Resume token resolved',
+    );
     return hosted.worker.attach(connectionId);
   }
 
   detach(attemptId: string, connectionId: string): void {
+    this.logger.info(
+      { event: 'session-detach', attemptId, connectionId },
+      'Detaching connection from attempt',
+    );
     this.workers.get(attemptId)?.worker.detach(connectionId);
   }
 
@@ -115,6 +199,10 @@ export class GameSessionHost {
   }
 
   shutdown(): void {
+    this.logger.info(
+      { event: 'session-host-shutdown', workerCount: this.workers.size },
+      'Shutting down session host',
+    );
     for (const { worker } of this.workers.values()) worker.shutdown();
     this.workers.clear();
   }

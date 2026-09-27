@@ -14,6 +14,7 @@ import type { AssessmentResult } from '../simulation/assessment.ts';
 import type { GameAttemptSnapshot } from '../simulation/game-attempt.ts';
 import { SimulationClock } from '../simulation/simulation-clock.ts';
 import type { ResolvedGameContent } from './content-registry.ts';
+import { createSilentServerLogger, type ServerLogger } from './logger.ts';
 import { parseReplayInputs, type RecordedReplayInput } from './replay-input.ts';
 import type { ResumeTokenRegistry } from './resume-token-registry.ts';
 import type {
@@ -75,6 +76,7 @@ export interface GameSessionWorkerOptions {
   readonly clock?: WorkerClock;
   readonly scheduler?: WorkerScheduler;
   readonly finishRetryDelaysMs?: readonly number[];
+  readonly logger?: ServerLogger;
   readonly onFinished?: (attemptId: string) => void;
   readonly onAborted?: (attemptId: string) => void;
 }
@@ -96,6 +98,7 @@ const DEFAULT_FINISH_RETRY_DELAYS_MS = [1_000, 3_000, 10_000] as const;
 /** Owns an attempt, not a socket. Wire payload interpretation stays outside this type. */
 export class GameSessionWorker {
   private readonly clock: WorkerClock;
+  private readonly logger: ServerLogger;
   private readonly scheduler: WorkerScheduler;
   private readonly simulationClock: SimulationClock;
   private readonly simulationStepMs: number;
@@ -125,6 +128,7 @@ export class GameSessionWorker {
 
   constructor(private readonly options: GameSessionWorkerOptions) {
     this.clock = options.clock ?? systemWorkerClock;
+    this.logger = options.logger ?? createSilentServerLogger();
     this.scheduler = options.scheduler ?? systemWorkerScheduler;
     this.simulationStepMs = positiveInteger(
       options.simulationStepMs ?? DEFAULT_SIMULATION_STEP_MS,
@@ -148,6 +152,16 @@ export class GameSessionWorker {
     this.simulationClock = new SimulationClock(this.nowWallUs(), initial.time);
     this.replayInputs =
       options.mode.kind === 'replay' ? parseReplayInputs(options.mode.source.userInputs) : [];
+    this.logger.info(
+      {
+        event: 'worker-initialized',
+        mode: options.mode.kind,
+        simulationStepMs: this.simulationStepMs,
+        maxCatchUpUs: this.maxCatchUpUs,
+        replayInputCount: this.replayInputs.length,
+      },
+      'Attempt worker initialized',
+    );
   }
 
   get attemptId(): string {
@@ -195,7 +209,17 @@ export class GameSessionWorker {
 
   /** Publishes the projection mutation produced by an accepted gameplay command. */
   acceptProjectionResult(result: InvokeResult): void {
-    if (result.recordedCommand !== undefined) this.recordUserInput(result.recordedCommand);
+    if (result.recordedCommand !== undefined) {
+      this.logger.info(
+        {
+          event: 'gameplay-command-applied',
+          operation: summarizeRecordedCommand(result.recordedCommand),
+          revision: result.result.revision,
+        },
+        'Applied gameplay command',
+      );
+      this.recordUserInput(result.recordedCommand);
+    }
     if (result.delta !== undefined) this.publishDelta(result.delta);
     this.finishIfTerminated();
   }
@@ -205,17 +229,32 @@ export class GameSessionWorker {
     if (!this.allowedTimeScales.has(scale)) {
       throw new RangeError(`Unsupported time scale ${scale}`);
     }
+    const previousScale = this.simulationClock.timeScale;
     this.simulationClock.setTimeScale(scale, this.simulationClock.wallTime);
+    this.logger.info(
+      { event: 'time-scale-changed', previousScale, scale },
+      'Simulation time scale changed',
+    );
     return this.options.projection.refresh(this.publicClock());
   }
 
   recordUserInput(command: RecordedGameplayCommand): void {
+    const sequence = this.nextInputSequence;
     this.userInputs.push({
       at: this.options.attempt.snapshot().time,
-      sequence: this.nextInputSequence,
+      sequence,
       command,
     });
     this.nextInputSequence += 1;
+    this.logger.debug(
+      {
+        event: 'user-input-recorded',
+        sequence,
+        at: this.options.attempt.snapshot().time,
+        operation: summarizeRecordedCommand(command),
+      },
+      'Recorded deterministic user input',
+    );
   }
 
   attach(connectionId: string): SessionAttachment {
@@ -242,6 +281,15 @@ export class GameSessionWorker {
       this.lifecycleState = 'active';
     }
     this.ensureTickScheduled();
+    this.logger.info(
+      {
+        event: 'worker-attached',
+        connectionId,
+        lifecycle: this.lifecycleState,
+        simulationTimeUs: this.options.attempt.snapshot().time,
+      },
+      'Connection attached to attempt',
+    );
 
     return {
       attemptId: this.attemptId,
@@ -254,6 +302,17 @@ export class GameSessionWorker {
     if (this.connectionId !== connectionId || this.connectionState === 'detached') return;
     this.connectionId = null;
     this.connectionState = 'detached';
+    this.logger.info(
+      {
+        event: 'worker-detached',
+        connectionId,
+        lifecycle: this.lifecycleState,
+        simulationTimeUs: this.options.attempt.snapshot().time,
+        disconnectDebounceMs: this.options.disconnectDebounceMs,
+        reconnectGraceMs: this.options.reconnectGraceMs,
+      },
+      'Connection detached from attempt',
+    );
     if (this.lifecycleState !== 'active') return;
     this.options.resumeTokens.expireAttemptAt(
       this.attemptId,
@@ -269,6 +328,10 @@ export class GameSessionWorker {
   }
 
   shutdown(): void {
+    this.logger.info(
+      { event: 'worker-shutdown', lifecycle: this.lifecycleState },
+      'Shutting down attempt worker',
+    );
     this.cancelDisconnectTimers();
     this.cancelFinishRetry();
     this.cancelTick();
@@ -277,6 +340,14 @@ export class GameSessionWorker {
     this.publications.clear();
     if (this.lifecycleState === 'finished' || this.lifecycleState === 'aborted') return;
     this.lifecycleState = 'aborted';
+    this.logger.warn(
+      {
+        event: 'worker-aborted',
+        reason: 'server-shutdown',
+        simulationTimeUs: this.options.attempt.snapshot().time,
+      },
+      'Attempt aborted during server shutdown',
+    );
     this.options.resumeTokens.revokeAttempt(this.attemptId);
     this.options.onAborted?.(this.attemptId);
   }
@@ -286,6 +357,15 @@ export class GameSessionWorker {
     if (this.finishPromise !== null) return this.finishPromise;
     this.cancelFinishRetry();
     const result = this.finishedResult();
+    this.logger.info(
+      {
+        event: 'finish-start',
+        termination: result.termination,
+        scores: result.scores,
+        userInputCount: result.userInputs.length,
+      },
+      'Persisting terminal attempt result',
+    );
     this.lifecycleState = 'finishing';
     this.options.resumeTokens.revokeAttempt(this.attemptId);
     this.cancelDisconnectTimers();
@@ -295,6 +375,10 @@ export class GameSessionWorker {
       .finishSession(result)
       .then((receipt) => {
         this.finishReceipt = receipt;
+        this.logger.info(
+          { event: 'finish-succeeded', resultId: receipt.resultId },
+          'Terminal attempt persisted',
+        );
         this.lifecycleState = 'finished';
         this.options.resumeTokens.revokeAttempt(this.attemptId);
         this.publishSessionState('finished', receipt.redirectUrl);
@@ -303,6 +387,15 @@ export class GameSessionWorker {
       })
       .catch((error: unknown) => {
         this.finishPromise = null;
+        this.logger.error(
+          {
+            err: error,
+            event: 'finish-failed',
+            retryable: isRetryableFinishError(error),
+            retryIndex: this.nextFinishRetryIndex,
+          },
+          'Terminal attempt persistence failed',
+        );
         // The simulation is already terminal. A failed platform handoff must not
         // revive it or restart ticking. Transient failures receive a small bounded
         // retry budget; callers may still invoke finish() explicitly and idempotently.
@@ -315,6 +408,14 @@ export class GameSessionWorker {
 
   private tick(): void {
     this.tickTimer = null;
+    this.logger.trace(
+      {
+        event: 'tick',
+        lifecycle: this.lifecycleState,
+        simulationTimeUs: this.options.attempt.snapshot().time,
+      },
+      'Worker tick',
+    );
     if (this.lifecycleState !== 'active') return;
     this.advanceAtWall(this.nowWallUs());
     if (this.lifecycleState === 'active') this.ensureTickScheduled();
@@ -324,6 +425,15 @@ export class GameSessionWorker {
     const openGap = nowWallUs - this.simulationClock.wallTime;
     let target: number;
     if (openGap > this.maxCatchUpUs) {
+      this.logger.warn(
+        {
+          event: 'simulation-catchup-clamped',
+          openGapUs: openGap,
+          maxCatchUpUs: this.maxCatchUpUs,
+          simulationTimeUs: this.options.attempt.snapshot().time,
+        },
+        'Wall-clock gap exceeded catch-up window',
+      );
       this.simulationClock.reanchorToProcessed(nowWallUs);
       target = this.simulationClock.processedSimulationTime;
     } else {
@@ -339,8 +449,17 @@ export class GameSessionWorker {
       this.advanceReplayTo(target);
       return;
     }
+    const beforeSnapshot = this.options.attempt.snapshot();
     const delta = this.options.projection.advanceTo(target, this.publicClock());
-    const applied = this.options.attempt.snapshot().time;
+    const afterSnapshot = this.options.attempt.snapshot();
+    const applied = afterSnapshot.time;
+    logMovementTransition(
+      this.logger,
+      this.options.projection.attempt.playerId,
+      beforeSnapshot,
+      afterSnapshot,
+      delta,
+    );
     this.simulationClock.advanceProcessedTo(applied);
     this.publishDelta(delta);
     this.finishIfTerminated();
@@ -357,6 +476,15 @@ export class GameSessionWorker {
       this.simulationClock.advanceProcessedTo(this.options.attempt.snapshot().time);
 
       if (this.options.attempt.termination !== null) break;
+      this.logger.debug(
+        {
+          event: 'replay-input-apply',
+          replayIndex: this.replayInputIndex,
+          at: input.at,
+          operation: summarizeRecordedCommand(input.command),
+        },
+        'Applying replay input',
+      );
       const commandDelta = this.options.projection.applyReplayCommand(
         input.command,
         this.publicClock(),
@@ -380,6 +508,14 @@ export class GameSessionWorker {
 
   private finishIfTerminated(): void {
     if (this.options.attempt.termination === null || this.lifecycleState !== 'active') return;
+    this.logger.info(
+      {
+        event: 'terminal-detected',
+        termination: this.options.attempt.termination,
+        simulationTimeUs: this.options.attempt.snapshot().time,
+      },
+      'Attempt reached terminal state',
+    );
     void this.finish().catch(() => undefined);
   }
 
@@ -391,6 +527,10 @@ export class GameSessionWorker {
     if (this.lifecycleState !== 'active') return;
     this.simulationClock.pause(nowWallUs);
     this.lifecycleState = 'paused';
+    this.logger.info(
+      { event: 'worker-paused', simulationTimeUs: this.options.attempt.snapshot().time },
+      'Attempt paused after disconnect debounce',
+    );
     this.cancelTick();
     this.options.projection.refresh(this.publicClock());
   }
@@ -404,6 +544,14 @@ export class GameSessionWorker {
     )
       return;
     this.lifecycleState = 'aborted';
+    this.logger.warn(
+      {
+        event: 'worker-aborted',
+        reason: 'reconnect-grace-expired',
+        simulationTimeUs: this.options.attempt.snapshot().time,
+      },
+      'Attempt aborted after reconnect grace',
+    );
     this.cancelTick();
     this.options.resumeTokens.revokeAttempt(this.attemptId);
     this.publishSessionState('aborted');
@@ -412,19 +560,41 @@ export class GameSessionWorker {
 
   private ensureTickScheduled(): void {
     if (this.tickTimer !== null || this.lifecycleState !== 'active' || this.replayEnded) return;
+    this.logger.trace(
+      { event: 'tick-scheduled', delayMs: this.simulationStepMs },
+      'Scheduled worker tick',
+    );
     this.tickTimer = this.scheduler.after(this.simulationStepMs, () => this.tick());
   }
 
   private cancelTick(): void {
+    if (this.tickTimer !== null)
+      this.logger.trace({ event: 'tick-cancelled' }, 'Cancelled worker tick');
     this.tickTimer?.cancel();
     this.tickTimer = null;
   }
 
   private scheduleFinishRetry(error: unknown): void {
-    if (!isRetryableFinishError(error)) return;
+    if (!isRetryableFinishError(error)) {
+      this.logger.warn(
+        { event: 'finish-retry-not-scheduled', reason: 'non-retryable' },
+        'Finish retry not scheduled',
+      );
+      return;
+    }
     const delayMs = this.finishRetryDelaysMs[this.nextFinishRetryIndex];
-    if (delayMs === undefined) return;
+    if (delayMs === undefined) {
+      this.logger.error(
+        { event: 'finish-retry-exhausted', retryCount: this.nextFinishRetryIndex },
+        'Finish retry budget exhausted',
+      );
+      return;
+    }
     this.nextFinishRetryIndex += 1;
+    this.logger.warn(
+      { event: 'finish-retry-scheduled', delayMs, retryNumber: this.nextFinishRetryIndex },
+      'Scheduled finish retry',
+    );
     this.finishRetryTimer = this.scheduler.after(delayMs, () => {
       this.finishRetryTimer = null;
       if (this.lifecycleState !== 'finishing' || this.finishReceipt !== null) return;
@@ -439,6 +609,22 @@ export class GameSessionWorker {
 
   private publishDelta(delta: GameDeltaMessage): void {
     if (delta.revision === delta.baseRevision) return;
+    this.logger.debug(
+      {
+        event: 'delta-published',
+        baseRevision: delta.baseRevision,
+        revision: delta.revision,
+        changeKeys: Object.keys(delta.changes),
+        entityUpserts:
+          delta.changes.entities?.upsert.map((entity) => ({
+            id: entity.id,
+            kind: entity.kind,
+            position: entity.position,
+          })) ?? [],
+        entityRemovals: delta.changes.entities?.removeIds ?? [],
+      },
+      'Publishing public delta',
+    );
     this.publish(delta);
   }
 
@@ -446,6 +632,10 @@ export class GameSessionWorker {
     state: Extract<AttemptLifecycle, 'active' | 'paused' | 'finishing' | 'finished' | 'aborted'>,
     redirectUrl?: string,
   ): void {
+    this.logger.info(
+      { event: 'session-state-published', state },
+      'Publishing session lifecycle state',
+    );
     this.publish({
       protocolVersion: GAME_PROTOCOL_VERSION,
       type: 'session-state',
@@ -494,6 +684,55 @@ export class GameSessionWorker {
       scores: assessment.scores,
     };
   }
+}
+
+function summarizeRecordedCommand(command: RecordedGameplayCommand): Record<string, unknown> {
+  switch (command.kind) {
+    case 'move':
+      return { kind: command.kind, edgeId: command.edgeId };
+    case 'move-to':
+      return { kind: command.kind, targetCellId: command.targetCellId };
+    case 'take-consumable':
+      return { kind: command.kind, itemKind: command.itemKind };
+    case 'give-held-item':
+    case 'use-extinguisher':
+      return { kind: command.kind, targetId: command.targetId };
+    case 'inspect-extinguisher':
+      return { kind: command.kind, removePin: command.value.removePin };
+    case 'inspect-climate':
+      return { kind: command.kind, refresh: command.value.refresh };
+    case 'inspect-emergency-brake':
+      return { kind: command.kind, action: command.value.action };
+    case 'decide-passenger-boarding':
+      return { kind: command.kind, targetId: command.targetId, decision: command.value.decision };
+    case 'edit-journal':
+      return { kind: command.kind };
+    default:
+      return { kind: command.kind };
+  }
+}
+
+function logMovementTransition(
+  logger: ServerLogger,
+  playerId: string,
+  before: GameAttemptSnapshot,
+  after: GameAttemptSnapshot,
+  delta: GameDeltaMessage,
+): void {
+  const beforePlayer = before.entities.find((entity) => entity.id === playerId);
+  const afterPlayer = after.entities.find((entity) => entity.id === playerId);
+  if (beforePlayer === undefined || afterPlayer === undefined) return;
+  if (JSON.stringify(beforePlayer.position) === JSON.stringify(afterPlayer.position)) return;
+  logger.info(
+    {
+      event: 'player-movement-progress',
+      from: beforePlayer.position,
+      to: afterPlayer.position,
+      simulationTimeUs: after.time,
+      revision: delta.revision,
+    },
+    'Player movement progressed',
+  );
 }
 
 function millisecondsToWallUs(milliseconds: number): number {

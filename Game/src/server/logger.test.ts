@@ -24,4 +24,35 @@ describe('createServerLogger', () => {
       msg: 'Server listening',
     });
   });
+
+  it('redacts authentication secrets from structured fields', () => {
+    const destination = new PassThrough();
+    let output = '';
+    destination.setEncoding('utf8');
+    destination.on('data', (chunk: string) => {
+      output += chunk;
+    });
+
+    createServerLogger(destination).info(
+      {
+        event: 'redaction-test',
+        sessionKey: 'session-secret',
+        resumeToken: 'resume-secret',
+        serviceToken: 'service-secret',
+        headers: { authorization: 'Bearer secret' },
+      },
+      'Sensitive data test',
+    );
+
+    expect(output).not.toContain('session-secret');
+    expect(output).not.toContain('resume-secret');
+    expect(output).not.toContain('service-secret');
+    expect(output).not.toContain('Bearer secret');
+    expect(JSON.parse(output)).toMatchObject({
+      sessionKey: '[REDACTED]',
+      resumeToken: '[REDACTED]',
+      serviceToken: '[REDACTED]',
+      headers: { authorization: '[REDACTED]' },
+    });
+  });
 });

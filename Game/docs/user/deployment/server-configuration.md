@@ -78,6 +78,7 @@ All process environment parsing is centralized in `src/server/config.ts`.
 | `GAME_WS_MAX_PAYLOAD_BYTES` | `65536` | no | Maximum inbound WebSocket frame size. |
 | `GAME_WS_MAX_BUFFERED_BYTES` | `262144` | no | Per-client outbound buffered byte budget before slow-client close. |
 | `GAME_SHUTDOWN_GRACE_MS` | `5000` | no | Grace period before remaining connections are force-terminated during shutdown. |
+| `GAME_LOG_LEVEL` | `info` | no | Pino level: `trace`, `debug`, `info`, `warn`, `error`, `fatal`, or `silent`. Use `debug` while investigating client/server integration and `trace` only for short tick-level captures. |
 | `GAME_MOCK_ATTEMPT_ID` | `local-attempt` | mock only | Attempt ID returned by local mock PlatformGateway. |
 | `GAME_MOCK_LEVEL_ID` | `vsm-baseline-01` | mock only | Level ID returned in local mock mode. |
 | `GAME_MOCK_MODE` | `live` | mock only | `live` or `guided`. |
@@ -218,10 +219,19 @@ Container orchestrators should send `SIGTERM` and allow at least the configured 
 
 ## 9. Logging
 
-The Game Server writes structured JSON logs through Pino to stdout. Startup,
-shutdown and shutdown errors include a stable `service: "vsm-game-server"` field
-plus an `event` name; error records use Pino's standard `err` field. Do not log
-Platform credentials, session tickets, resume tokens or complete protocol payloads.
+The Game Server writes structured JSON logs through Pino to stdout. Every record
+contains `service: "vsm-game-server"`; subsystem records also carry a `component`
+field and stable `event` name. Error records use Pino's standard `err` field.
+
+`GAME_LOG_LEVEL=info` is the production default. For integration debugging use
+`debug`; it includes protocol command summaries, public delta revisions and changed
+entity positions. `trace` additionally records worker tick scheduling/execution and
+should normally be enabled only for short captures.
+
+Authentication material is never intentionally included in event fields. Pino also
+redacts fields named `sessionKey`, `resumeToken`, `serviceToken` and HTTP
+`authorization` as a second line of defence. Do not add complete protocol payloads
+to log records.
 
 For readable local development output use:
 
@@ -230,9 +240,12 @@ npm run server:pretty
 ```
 
 This pipes the same structured server output through the development-only
-`pino-pretty` formatter. Production containers should capture the JSON stdout
+`pino-pretty` formatter. `GAME_LOG_LEVEL=debug npm run server:pretty` is the
+recommended mode while integrating the browser client. Production containers should capture the JSON stdout
 stream directly. Do not require local log files or writable application
 directories for normal release operation.
+
+For event names and debugging recipes see [`server-logging.md`](server-logging.md).
 
 ## 10. Platform API behavior
 

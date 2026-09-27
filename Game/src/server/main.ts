@@ -11,6 +11,7 @@ import { InMemoryResumeTokenRegistry } from './resume-token-registry.ts';
 import { GameSessionHost } from './session-host.ts';
 
 const config = parseServerConfig(runtimeEnvironment(process.env));
+const logger = createServerLogger({ level: config.logLevel });
 const platformGateway =
   config.platform === null
     ? new MockPlatformGateway({
@@ -18,7 +19,7 @@ const platformGateway =
         gameLevelId: config.mock.gameLevelId,
         mode: mockMode(config.mock.mode),
       })
-    : new HttpPlatformGateway(config.platform);
+    : new HttpPlatformGateway({ ...config.platform, logger });
 
 const host = new GameSessionHost({
   platformGateway,
@@ -28,11 +29,11 @@ const host = new GameSessionHost({
   reconnectGraceMs: config.reconnectGraceMs,
   simulationStepMs: config.simulationStepMs,
   maxCatchUpMs: config.maxCatchUpMs,
+  logger,
 });
 
-const protocol = new CommonGameProtocolAdapter({ host });
-const application = createGameHttpServer(config, protocol);
-const logger = createServerLogger();
+const protocol = new CommonGameProtocolAdapter({ host, logger });
+const application = createGameHttpServer(config, protocol, logger);
 await application.listen();
 logger.info(
   { event: 'server-listening', host: config.host, port: config.port },
