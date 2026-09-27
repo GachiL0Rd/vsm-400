@@ -11,6 +11,7 @@ import type {
   InvokeActionCommand,
   MoveToCommand,
   PassengerBoardingInput,
+  PresentationEventMessage,
   PublicClockView,
   PublicEntityView,
   PublicGameState,
@@ -37,6 +38,7 @@ import {
   type ItemSnapshot,
 } from '../simulation/item-store';
 import type { SimTimeUs } from '../simulation/sim-time';
+import { PresentationTracker } from './presentation-events';
 
 export type RecordedGameplayCommand =
   | { readonly kind: 'move'; readonly edgeId: string }
@@ -108,11 +110,14 @@ export class PublicGameProjection {
   private lastState: PublicGameState | null = null;
   private actionTable = new Map<string, RuntimeAction>();
   private offerSequence = 0;
+  private readonly presentation: PresentationTracker;
 
   constructor(options: PublicGameProjectionOptions) {
     this.attemptId = assertId(options.attemptId, 'Attempt id');
     this.attempt = options.attempt;
     this.mode = options.mode ?? { kind: 'live' };
+    this.presentation = new PresentationTracker(this.attempt, this.attemptId);
+    this.presentation.bind();
   }
 
   get revision(): number {
@@ -130,8 +135,15 @@ export class PublicGameProjection {
   }
 
   advanceTo(target: SimTimeUs, clock: PublicClockView = DEFAULT_CLOCK): GameDeltaMessage {
+    this.presentation.beginSlice();
     this.attempt.advanceTo(target);
+    this.presentation.capture();
     return this.refresh(clock);
+  }
+
+  /** Events for the current slice. Assigns `sequence` and clears the buffer. */
+  takePresentationEvents(): PresentationEventMessage[] {
+    return this.presentation.drain();
   }
 
   /**
@@ -221,8 +233,10 @@ export class PublicGameProjection {
     operation: RecordedGameplayCommand,
     clock: PublicClockView = DEFAULT_CLOCK,
   ): GameDeltaMessage {
+    this.presentation.beginSlice();
     const before = this.lastState ?? this.project(clock);
     this.applyOperation(operation);
+    this.presentation.capture();
     const baseRevision = this.revisionValue;
     this.bumpRevision();
     const after = this.project(clock);
@@ -277,14 +291,17 @@ export class PublicGameProjection {
     operation: RecordedGameplayCommand,
     clock: PublicClockView,
   ): InvokeResult {
+    this.presentation.beginSlice();
     const before = this.lastState ?? this.project(clock);
     try {
       this.applyOperation(operation);
     } catch (error) {
+      this.presentation.beginSlice();
       return {
         result: rejected(requestId, this.revisionValue, 'action-rejected', errorMessage(error)),
       };
     }
+    this.presentation.capture();
     const baseRevision = this.revisionValue;
     this.bumpRevision();
     const after = this.project(clock);

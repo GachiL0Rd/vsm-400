@@ -6,7 +6,7 @@
 
 ## 1. Общий принцип
 
-Документ объединяет реализованные feedback-механизмы и baseline coaching design. В release `0.1.0` assessment и achievements являются рабочими возможностями; runtime coaching/hint generation остаётся deferred baseline capability.
+Документ объединяет реализованные feedback-механизмы и baseline coaching design. В release `0.1.0` assessment и achievements являются рабочими возможностями; runtime coaching/hint generation остаётся deferred baseline capability. Публичные реплики `speech`, уведомления о фазе и `achievement-unlocked` относятся к presentation-потоку. Генерация coaching hints остаётся deferred.
 
 Assessment, achievements и coaching наблюдают за authoritative simulation, но не должны становиться источником правил мира.
 

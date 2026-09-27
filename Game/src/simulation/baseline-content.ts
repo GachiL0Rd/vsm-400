@@ -17,6 +17,7 @@ export const BASELINE_ACTION_CONTENT = {
       id: 'request-drink',
       handler: 'request-item',
       baseLogit: -2,
+      speech: 'Можно воды?',
       params: {
         itemKind: 'drink',
         waitingTrait: 'waiting-drink',
@@ -29,6 +30,7 @@ export const BASELINE_ACTION_CONTENT = {
       id: 'request-food',
       handler: 'request-item',
       baseLogit: -2,
+      speech: 'Можно что-нибудь поесть?',
       params: {
         itemKind: 'food',
         waitingTrait: 'waiting-food',
@@ -98,9 +100,9 @@ export const BASELINE_ACTION_CONTENT = {
     { id: 'waiting-food', blacklistActions: [{ op: 'id', id: 'request-food' }] },
     { id: 'has-drink', addActions: ['drink'] },
     { id: 'has-food', addActions: ['eat'] },
-    { id: 'annoyed' },
-    { id: 'pressure-whistle' },
-    { id: 'ears-blocked' },
+    { id: 'annoyed', speech: 'Сколько можно ждать?' },
+    { id: 'pressure-whistle', speech: 'Что это свистит?' },
+    { id: 'ears-blocked', speech: 'Уши закладывает…' },
   ],
   baseActions: {
     player: ['wait'],

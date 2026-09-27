@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import type { ServerMessage } from '../common/game-wire.ts';
 import { PublicGameProjection } from '../projection/public-game-session.ts';
 import { GameAttempt } from '../simulation/game-attempt.ts';
+import { BASELINE_LEVEL } from '../simulation/level.ts';
+import { BASELINE_SCENARIO_DEFINITION, loadScenarioDefinition } from '../simulation/scenario.ts';
 import { BaselineContentRegistry } from './content-registry.ts';
 import { finishedGameResultSchema } from './finished-game-result.schema.ts';
 import {
@@ -105,6 +107,10 @@ function completeJournal(attempt: GameAttempt): void {
     accepted: true,
   });
   attempt.returnJournal();
+}
+
+function quietScenario() {
+  return loadScenarioDefinition({ ...BASELINE_SCENARIO_DEFINITION, incidents: [] }, BASELINE_LEVEL);
 }
 
 function resolveOriginBoarding(attempt: GameAttempt): void {
@@ -319,12 +325,20 @@ describe('GameSessionWorker', () => {
     runtime.advanceBy(5 * 60 * 1_000 - 1_000);
     expect(attempt.phase).toEqual({ kind: 'origin-stop' });
     expect(value.projection.revision).toBe(1);
-    expect(publications).toHaveLength(1);
+    expect(publications.map((message) => message.type)).toEqual(['delta', 'presentation-event']);
     expect(publications[0]).toMatchObject({
       type: 'delta',
       baseRevision: 0,
       revision: 1,
       changes: { phase: { kind: 'origin-stop' } },
+    });
+    expect(publications[1]).toMatchObject({
+      type: 'presentation-event',
+      event: {
+        kind: 'notification',
+        notificationId: 'phase:origin-stop',
+        text: 'Посадка пассажиров открыта',
+      },
     });
   });
 
@@ -365,6 +379,62 @@ describe('GameSessionWorker', () => {
     expect(value.projection.attempt.snapshot().time).toBe(0);
     runtime.advanceBy(100);
     expect(value.projection.attempt.snapshot().time).toBe(100_000);
+  });
+
+  it('publishes phase notices and each achievement once before finishing', async () => {
+    const runtime = new FakeRuntime();
+    const attempt = new GameAttempt({ rootSeed: 4, scenario: quietScenario() });
+    completeJournal(attempt);
+    const { value } = worker(runtime, attempt, {
+      maxCatchUpMs: attempt.scenario.normalEndTimeUs / 1_000 + 5 * 60 * 1_000,
+    });
+    const publications: ServerMessage[] = [];
+    value.subscribePublications((message) => publications.push(message));
+    value.attach('socket-1');
+    value.projection.snapshot(value.publicClock());
+
+    runtime.advanceBy(5 * 60 * 1_000);
+    attempt.decidePassengerBoarding('passenger-1', 'admit');
+    attempt.decidePassengerBoarding('passenger-2', 'admit');
+    attempt.decidePassengerBoarding('passenger-3', 'reject');
+    runtime.advanceBy(attempt.scenario.normalEndTimeUs / 1_000);
+    await flush();
+
+    expect(value.lifecycle).toBe('finished');
+    const notices = publications.flatMap((message) =>
+      message.type === 'presentation-event' && message.event.kind === 'notification'
+        ? [message.event.notificationId]
+        : [],
+    );
+    expect(notices).toEqual([
+      'phase:origin-stop',
+      'phase:travel',
+      'phase:stop:0',
+      'phase:depart:0',
+      'phase:stop:1',
+      'termination:route-completed',
+    ]);
+    const achievementIndexes = publications.flatMap((message, index) =>
+      message.type === 'presentation-event' && message.event.kind === 'achievement-unlocked'
+        ? [index]
+        : [],
+    );
+    const achievementIds = publications.flatMap((message) =>
+      message.type === 'presentation-event' && message.event.kind === 'achievement-unlocked'
+        ? [message.event.achievementId]
+        : [],
+    );
+    expect(achievementIds).toEqual(['clean-predeparture', 'documents-perfect']);
+    const finishingIndex = publications.findIndex(
+      (message) => message.type === 'session-state' && message.state === 'finishing',
+    );
+    expect(finishingIndex).toBeGreaterThan(-1);
+    expect(Math.max(...achievementIndexes)).toBeLessThan(finishingIndex);
+    expect(
+      publications.some(
+        (message) => message.type === 'presentation-event' && message.event.kind === 'hint',
+      ),
+    ).toBe(false);
   });
 
   it('automatically finalizes a terminal attempt exactly once and publishes finishing/finished', async () => {

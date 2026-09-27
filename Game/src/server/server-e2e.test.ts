@@ -42,6 +42,43 @@ function nextMessages(socket: WebSocket, count: number): Promise<ServerMessage[]
   });
 }
 
+function nextInvokeBurst(socket: WebSocket): Promise<ServerMessage[]> {
+  return new Promise((resolve, reject) => {
+    const messages: ServerMessage[] = [];
+    let quiet: NodeJS.Timeout | undefined;
+    const stop = () => {
+      if (quiet !== undefined) clearTimeout(quiet);
+      socket.off('message', onMessage);
+      socket.off('error', onError);
+    };
+    const onError = (error: Error) => {
+      stop();
+      reject(error);
+    };
+    const onMessage = (data: WebSocket.RawData) => {
+      try {
+        messages.push(serverMessageSchema.parse(JSON.parse(data.toString()) as unknown));
+      } catch (error) {
+        stop();
+        reject(error);
+        return;
+      }
+      if (quiet !== undefined) clearTimeout(quiet);
+      quiet = setTimeout(() => {
+        const result = messages.find((message) => message.type === 'command-result');
+        const delta = messages.find((message) => message.type === 'delta');
+        if (result === undefined) return;
+        if (result.status === 'rejected' || delta !== undefined) {
+          stop();
+          resolve(messages);
+        }
+      }, 40);
+    };
+    socket.on('error', onError);
+    socket.on('message', onMessage);
+  });
+}
+
 function nextMessage(socket: WebSocket): Promise<ServerMessage> {
   return nextMessages(socket, 1).then((messages) => {
     const message = messages[0];
@@ -54,7 +91,9 @@ function expectType<T extends ServerMessage['type']>(
   message: ServerMessage | undefined,
   type: T,
 ): Extract<ServerMessage, { type: T }> {
-  if (message?.type !== type) throw new Error(`Expected ${type}`);
+  if (message?.type !== type) {
+    throw new Error(`Expected ${type}, received ${message?.type ?? 'nothing'}`);
+  }
   return message as Extract<ServerMessage, { type: T }>;
 }
 
@@ -152,6 +191,10 @@ function completeJournalForIncidentSetup(
   worker.projection.attempt.decidePassengerBoarding('passenger-2', 'admit');
   worker.projection.attempt.decidePassengerBoarding('passenger-3', 'reject');
   worker.projection.refresh(worker.publicClock());
+  // Boarding lines were applied outside the socket. Capture them into the
+  // tracker and drop the buffer so a later tick does not publish them before resync.
+  worker.projection.advanceTo(worker.projection.attempt.time, worker.publicClock());
+  worker.projection.takePresentationEvents();
 }
 
 async function authenticate(
@@ -534,7 +577,7 @@ describe('game server protocol integration', () => {
           });
         }
 
-        const resultPromise = nextMessages(socket, 2);
+        const resultPromise = nextInvokeBurst(socket);
         socket.send(
           JSON.stringify({
             protocolVersion: GAME_PROTOCOL_VERSION,
@@ -545,9 +588,12 @@ describe('game server protocol integration', () => {
             input: { decision },
           }),
         );
-        const [resultRaw, deltaRaw] = await resultPromise;
-        expect(expectType(resultRaw, 'command-result')).toMatchObject({ status: 'accepted' });
-        revision = expectType(deltaRaw, 'delta').revision;
+        const burst = await resultPromise;
+        expect(expectType(burst[0], 'command-result')).toMatchObject({ status: 'accepted' });
+        revision = expectType(burst[1], 'delta').revision;
+        for (const message of burst.slice(2)) {
+          expect(message.type).toBe('presentation-event');
+        }
       }
 
       worker.projection.advanceTo(secondsToSimTimeUs(35 * 60), worker.publicClock());
@@ -853,6 +899,139 @@ describe('game server protocol integration', () => {
       );
       if (currentClimate.form?.kind !== 'climate-control') throw new Error('Expected climate form');
       expect(currentClimate.form.value.pressureKPa).toBeLessThan(101.3);
+    } finally {
+      socket.close();
+      await app.close();
+    }
+  });
+
+  it('sends a schema-valid presentation event when boarding opens', async () => {
+    const host = new GameSessionHost({
+      platformGateway: new MockPlatformGateway({
+        attemptId: 'attempt-presentation',
+        gameLevelId: 'vsm-baseline-01',
+        mode: mockMode('live'),
+      }),
+      contentRegistry: new BaselineContentRegistry(),
+      resumeTokens: new InMemoryResumeTokenRegistry(),
+      disconnectDebounceMs: 1_000,
+      reconnectGraceMs: 30_000,
+    });
+    const app = createGameHttpServer(
+      parseServerConfig({ GAME_SERVER_PORT: '4174' }),
+      new CommonGameProtocolAdapter({ host }),
+    );
+    await app.listen(0);
+    const address = app.server.address() as AddressInfo;
+    const socket = new WebSocket(`ws://127.0.0.1:${address.port}/game-ws`);
+
+    try {
+      await open(socket);
+      const ready = await authenticate(socket, 'hello-presentation');
+      const worker = host.worker(ready.attemptId);
+      if (worker === undefined) throw new Error('Expected presentation worker');
+      worker.projection.advanceTo(secondsToSimTimeUs(5 * 60), worker.publicClock());
+
+      let offer = worker.projection.queryActions({
+        protocolVersion: GAME_PROTOCOL_VERSION,
+        type: 'query-actions',
+        requestId: 'presentation-journal-take',
+        knownRevision: worker.projection.revision,
+        target: { kind: 'object', objectId: 'acceptance-journal' },
+      });
+      const takeJournal = requireOfferedAction(
+        offer,
+        (action) => action.label === 'Взять журнал приёмки',
+        'journal take',
+      );
+      worker.projection.invoke({
+        protocolVersion: GAME_PROTOCOL_VERSION,
+        type: 'invoke-action',
+        requestId: 'presentation-journal-take-invoke',
+        knownRevision: worker.projection.revision,
+        actionHandle: takeJournal.handle,
+      });
+      offer = worker.projection.queryActions({
+        protocolVersion: GAME_PROTOCOL_VERSION,
+        type: 'query-actions',
+        requestId: 'presentation-journal-edit',
+        knownRevision: worker.projection.revision,
+        target: { kind: 'entity', entityId: 'player' },
+      });
+      const editJournal = requireOfferedAction(
+        offer,
+        (action) => action.form?.kind === 'acceptance-journal',
+        'journal form',
+      );
+      worker.projection.invoke({
+        protocolVersion: GAME_PROTOCOL_VERSION,
+        type: 'invoke-action',
+        requestId: 'presentation-journal-edit-invoke',
+        knownRevision: worker.projection.revision,
+        actionHandle: editJournal.handle,
+        input: {
+          communication: 'ok',
+          extinguisher: 'ok',
+          climate: 'ok',
+          emergencyBrake: 'ok',
+          sanitation: 'clean',
+          note: '',
+          accepted: true,
+        },
+      });
+
+      const resyncPromise = nextMessage(socket);
+      socket.send(
+        JSON.stringify({
+          protocolVersion: GAME_PROTOCOL_VERSION,
+          type: 'resync',
+          requestId: 'resync-presentation',
+          knownRevision: ready.snapshot.state.revision,
+        }),
+      );
+      const snapshot = expectType(await resyncPromise, 'snapshot');
+      expect(snapshot.state.phase).toEqual({ kind: 'pre-departure' });
+
+      const offerPromise = nextMessage(socket);
+      socket.send(
+        JSON.stringify({
+          protocolVersion: GAME_PROTOCOL_VERSION,
+          type: 'query-actions',
+          requestId: 'query-presentation-return',
+          knownRevision: snapshot.state.revision,
+          target: { kind: 'entity', entityId: 'player' },
+        }),
+      );
+      const returnOffer = expectType(await offerPromise, 'action-offer');
+      const returnJournal = requireOfferedAction(
+        returnOffer,
+        (action) => action.label === 'Сдать журнал приёмки',
+        'journal return',
+      );
+
+      const publishedPromise = nextMessages(socket, 3);
+      socket.send(
+        JSON.stringify({
+          protocolVersion: GAME_PROTOCOL_VERSION,
+          type: 'invoke-action',
+          requestId: 'return-presentation',
+          knownRevision: snapshot.state.revision,
+          actionHandle: returnJournal.handle,
+        }),
+      );
+      const [resultRaw, deltaRaw, eventRaw] = await publishedPromise;
+      expect(expectType(resultRaw, 'command-result')).toMatchObject({ status: 'accepted' });
+      expect(expectType(deltaRaw, 'delta').changes.phase).toEqual({ kind: 'origin-stop' });
+      const event = expectType(eventRaw, 'presentation-event');
+      expect(event.event).toEqual({
+        kind: 'notification',
+        notificationId: 'phase:origin-stop',
+        text: 'Посадка пассажиров открыта',
+      });
+      expect(event.at).toBeGreaterThanOrEqual(secondsToSimTimeUs(5 * 60));
+      expect(event.sequence).toBe(0);
+      expect(JSON.stringify(event)).not.toContain('request-drink');
+      expect(JSON.stringify(event)).not.toContain('annoyed');
     } finally {
       socket.close();
       await app.close();

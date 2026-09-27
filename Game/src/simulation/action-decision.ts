@@ -38,6 +38,8 @@ export interface ActionDefinition {
   readonly baseLogit: number;
   readonly params: { readonly [key: string]: JsonValue };
   readonly precondition?: EntitySelector;
+  /** Public passenger line emitted when this action starts. Not a handler param. */
+  readonly speech?: string;
 }
 
 export type ActionSelector =
@@ -84,6 +86,8 @@ export interface TraitDefinition {
   readonly blacklistActions?: readonly ActionSelector[];
   readonly logitModifiers?: readonly LogitModifierDefinition[];
   readonly rejectIf?: readonly EntitySelector[];
+  /** Public passenger line emitted when this trait is granted. */
+  readonly speech?: string;
 }
 
 export interface ActionContent {
@@ -130,6 +134,8 @@ export type NpcDecision =
 
 export interface ActionCatalog {
   definition(actionId: string): ActionDefinition;
+  actionSpeech(actionId: string): string | undefined;
+  traitSpeech(traitId: string): string | undefined;
   evaluate(entity: EntityState, context: DecisionContext): EvaluatedCandidates;
   chooseNpcAction(
     random: SimulationRandom,
@@ -160,6 +166,7 @@ export function loadActionContent(content: ActionContent): ActionCatalog {
     }
     assertFinite(action.baseLogit, 'Base logit');
     assertJsonObject(action.params, `${id} params`);
+    assertOptionalSpeech(action.speech, `Action ${id}`);
     if (action.precondition !== undefined) validateEntitySelector(action.precondition);
     actions.set(id, { ...action, id });
   }
@@ -199,6 +206,14 @@ class Catalog implements ActionCatalog {
       ...action,
       params: { ...action.params },
     };
+  }
+
+  actionSpeech(actionId: string): string | undefined {
+    return this.actions.get(actionId)?.speech;
+  }
+
+  traitSpeech(traitId: string): string | undefined {
+    return this.traits.get(traitId)?.speech;
   }
 
   evaluate(entity: EntityState, context: DecisionContext): EvaluatedCandidates {
@@ -408,6 +423,7 @@ function validateTrait(
   trait: TraitDefinition,
   actions: ReadonlyMap<string, ActionDefinition>,
 ): void {
+  assertOptionalSpeech(trait.speech, `Trait ${trait.id}`);
   validateAddedActions(trait, actions);
   validateTraitActionSelectors(trait, actions);
   validateTraitWhitelist(trait);
@@ -580,6 +596,13 @@ function assertJson(value: unknown, label: string): void {
 
 function isHandler(handler: string): handler is DecisionHandler {
   return (DECISION_HANDLERS as readonly string[]).includes(handler);
+}
+
+function assertOptionalSpeech(value: string | undefined, label: string): void {
+  if (value === undefined) return;
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    throw new RangeError(`${label} speech must be a non-empty string`);
+  }
 }
 
 function assertId(value: string, label: string): string {

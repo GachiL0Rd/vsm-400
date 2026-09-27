@@ -174,7 +174,7 @@ short-lived visual/audio effect
 optional open/focus presentation request
 ```
 
-Они не являются authoritative simulation events.
+Они не являются authoritative simulation events. Release `0.1.0` эмитит `speech` из content, `notification` публичной смены фазы и `achievement-unlocked` при завершении попытки. `hint` остаётся deferred.
 
 ### 7.3. Request/response
 

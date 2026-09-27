@@ -87,7 +87,10 @@ export interface SessionAttachment {
   readonly lifecycle: AttemptLifecycle;
 }
 
-type WorkerPublication = Extract<ServerMessage, { type: 'delta' | 'session-state' }>;
+type WorkerPublication = Extract<
+  ServerMessage,
+  { type: 'delta' | 'session-state' | 'presentation-event' }
+>;
 type PublicationListener = (message: WorkerPublication) => void;
 
 const DEFAULT_SIMULATION_STEP_MS = 50;
@@ -221,6 +224,7 @@ export class GameSessionWorker {
       this.recordUserInput(result.recordedCommand);
     }
     if (result.delta !== undefined) this.publishDelta(result.delta);
+    this.publishPresentation();
     this.finishIfTerminated();
   }
 
@@ -461,7 +465,7 @@ export class GameSessionWorker {
       delta,
     );
     this.simulationClock.advanceProcessedTo(applied);
-    this.publishDelta(delta);
+    this.publishAdvance(delta);
     this.finishIfTerminated();
   }
 
@@ -472,7 +476,7 @@ export class GameSessionWorker {
         break;
 
       const advanceDelta = this.options.projection.advanceTo(input.at, this.publicClock());
-      this.publishDelta(advanceDelta);
+      this.publishAdvance(advanceDelta);
       this.simulationClock.advanceProcessedTo(this.options.attempt.snapshot().time);
 
       if (this.options.attempt.termination !== null) break;
@@ -489,20 +493,20 @@ export class GameSessionWorker {
         input.command,
         this.publicClock(),
       );
-      this.publishDelta(commandDelta);
+      this.publishAdvance(commandDelta);
       this.replayInputIndex += 1;
       this.simulationClock.advanceProcessedTo(this.options.attempt.snapshot().time);
     }
 
     if (this.options.attempt.termination === null) {
       const finalDelta = this.options.projection.advanceTo(target, this.publicClock());
-      this.publishDelta(finalDelta);
+      this.publishAdvance(finalDelta);
       this.simulationClock.advanceProcessedTo(this.options.attempt.snapshot().time);
     }
     if (this.options.attempt.termination !== null && !this.replayEnded) {
       this.replayEnded = true;
       this.cancelTick();
-      this.publishDelta(this.options.projection.refresh(this.publicClock()));
+      this.publishAdvance(this.options.projection.refresh(this.publicClock()));
     }
   }
 
@@ -605,6 +609,25 @@ export class GameSessionWorker {
   private cancelFinishRetry(): void {
     this.finishRetryTimer?.cancel();
     this.finishRetryTimer = null;
+  }
+
+  private publishAdvance(delta: GameDeltaMessage): void {
+    this.publishDelta(delta);
+    this.publishPresentation();
+  }
+
+  private publishPresentation(): void {
+    const events = this.options.projection.takePresentationEvents();
+    if (events.length === 0) return;
+    this.logger.debug(
+      {
+        event: 'presentation-published',
+        count: events.length,
+        sequences: events.map((item) => item.sequence),
+      },
+      'Publishing presentation events',
+    );
+    for (const message of events) this.publish(message);
   }
 
   private publishDelta(delta: GameDeltaMessage): void {
