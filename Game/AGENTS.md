@@ -11,11 +11,12 @@ Server внутри многомодульного репозитория. `inde
 Перед изменением прочитайте:
 
 - `docs/user/README.md` — индекс действующих требований;
-- `docs/user/vsm_baseline_vertical_slice.md` — первый целевой срез;
+- `docs/user/release-scope-0.1.0.md` — обязательный scope текущего release;
+- `docs/user/vsm_baseline_vertical_slice.md` — более полный целевой срез;
 - `docs/user/project_direction.md` — границы модулей и переносимой логики.
 
 Для текущей реализации приоритет имеют документы
-[`docs/user/`](docs/user/README.md).
+[`docs/user/`](docs/user/README.md). При проверке release blocker сначала сверяйтесь с текущим `release-scope-*`; baseline может содержать сознательно deferred возможности.
 Актуальные рабочие инструкции находятся в `docs/agent/`; исторический контекст перенесён в `docs/backlog/`.
 
 Текущее направление: `src/server/` владеет authoritative simulation и
