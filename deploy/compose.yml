@@ -1,0 +1,129 @@
+# Продовый контур на одном сервере. Снаружи слушает только Caddy (80/443).
+# Запуск из каталога deploy/: `docker compose --env-file .env up -d --build`.
+name: vsm
+
+x-backend-env: &backend-env
+  NODE_ENV: production
+  PORT: "3000"
+  DATABASE_URL: postgresql://vsm:${POSTGRES_PASSWORD:?задайте POSTGRES_PASSWORD}@postgres:5432/vsm
+  REDIS_URL: redis://valkey:6379/0
+  JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?задайте JWT_ACCESS_SECRET}
+  GAME_TICKET_SECRET: ${GAME_TICKET_SECRET:?задайте GAME_TICKET_SECRET}
+  GAME_SERVER_TOKEN: ${GAME_SERVER_TOKEN:?задайте GAME_SERVER_TOKEN}
+  SEED_ENC_KEY: ${SEED_ENC_KEY:?задайте SEED_ENC_KEY}
+  EXT_ID_PEPPER: ${EXT_ID_PEPPER:?задайте EXT_ID_PEPPER}
+  CORS_ORIGINS: https://${DOMAIN:?задайте DOMAIN}
+  # Legacy-поле ответа POST /api/v1/game-sessions; схема Backend его ещё требует.
+  PUBLIC_GAME_WS_URL: wss://${DOMAIN}/game-ws
+  PUBLIC_GAME_URL: https://${DOMAIN}/game/
+  PUBLIC_APP_URL: https://${DOMAIN}
+  GAME_LEVEL_ID: ${GAME_LEVEL_ID:-vsm-train2-01}
+  COOKIE_SECURE: "true"
+  # X-Forwarded-For принимается только от Caddy из сети compose.
+  TRUST_PROXY: 172.28.0.0/16
+  LLM_PROVIDER: none
+
+services:
+  postgres:
+    image: postgres:18
+    environment:
+      POSTGRES_USER: vsm
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: vsm
+    volumes:
+      - postgres:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vsm -d vsm"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+    restart: unless-stopped
+
+  valkey:
+    image: valkey/valkey:9
+    command: ["valkey-server", "--appendonly", "yes"]
+    volumes:
+      - valkey:/data
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ../Backend
+    image: vsm-backend
+    environment: *backend-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
+    init: true
+    stop_grace_period: 20s
+    restart: unless-stopped
+
+  # Одноразовое наполнение демо-данными: `docker compose --env-file .env run --rm seed`.
+  # Сид запускается через tsx (devDependency), поэтому берётся build-стадия образа.
+  seed:
+    profiles: ["seed"]
+    build:
+      context: ../Backend
+      target: build
+    image: vsm-backend-seed
+    environment: *backend-env
+    command: ["npx", "tsx", "prisma/seed.ts"]
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  game:
+    build:
+      context: ../Game
+    image: vsm-game
+    environment:
+      PLATFORM_API_URL: http://backend:3000
+      PLATFORM_SERVICE_TOKEN: ${GAME_SERVER_TOKEN}
+      GAME_LOG_LEVEL: ${GAME_LOG_LEVEL:-info}
+    depends_on:
+      backend:
+        condition: service_healthy
+    init: true
+    stop_grace_period: 10s
+    restart: unless-stopped
+
+  caddy:
+    build:
+      context: ..
+      dockerfile: deploy/caddy.Dockerfile
+    image: vsm-caddy
+    environment:
+      DOMAIN: ${DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL:?задайте ACME_EMAIL}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - backend
+      - game
+    restart: unless-stopped
+
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
+
+volumes:
+  postgres:
+  valkey:
+  caddy_data:
+  caddy_config:

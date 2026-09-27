@@ -1,0 +1,14 @@
+# Контекст образа Caddy (deploy/caddy.Dockerfile) — корень репозитория.
+# В образ нужны только исходники Frontend и конфиг прокси.
+**/node_modules
+**/node_modules_linux
+**/dist
+**/coverage
+**/.env
+**/.env.*
+!**/.env.example
+.git
+.playwright-mcp
+.playwright-cli
+*.log
+.DS_Store
