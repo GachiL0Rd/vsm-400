@@ -48,11 +48,7 @@ export class GameScene extends Phaser.Scene {
     });
     const parent = this.game.canvas.parentElement;
     if (parent !== null) {
-      this.hud = new GameHud(
-        parent,
-        this.dependencies.store,
-        this.dependencies.interactions,
-      );
+      this.hud = new GameHud(parent, this.dependencies.store, this.dependencies.interactions);
     }
     this.input.mouse?.disableContextMenu();
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
