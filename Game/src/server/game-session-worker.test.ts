@@ -342,6 +342,33 @@ describe('GameSessionWorker', () => {
     });
   });
 
+  it('delivers presentation events produced before the first subscriber once, after subscribing', async () => {
+    const runtime = new FakeRuntime();
+    const attempt = new GameAttempt({ rootSeed: 7 });
+    completeJournal(attempt);
+    const { value } = worker(runtime, attempt, { maxCatchUpMs: 10 * 60 * 1_000 });
+    value.attach('socket-1');
+    value.projection.snapshot(value.publicClock());
+    runtime.advanceBy(5 * 60 * 1_000);
+    expect(attempt.phase).toEqual({ kind: 'origin-stop' });
+
+    const first: ServerMessage[] = [];
+    value.subscribePublications((message) => first.push(message));
+    expect(first).toEqual([]);
+    await Promise.resolve();
+    expect(first).toEqual([
+      expect.objectContaining({
+        type: 'presentation-event',
+        event: expect.objectContaining({ notificationId: 'phase:origin-stop' }),
+      }),
+    ]);
+
+    const second: ServerMessage[] = [];
+    value.subscribePublications((message) => second.push(message));
+    await Promise.resolve();
+    expect(second).toEqual([]);
+  });
+
   it('changes time scale without a discontinuity and exposes the clock through the projection', () => {
     const runtime = new FakeRuntime();
     const { value } = worker(runtime, undefined, { maxCatchUpMs: 10_000 });

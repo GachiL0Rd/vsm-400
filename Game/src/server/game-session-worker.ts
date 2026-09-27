@@ -25,6 +25,7 @@ import type {
 } from './types.ts';
 import { PlatformGatewayError } from './types.ts';
 
+const MAX_UNHEARD_PRESENTATION = 32;
 export type AttemptLifecycle =
   | 'initializing'
   | 'active'
@@ -119,6 +120,13 @@ export class GameSessionWorker {
   private readonly finishRetryDelaysMs: readonly number[];
   private nextFinishRetryIndex = 0;
   private readonly publications = new Set<PublicationListener>();
+  /**
+   * Presentation events produced before any connection subscribed (e.g. the
+   * guided start hint on the first tick) would otherwise be lost: they are
+   * transient and not part of the snapshot. Delivered once to the first subscriber.
+   */
+  private readonly unheardPresentation: WorkerPublication[] = [];
+  private hadSubscriber = false;
   private nextInputSequence = 0;
   private readonly replayInputs: readonly RecordedReplayInput[];
   private replayInputIndex = 0;
@@ -196,6 +204,13 @@ export class GameSessionWorker {
 
   subscribePublications(listener: PublicationListener): () => void {
     this.publications.add(listener);
+    this.hadSubscriber = true;
+    if (this.unheardPresentation.length > 0) {
+      // Deferred so the subscriber first sends its session-ready snapshot.
+      queueMicrotask(() => {
+        for (const message of this.unheardPresentation.splice(0)) listener(message);
+      });
+    }
     return () => this.publications.delete(listener);
   }
 
@@ -669,6 +684,12 @@ export class GameSessionWorker {
   }
 
   private publish(message: WorkerPublication): void {
+    if (!this.hadSubscriber && message.type === 'presentation-event') {
+      if (this.unheardPresentation.length < MAX_UNHEARD_PRESENTATION) {
+        this.unheardPresentation.push(message);
+      }
+      return;
+    }
     for (const listener of this.publications) listener(message);
   }
 
