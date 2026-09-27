@@ -103,7 +103,6 @@ services:
     image: vsm-caddy
     environment:
       DOMAIN: ${DOMAIN}
-      ACME_EMAIL: ${ACME_EMAIL:?задайте ACME_EMAIL}
     ports:
       - "80:80"
       - "443:443"
