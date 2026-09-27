@@ -24,17 +24,18 @@
 3. [`vsm_conductor_game_concept.md`](vsm_conductor_game_concept.md) — продуктовая концепция.
 4. [`vsm_baseline_vertical_slice.md`](vsm_baseline_vertical_slice.md) — целевой вертикальный срез, включая deferred возможности.
 5. [`architecture/repository-structure.md`](architecture/repository-structure.md) — границы `common / simulation / projection / server / client`.
-6. [`architecture/client-server.md`](architecture/client-server.md) — Browser ↔ Game Server ↔ Platform Server.
-7. [`api/websocket-protocol.md`](api/websocket-protocol.md) — фактический Browser ↔ Game Server protocol v1.
-8. [`api/platform-openapi.yaml`](api/platform-openapi.yaml) — Swagger/OpenAPI Game Server ↔ Platform Server.
-9. [`architecture/platform-contract.md`](architecture/platform-contract.md) — семантика внешнего platform contract.
-10. [`architecture/session-modes.md`](architecture/session-modes.md) — live/guided/replay и protocol extensions.
-11. [`architecture/replay.md`](architecture/replay.md) — deterministic replay, seek и checkpoints.
-12. [`simulation/README.md`](simulation/README.md) — карта документов движка, включая минимальную Entity/Traits/Actions модель и assessment.
-13. [`implementation/README.md`](implementation/README.md) — конкретная реализация текущего demo: объекты, модалки, held-items, ассеты, environment-state, уровни обслуживания и план рейса.
-14. [`deployment/server-configuration.md`](deployment/server-configuration.md) — запуск и environment configuration Game Server.
-15. [`deployment/content-bundle.md`](deployment/content-bundle.md) — release-format server-side Level/Scenario/Actions/Assessment config.
-16. [`deployment/container-layout.md`](deployment/container-layout.md) — контейнерные/service boundaries и reference topology.
+6. [`architecture/diagrams.md`](architecture/diagrams.md) — handoff-диаграммы: system context, server flows, lifecycle и class diagrams.
+7. [`architecture/client-server.md`](architecture/client-server.md) — Browser ↔ Game Server ↔ Platform Server.
+8. [`api/websocket-protocol.md`](api/websocket-protocol.md) — фактический Browser ↔ Game Server protocol v1.
+9. [`api/platform-openapi.yaml`](api/platform-openapi.yaml) — Swagger/OpenAPI Game Server ↔ Platform Server.
+10. [`architecture/platform-contract.md`](architecture/platform-contract.md) — семантика внешнего platform contract.
+11. [`architecture/session-modes.md`](architecture/session-modes.md) — live/guided/replay и protocol extensions.
+12. [`architecture/replay.md`](architecture/replay.md) — deterministic replay, seek и checkpoints.
+13. [`simulation/README.md`](simulation/README.md) — карта документов движка, включая минимальную Entity/Traits/Actions модель и assessment.
+14. [`implementation/README.md`](implementation/README.md) — конкретная реализация текущего demo: объекты, модалки, held-items, ассеты, environment-state, уровни обслуживания и план рейса.
+15. [`deployment/server-configuration.md`](deployment/server-configuration.md) — запуск и environment configuration Game Server.
+16. [`deployment/content-bundle.md`](deployment/content-bundle.md) — release-format server-side Level/Scenario/Actions/Assessment config.
+17. [`deployment/container-layout.md`](deployment/container-layout.md) — контейнерные/service boundaries и reference topology.
 
 ## Нормативная граница
 
