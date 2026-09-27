@@ -26,7 +26,9 @@ import {
 } from '../sessions/text-plan';
 import {
   LLM_ERRORS_KEY,
+  LLM_GEN_RETRY_KEY,
   LLM_JOB_NAME,
+  LLM_JUDGE_RETRY_KEY,
   LLM_PROVIDER,
   LLM_QUEUE,
   LLM_REJECTED_KEY,
@@ -72,6 +74,7 @@ export type LlmStatusView = {
   model: string | null;
   queue: { waiting: number; active: number; failed: number; delayed: number };
   rejected: number;
+  retries: { generation: number; judge: number };
   pool: PoolBucket[];
   errors: { at: string; scenarioId: string; nodeId: string; message: string }[];
 };
@@ -299,9 +302,11 @@ export class VariantPoolService implements OnApplicationBootstrap {
   }
 
   async status(): Promise<LlmStatusView> {
-    const [counts, rejectedRaw, errorLines, grouped] = await Promise.all([
+    const [counts, rejectedRaw, generationRaw, judgeRaw, errorLines, grouped] = await Promise.all([
       this.queue.getJobCounts('waiting', 'active', 'failed', 'delayed'),
       this.redis.get(LLM_REJECTED_KEY),
+      this.redis.get(LLM_GEN_RETRY_KEY),
+      this.redis.get(LLM_JUDGE_RETRY_KEY),
       this.redis.lrange(LLM_ERRORS_KEY, 0, 19),
       this.prisma.scenarioTextVariant.groupBy({
         by: ['scenarioId', 'version', 'status'],
@@ -318,6 +323,10 @@ export class VariantPoolService implements OnApplicationBootstrap {
         delayed: counts.delayed ?? 0,
       },
       rejected: Number(rejectedRaw ?? 0) || 0,
+      retries: {
+        generation: Number(generationRaw ?? 0) || 0,
+        judge: Number(judgeRaw ?? 0) || 0,
+      },
       pool: buckets(grouped),
       errors: errorLines.map(parseError).filter((item) => item !== null),
     };

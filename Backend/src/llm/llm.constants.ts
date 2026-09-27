@@ -16,6 +16,8 @@ export const LLM_RATE_MAX = 20;
 export const LLM_RATE_WINDOW_MS = 10_000;
 
 export const LLM_REJECTED_KEY = 'llm:rejected';
+export const LLM_GEN_RETRY_KEY = 'llm:retry:generation';
+export const LLM_JUDGE_RETRY_KEY = 'llm:retry:judge';
 export const LLM_ERRORS_KEY = 'llm:errors';
 export const LLM_ERROR_LIMIT = 20;
 

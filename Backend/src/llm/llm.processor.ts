@@ -11,7 +11,9 @@ import { buildJudgeMessages, judgeOutcome, parseJudgeText, reviewStatus } from '
 import {
   LLM_ERROR_LIMIT,
   LLM_ERRORS_KEY,
+  LLM_GEN_RETRY_KEY,
   LLM_JUDGE_PROVIDER,
+  LLM_JUDGE_RETRY_KEY,
   LLM_PROVIDER,
   LLM_QUEUE,
   LLM_RATE_MAX,
@@ -23,12 +25,23 @@ import {
   variantReason,
 } from './llm.constants';
 import { avoidForJob } from './pool-plan';
-import { buildMessages, PROMPT_VERSION, SCHEMA_NAME, variantJsonSchema } from './prompt';
+import {
+  buildMessages,
+  PROMPT_VERSION,
+  remindFormat,
+  SCHEMA_NAME,
+  variantJsonSchema,
+} from './prompt';
 import type { LlmProvider } from './provider';
 import { bundleText, decisionNodes, parseStoredGraph, sourceOf } from './scenario-nodes';
 import { similarityHit, similarityReason } from './similarity';
 import { applicableKeep } from './text-norm';
-import { readVariantPayload, type VariantPayload, validateVariant } from './validate-variant';
+import {
+  isFormatReject,
+  readVariantPayload,
+  type VariantPayload,
+  validateVariant,
+} from './validate-variant';
 import { VariantPoolService } from './variant-pool.service';
 
 const EXISTING_LIMIT = 200;
@@ -64,30 +77,19 @@ export class LlmProcessor extends WorkerHost {
       return;
     }
     const existing = await this.loadExisting(data);
-    let generated: { content: string; model: string };
-    try {
-      generated = await this.generate(data, loaded, existing);
-    } catch (error) {
-      await this.note(data, errorText(error), false);
-      throw error;
-    }
-    const verdict = validateVariant(generated.content, {
-      ...loaded.source,
-      keep: loaded.keep,
-    });
-    if (!verdict.ok) {
-      await this.note(data, verdict.reasons.join('; '), true);
+    const accepted = await this.acceptVariant(data, loaded, existing);
+    if (!accepted) {
       return;
     }
     const similar = similarityHit(
-      verdict.payload,
+      accepted.payload,
       loaded.source,
       existing,
       this.rules.llm().maxSimilarity,
     );
     if (similar) {
       const reason = similarityReason(similar);
-      await this.save(data, generated.model, verdict.payload, 'REJECTED', reason);
+      await this.save(data, accepted.model, accepted.payload, 'REJECTED', reason);
       await this.note(data, reason, true);
       return;
     }
@@ -95,19 +97,19 @@ export class LlmProcessor extends WorkerHost {
     if (judgeEnabled) {
       let reason: string | null;
       try {
-        reason = await this.judgeVerdict(loaded.source, verdict.payload);
+        reason = await this.judgeVerdict(loaded.source, accepted.payload);
       } catch (error) {
         await this.note(data, errorText(error), false);
         throw error;
       }
       if (reason) {
-        await this.save(data, generated.model, verdict.payload, 'REJECTED', reason);
+        await this.save(data, accepted.model, accepted.payload, 'REJECTED', reason);
         await this.note(data, reason, true);
         return;
       }
     }
     const status = reviewStatus(this.rules.llm().autoApprove, judgeEnabled);
-    await this.save(data, generated.model, verdict.payload, status, null);
+    await this.save(data, accepted.model, accepted.payload, status, null);
     if (data.reason === 'live' && data.sessionId && status === 'APPROVED') {
       await this.pool.bindLive({
         sessionId: data.sessionId,
@@ -161,21 +163,57 @@ export class LlmProcessor extends WorkerHost {
     return existing;
   }
 
+  private async acceptVariant(
+    data: LlmJobData,
+    loaded: { source: ReturnType<typeof sourceOf>; keep: string[]; forbid: string[] },
+    existing: readonly { id: string; persona: string; payload: VariantPayload }[],
+  ): Promise<{ model: string; payload: VariantPayload } | null> {
+    const source = { ...loaded.source, keep: loaded.keep };
+    let generated = await this.completeOrNote(data, () => this.generate(data, loaded, existing));
+    let verdict = validateVariant(generated.content, source);
+    if (!verdict.ok && isFormatReject(verdict.reasons)) {
+      await this.countRetry(LLM_GEN_RETRY_KEY);
+      generated = await this.completeOrNote(data, () =>
+        this.generate(data, loaded, existing, true),
+      );
+      verdict = validateVariant(generated.content, source);
+    }
+    if (!verdict.ok) {
+      await this.note(data, rejectMessage(verdict.reasons), true);
+      return null;
+    }
+    return { model: generated.model, payload: verdict.payload };
+  }
+
+  private async completeOrNote(
+    data: LlmJobData,
+    run: () => Promise<{ content: string; model: string }>,
+  ): Promise<{ content: string; model: string }> {
+    try {
+      return await run();
+    } catch (error) {
+      await this.note(data, errorText(error), false);
+      throw error;
+    }
+  }
+
   private async generate(
     data: LlmJobData,
     loaded: { source: ReturnType<typeof sourceOf>; keep: string[]; forbid: string[] },
     existing: readonly { id: string; persona: string; payload: VariantPayload }[],
+    remind = false,
   ): Promise<{ content: string; model: string }> {
     const avoid = avoidForJob(existing, data.persona).map((row) => row.payload);
+    const messages = buildMessages({
+      persona: data.persona,
+      keep: loaded.keep,
+      forbid: loaded.forbid,
+      text: loaded.source.text,
+      choices: loaded.source.choices,
+      avoid,
+    });
     return this.provider.complete({
-      messages: buildMessages({
-        persona: data.persona,
-        keep: loaded.keep,
-        forbid: loaded.forbid,
-        text: loaded.source.text,
-        choices: loaded.source.choices,
-        avoid,
-      }),
+      messages: remind ? remindFormat(messages) : messages,
       jsonSchema: variantJsonSchema(loaded.source.choices.map((choice) => choice.id)),
       schemaName: SCHEMA_NAME,
     });
@@ -189,6 +227,7 @@ export class LlmProcessor extends WorkerHost {
     const first = await this.askJudge(buildJudgeMessages(source, payload));
     let parsed = parseJudgeText(first, ids);
     if (!judgeReady(first, parsed)) {
+      await this.countRetry(LLM_JUDGE_RETRY_KEY);
       const retried = await this.retryJudge(source, payload, ids);
       if (!retried) {
         return 'judge-unparsed';
@@ -249,6 +288,14 @@ export class LlmProcessor extends WorkerHost {
     });
   }
 
+  private async countRetry(key: string): Promise<void> {
+    try {
+      await this.redis.incr(key);
+    } catch (error) {
+      this.logger.warn(`не записать повтор LLM: ${errorText(error)}`);
+    }
+  }
+
   private async note(data: LlmJobData, message: string, rejected: boolean): Promise<void> {
     try {
       if (rejected) {
@@ -293,6 +340,10 @@ export function readJob(data: unknown): LlmJobData | null {
 
 function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function rejectMessage(reasons: readonly string[]): string {
+  return isFormatReject(reasons) ? 'generation-unparsed' : reasons.join('; ');
 }
 
 function judgeReady(content: string, parsed: ReturnType<typeof parseJudgeText>): boolean {

@@ -6,6 +6,7 @@ import type { AppConfig } from '../config/env';
 import type { PrismaService } from '../prisma/prisma.service';
 import type { RedisService } from '../redis/redis.service';
 import type { RulesService } from '../rules/rules.service';
+import { LLM_GEN_RETRY_KEY, LLM_JUDGE_RETRY_KEY } from './llm.constants';
 import { LlmProcessor, readJob } from './llm.processor';
 import { PROMPT_VERSION, SCHEMA_NAME } from './prompt';
 import type { LlmCompleteInput, LlmProvider } from './provider';
@@ -228,12 +229,13 @@ describe('LlmProcessor', () => {
       rejectReason: 'judge: ситуация: таблетка стала пилкой; judge: walk: действие другое',
     });
     expect(redis.incr).toHaveBeenCalledWith('llm:rejected');
+    expect(redis.incr).not.toHaveBeenCalledWith(LLM_JUDGE_RETRY_KEY);
     expect(pool.bindLive).not.toHaveBeenCalled();
   });
 
   it('пустой ответ судьи ретраится один раз и потом проходит', async () => {
     const debug = vi.spyOn(Logger.prototype, 'debug').mockImplementation(() => undefined);
-    const { processor, prisma, provider } = harness(true, true);
+    const { processor, prisma, provider, redis } = harness(true, true);
     const replies = ['', judgeOk];
     provider.complete = vi.fn(async (input: LlmCompleteInput) => {
       if (input.temperature === 0) {
@@ -248,6 +250,8 @@ describe('LlmProcessor', () => {
     expect(reminder?.jsonSchema).toBeUndefined();
     expect(reminder?.messages[1]?.content).toContain('Прошлый ответ не разобран.');
     expect(prisma.scenarioTextVariant.create.mock.calls[0]?.[0].data.status).toBe('APPROVED');
+    expect(redis.incr).toHaveBeenCalledTimes(1);
+    expect(redis.incr).toHaveBeenCalledWith(LLM_JUDGE_RETRY_KEY);
     expect(debug.mock.calls.some((call) => String(call[0]).includes('ситуация: да'))).toBe(true);
     debug.mockRestore();
   });
@@ -271,6 +275,7 @@ describe('LlmProcessor', () => {
     const pushed = String(redis.lpush.mock.calls[0]?.[1]);
     expect(pushed).toContain('judge-unparsed');
     expect(pushed).not.toContain('болтовня');
+    expect(redis.incr).toHaveBeenCalledWith(LLM_JUDGE_RETRY_KEY);
   });
 
   it('слишком похожий текст не доходит до судьи', async () => {
@@ -291,15 +296,95 @@ describe('LlmProcessor', () => {
       'copy-1',
     );
     expect(redis.incr).toHaveBeenCalledWith('llm:rejected');
+    expect(redis.incr).not.toHaveBeenCalledWith(LLM_GEN_RETRY_KEY);
   });
 
-  it('не сохраняет невалидный ответ и считает отказ', async () => {
-    const { processor, prisma, provider, redis } = harness(true);
-    provider.complete = vi.fn().mockResolvedValue({ content: '{"text":"ok"}', model: 'qwen3-8b' });
+  it('чужой набор id повторяет генерацию один раз и сохраняет второй ответ', async () => {
+    const { processor, prisma, provider, redis } = harness(true, true);
+    const wrongIds = JSON.stringify({
+      text: 'Из тамбура слышен свист.',
+      choices: [{ id: 'radio', text: 'Сразу доложить по связи' }],
+    });
+    const replies = [wrongIds, validBody];
+    provider.complete = vi.fn(async (input: LlmCompleteInput) => {
+      if (input.temperature === 0) {
+        return { content: judgeOk, model: 'qwen3-8b' };
+      }
+      return { content: replies.shift() ?? validBody, model: 'qwen3-8b' };
+    });
     await processor.process(job(manual));
+    const calls = vi.mocked(provider.complete).mock.calls.map((call) => call[0]);
+    const generated = calls.filter((input) => input?.temperature !== 0);
+    expect(generated).toHaveLength(2);
+    expect(generated[0]?.messages.at(-1)?.content).not.toContain('Прошлый ответ не разобран');
+    expect(generated[1]?.messages.at(-1)?.content).toContain('Прошлый ответ не разобран');
+    expect(generated[1]?.schemaName).toBe(SCHEMA_NAME);
+    expect(calls.filter((input) => input?.temperature === 0)).toHaveLength(1);
+    expect(prisma.scenarioTextVariant.create.mock.calls[0]?.[0].data.status).toBe('APPROVED');
+    expect(redis.incr).toHaveBeenCalledTimes(1);
+    expect(redis.incr).toHaveBeenCalledWith(LLM_GEN_RETRY_KEY);
+  });
+
+  it('два битых ответа — generation-unparsed без строки', async () => {
+    const { processor, prisma, provider, redis } = harness(true);
+    provider.complete = vi.fn().mockResolvedValue({ content: 'не json', model: 'qwen3-8b' });
+    await processor.process(job(manual));
+    expect(provider.complete).toHaveBeenCalledTimes(2);
+    const second = vi.mocked(provider.complete).mock.calls[1]?.[0];
+    expect(second?.messages.at(-1)?.content).toContain('Прошлый ответ не разобран');
+    expect(prisma.scenarioTextVariant.create).not.toHaveBeenCalled();
+    expect(redis.incr).toHaveBeenCalledWith(LLM_GEN_RETRY_KEY);
+    expect(redis.incr).toHaveBeenCalledWith('llm:rejected');
+    const pushed = String(redis.lpush.mock.calls[0]?.[1]);
+    expect(pushed).toContain('generation-unparsed');
+    expect(pushed).not.toContain('не json');
+  });
+
+  it('промах якоря не повторяет генерацию', async () => {
+    const { processor, prisma, provider, redis } = harness(true);
+    provider.complete = vi.fn().mockResolvedValue({
+      content: JSON.stringify({
+        text: 'Пассажир закрыл уши в салоне.',
+        choices: [
+          { id: 'radio', text: 'Сразу сказать по связи' },
+          { id: 'walk', text: 'Сначала самому дойти до шума' },
+        ],
+      }),
+      model: 'qwen3-8b',
+    });
+    await processor.process(job(manual));
+    expect(provider.complete).toHaveBeenCalledOnce();
     expect(prisma.scenarioTextVariant.create).not.toHaveBeenCalled();
     expect(redis.incr).toHaveBeenCalledWith('llm:rejected');
-    expect(redis.lpush).toHaveBeenCalledOnce();
+    expect(redis.incr).not.toHaveBeenCalledWith(LLM_GEN_RETRY_KEY);
+    const pushed = String(redis.lpush.mock.calls[0]?.[1]);
+    expect(pushed).toContain('нет якоря');
+    expect(pushed).not.toContain('generation-unparsed');
+  });
+
+  it('после битого формата промах якоря не зовёт модель ещё раз', async () => {
+    const { processor, prisma, provider, redis } = harness(true);
+    const replies = [
+      'не json',
+      JSON.stringify({
+        text: 'Пассажир закрыл уши в салоне.',
+        choices: [
+          { id: 'radio', text: 'Сразу сказать по связи' },
+          { id: 'walk', text: 'Сначала самому дойти до шума' },
+        ],
+      }),
+    ];
+    provider.complete = vi.fn(async () => ({
+      content: replies.shift() ?? 'не json',
+      model: 'qwen3-8b',
+    }));
+    await processor.process(job(manual));
+    expect(provider.complete).toHaveBeenCalledTimes(2);
+    expect(prisma.scenarioTextVariant.create).not.toHaveBeenCalled();
+    expect(redis.incr).toHaveBeenCalledWith(LLM_GEN_RETRY_KEY);
+    const pushed = String(redis.lpush.mock.calls[0]?.[1]);
+    expect(pushed).toContain('нет якоря');
+    expect(pushed).not.toContain('generation-unparsed');
   });
 
   it('ошибку провайдера пишет и пробрасывает на ретрай', async () => {

@@ -92,6 +92,25 @@ export function buildMessages(input: {
   ];
 }
 
+export const FORMAT_RETRY_NOTE = [
+  'Прошлый ответ не разобран.',
+  'Верни только JSON {"text":"...","choices":[{"id":"...","text":"..."}]}',
+  'без markdown и текста вокруг.',
+  'id и число choices оставь как в задании.',
+].join('\n');
+
+export function remindFormat(messages: readonly LlmMessage[]): LlmMessage[] {
+  if (messages.length === 0) {
+    return [{ role: 'user', content: FORMAT_RETRY_NOTE }];
+  }
+  return messages.map((message, index) => {
+    if (index !== messages.length - 1) {
+      return message;
+    }
+    return { role: message.role, content: `${message.content}\n\n${FORMAT_RETRY_NOTE}` };
+  });
+}
+
 function avoidLines(
   samples: readonly { text: string; choices: readonly PromptChoice[] }[],
 ): string[] {

@@ -93,6 +93,7 @@ describe('перефразы LLM', () => {
       provider: 'none',
       queue: { waiting: expect.any(Number), active: expect.any(Number) },
       rejected: expect.any(Number),
+      retries: { generation: expect.any(Number), judge: expect.any(Number) },
       pool: expect.any(Array),
       errors: expect.any(Array),
     });

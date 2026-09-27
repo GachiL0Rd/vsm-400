@@ -83,6 +83,10 @@ export const LlmStatusSchema = z.strictObject({
     delayed: z.number().int(),
   }),
   rejected: z.number().int(),
+  retries: z.strictObject({
+    generation: z.number().int(),
+    judge: z.number().int(),
+  }),
   pool: z.array(PoolBucketSchema),
   errors: z.array(LlmErrorSchema),
 });

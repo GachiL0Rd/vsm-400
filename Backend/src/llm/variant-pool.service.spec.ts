@@ -6,7 +6,12 @@ import type { AppConfig } from '../config/env';
 import type { PrismaService } from '../prisma/prisma.service';
 import type { RedisService } from '../redis/redis.service';
 import type { RulesService } from '../rules/rules.service';
-import type { LlmJobData } from './llm.constants';
+import {
+  LLM_GEN_RETRY_KEY,
+  LLM_JUDGE_RETRY_KEY,
+  LLM_REJECTED_KEY,
+  type LlmJobData,
+} from './llm.constants';
 import type { LlmProvider } from './provider';
 import { VariantPoolService } from './variant-pool.service';
 
@@ -66,7 +71,7 @@ function harness(name: LlmProvider['name'] = 'openai-compatible') {
     provider,
     queue as unknown as Queue<LlmJobData>,
   );
-  return { pool, prisma, queue, provider };
+  return { pool, prisma, queue, provider, redis };
 }
 
 describe('VariantPoolService', () => {
@@ -293,5 +298,28 @@ describe('VariantPoolService', () => {
     expect(plan?.nodes['ride-pressure:open']).toBeNull();
     expect(plan?.shown).toEqual(['ride-pressure:open']);
     expect(prisma.scenarioTextVariant.update).not.toHaveBeenCalled();
+  });
+
+  it('статус отдаёт счётчики повторов генерации и судьи', async () => {
+    const { pool, prisma, queue, redis } = harness();
+    queue.getJobCounts.mockResolvedValue({ waiting: 0, active: 0, failed: 0, delayed: 0 });
+    redis.get.mockImplementation(async (key: string) => {
+      if (key === LLM_REJECTED_KEY) {
+        return '3';
+      }
+      if (key === LLM_GEN_RETRY_KEY) {
+        return '2';
+      }
+      if (key === LLM_JUDGE_RETRY_KEY) {
+        return '5';
+      }
+      return null;
+    });
+    redis.lrange.mockResolvedValue([]);
+    prisma.scenarioTextVariant.groupBy.mockResolvedValue([]);
+    await expect(pool.status()).resolves.toMatchObject({
+      rejected: 3,
+      retries: { generation: 2, judge: 5 },
+    });
   });
 });
