@@ -17,8 +17,8 @@
 Postgres, Valkey, Backend и GameServer портов на хост не публикуют.
 Статику отдаёт прокси, не Node.
 
-Порядок `handle` важен: `/api/internal` раньше `/api`, `/game-ws` раньше
-`/game` и раньше fallback SPA. Caddy проксирует WebSocket без ручных
+Порядок `handle` важен: `/api/internal` и `/api/game` раньше `/api`,
+`/game-ws` раньше `/game` и раньше fallback SPA. Caddy проксирует WebSocket без ручных
 `Upgrade` и `Connection`. nginx их требует; на один VPS отдельный Traefik
 не нужен.
 
@@ -31,6 +31,10 @@ Postgres, Valkey, Backend и GameServer портов на хост не публ
 	tls /certs/fullchain.pem /certs/privkey.pem
 
 	handle /api/internal/* {
+		respond 404
+	}
+
+	handle /api/game/* {
 		respond 404
 	}
 
@@ -63,11 +67,14 @@ compose, например `172.28.0.0/16`, если сеть такая, или 
 для этого варианта тоже не подходит: Caddy приходит из соседнего контейнера,
 не с `127.0.0.1`. Пустое значение оставляет адрес сокета.
 
-`/api/*` уводит на Backend и `/api/docs`, и `/api/openapi.json`. Внутренний
-префикс до приложения не доходит. Путь сокета игры — `/game-ws`, как в
-контракте v1. `PUBLIC_GAME_WS_URL` должен совпасть с этим URL
-(`wss://<хост>/game-ws`). Значение `ws://127.0.0.1:3001/game` из
-`.env.example` — локальная заготовка, на прокси его не переносить.
+`/api/*` уводит на Backend и `/api/docs`, и `/api/openapi.json`. Префиксы
+`/api/internal` и `/api/game` до приложения не доходят: Bearer
+`GAME_SERVER_TOKEN` и `X-Service-Token` снаружи не публикуются. Game Server
+в контуре ходит на Backend напрямую, не через этот Caddy.
+`PUBLIC_GAME_WS_URL` — legacy `wsUrl` кабинета. Если сокет ещё нужен, URL
+должен совпасть с `/game-ws` (`wss://<хост>/game-ws`). Значение
+`ws://127.0.0.1:3001/game` из `.env.example` — локальная заготовка.
+Клиент Game открывается по `PUBLIC_GAME_URL`, не по этому сокету.
 
 Один процесс GameServer: мир рейса в памяти. Вторая реплика без привязки
 клиента к процессу разъедет ревизии. Реплики Backend допустимы: JWT и Redis
@@ -97,7 +104,10 @@ healthcheck не показывает, кто умер, падение симу�
 (от 32), `GAME_SERVER_TOKEN` (от 16), `SEED_ENC_KEY` (64 hex, AES-256-GCM),
 `EXT_ID_PEPPER` (от 16), `CORS_ORIGINS`, `PUBLIC_GAME_WS_URL`,
 `COOKIE_SECURE`. Пустое значение роняет процесс до `listen` текстом
-`Некорректное окружение`.
+`Некорректное окружение`. `PUBLIC_GAME_URL`, `PUBLIC_APP_URL` и
+`GAME_LEVEL_ID` имеют значения по умолчанию (см. `src/config/env.ts`);
+чужой протокол (`ws://` вместо `http://`) роняет старт. В контуре задайте
+их явно: URL клиента Game, URL кабинета, id уровня.
 
 Значения из `.env.example` только для своей машины. В контуре другие.
 `COOKIE_SECURE=true`, `NODE_ENV=production`, `PUBLIC_GAME_WS_URL` на `wss`.

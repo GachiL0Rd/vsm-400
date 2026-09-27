@@ -50,7 +50,11 @@ npm run verify
 Глобальный префикс `/api`. Версия доменных контроллеров — URI, по умолчанию
 `v1`: ручка без своего `version` станет `/api/v1/...`. `GET /api/health` и
 Swagger (`/api/docs`, `/api/openapi.json`) вне версии (`VERSION_NEUTRAL` и
-явные пути). Внутренний префикс `/internal/v1` из SPEC §7 сюда не входит.
+явные пути). Туда же входят `POST /api/game/sessions/resolve` и
+`POST /api/game/sessions/:attemptId/finish`: Bearer `GAME_SERVER_TOKEN`,
+контракт Platform Server, см. `docs/game-server-contract.md`. Legacy
+`/api/internal/v1` с `X-Service-Token` не заменяется. Внутренний префикс
+`/internal/v1` из SPEC §7 сюда не входит.
 
 Ошибки — `application/problem+json` (RFC 9457): `type`, `title`, `status`,
 `detail`, `code`, у Zod ещё `errors[]`. Zod и обёртка nestjs-zod дают 422.

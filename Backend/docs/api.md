@@ -36,7 +36,7 @@ npm run openapi:export
 | GET | `/api/v1/scenarios/{id}` | METHODIST, ADMIN | — | 200 ScenarioDetailDto, 401, 403, 404 |
 | PUT | `/api/v1/admin/scenarios/{id}` | METHODIST, ADMIN | граф, в документе `object` | 200 ScenarioDetailDto, 401, 403, 404, 422 |
 | POST | `/api/v1/admin/scenarios/{id}/status` | METHODIST, ADMIN | ScenarioStatusDto | 200 ScenarioStatusViewDto, 401, 403, 404, 422 |
-| POST | `/api/v1/game-sessions` | любая роль, cookie или Bearer | OpenSessionDto | 200 OpenedSessionDto, 201, 401 |
+| POST | `/api/v1/game-sessions` | любая роль, cookie или Bearer | OpenSessionDto | 200 OpenedSessionDto (`launchUrl`), 201, 401 |
 | GET | `/api/v1/game-sessions/{id}` | любая роль, cookie или Bearer | — | 200 SessionViewDto |
 | POST | `/api/v1/game-sessions/{id}/decisions` | любая роль, cookie или Bearer | DecisionDto | 200 DecisionViewDto |
 | POST | `/api/v1/game-sessions/{id}/abort` | любая роль, cookie или Bearer | — | 200 AbortResultDto |
@@ -62,6 +62,8 @@ npm run openapi:export
 | GET | `/api/v1/admin/api-clients` | ADMIN | — | 200 object[], 401 object |
 | POST | `/api/v1/admin/api-clients` | ADMIN | CreateApiClientDto | 201 object, 401, 403, 422 object |
 | POST | `/api/v1/admin/api-clients/{id}/revoke` | ADMIN | — | 200 object, 404 object |
+| POST | `/api/game/sessions/resolve` | Bearer `GAME_SERVER_TOKEN` | ResolveSessionDto | 200 ResolveResponseDto, 400, 401, 404, 409, 410 |
+| POST | `/api/game/sessions/{attemptId}/finish` | Bearer `GAME_SERVER_TOKEN` | FinishedGameResultDto | 200 FinishResponseDto, 400, 401, 404, 409 |
 | POST | `/api/internal/v1/tickets/verify` | X-Service-Token | VerifyTicketDto | 200 VerifyResultDto |
 | POST | `/api/internal/v1/game-sessions/{id}/decisions` | X-Service-Token | DecisionDto | 200 DecisionViewDto |
 | POST | `/api/internal/v1/game-sessions/{id}/events` | X-Service-Token | EventsDto | 200 EventsResultDto |
@@ -72,6 +74,8 @@ npm run openapi:export
 | GET | `/api/integration/v1/webhooks` | X-API-Key `webhooks:manage` | — | 200 object[] |
 | POST | `/api/integration/v1/webhooks` | X-API-Key `webhooks:manage` | CreateWebhookDto | 201, 401, 422 object |
 | DELETE | `/api/integration/v1/webhooks/{id}` | X-API-Key `webhooks:manage` | — | 204, 404 object |
+
+`POST /api/v1/game-sessions` добавляет `launchUrl`: абсолютный `PUBLIC_GAME_URL` с query `sessionKey`. `wsUrl` остаётся. Смысл статусов `/api/game/sessions/*` — в [game-server-contract.md](game-server-contract.md). Невалидное тело этих двух ручек — `400`, не `422`. Прокси снаружи их не публикует.
 
 `GET /api/v1/scenarios` на одном процессе может отдать каталог не старше 30 секунд. Запись сценария на этом же процессе кэш сбрасывает. Чужая реплика за эти 30 секунд может ещё держать старый список.
 
