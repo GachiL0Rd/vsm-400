@@ -128,15 +128,17 @@ function chatBody(
     temperature,
     top_p: input.topP ?? options.topP ?? 0.8,
     max_tokens: LLM_MAX_TOKENS,
-    response_format: {
+  };
+  if (input.jsonSchema) {
+    body.response_format = {
       type: 'json_schema',
       json_schema: {
-        name: input.schemaName,
+        name: input.schemaName ?? 'response',
         strict: true,
         schema: input.jsonSchema,
       },
-    },
-  };
+    };
+  }
   if (profile === 'llama-cpp') {
     body.top_k = options.topK ?? 20;
     body.min_p = 0;

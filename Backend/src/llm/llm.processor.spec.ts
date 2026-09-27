@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import type { Job } from 'bullmq';
 import { describe, expect, it, vi } from 'vitest';
 import type { Clock } from '../common/clock';
@@ -5,7 +6,6 @@ import type { AppConfig } from '../config/env';
 import type { PrismaService } from '../prisma/prisma.service';
 import type { RedisService } from '../redis/redis.service';
 import type { RulesService } from '../rules/rules.service';
-import { JUDGE_SCHEMA_NAME } from './judge';
 import { LlmProcessor, readJob } from './llm.processor';
 import { PROMPT_VERSION, SCHEMA_NAME } from './prompt';
 import type { LlmCompleteInput, LlmProvider } from './provider';
@@ -50,13 +50,13 @@ const validBody = JSON.stringify({
   ],
 });
 
-const judgeOk = JSON.stringify({
-  situation: { same: true, reason: 'свист на месте' },
-  choices: [
-    { id: 'radio', same: true, reason: 'доклад' },
-    { id: 'walk', same: true, reason: 'дойти' },
-  ],
-});
+const judgeOk = ['ситуация: да', 'radio: да', 'walk: да'].join('\n');
+
+const judgeDrift = [
+  'ситуация: нет — таблетка стала пилкой',
+  'radio: да',
+  'walk: нет — действие другое',
+].join('\n');
 
 function harness(autoApprove = true, llmJudge = true, judge?: LlmProvider) {
   const prisma = {
@@ -80,7 +80,7 @@ function harness(autoApprove = true, llmJudge = true, judge?: LlmProvider) {
   const provider: LlmProvider = {
     name: 'openai-compatible',
     complete: vi.fn(async (input: LlmCompleteInput) => {
-      if (input.schemaName === JUDGE_SCHEMA_NAME) {
+      if (input.temperature === 0) {
         return { content: judgeOk, model: 'qwen3-8b' };
       }
       return { content: validBody, model: 'qwen3-8b' };
@@ -162,18 +162,11 @@ describe('LlmProcessor', () => {
     expect(first?.messages[1]?.content).toContain('Не повторяй эти формулировки:');
     expect(first?.messages[1]?.content).toContain('Старая реплика про тамбур.');
     const second = vi.mocked(provider.complete).mock.calls[1]?.[0];
-    expect(second?.schemaName).toBe(JUDGE_SCHEMA_NAME);
+    expect(second?.jsonSchema).toBeUndefined();
+    expect(second?.schemaName).toBeUndefined();
     expect(second?.temperature).toBe(0);
-    const judgeSchema = second?.jsonSchema as {
-      required: string[];
-      properties: { checks: { items: { properties: { id: { enum: string[] } } } } };
-    };
-    expect(judgeSchema.required).toEqual(['checks']);
-    expect(judgeSchema.properties.checks.items.properties.id.enum).toEqual([
-      'text',
-      'radio',
-      'walk',
-    ]);
+    expect(second?.messages[0]?.content).toContain('Ровно одна строка на пункт');
+    expect(second?.messages[1]?.content).toContain('ситуация');
     expect(prisma.scenarioTextVariant.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
@@ -201,6 +194,7 @@ describe('LlmProcessor', () => {
     expect(provider.complete).toHaveBeenCalledOnce();
     expect(judge.complete).toHaveBeenCalledOnce();
     expect(vi.mocked(judge.complete).mock.calls[0]?.[0]?.temperature).toBe(0);
+    expect(vi.mocked(judge.complete).mock.calls[0]?.[0]?.jsonSchema).toBeUndefined();
     expect(prisma.scenarioTextVariant.create.mock.calls[0]?.[0].data.model).toBe('qwen3-8b');
   });
 
@@ -220,31 +214,63 @@ describe('LlmProcessor', () => {
   it('судья видит подмену смысла и пишет REJECTED', async () => {
     const { processor, prisma, provider, redis, pool } = harness(true, true);
     provider.complete = vi.fn(async (input: LlmCompleteInput) => {
-      if (input.schemaName === JUDGE_SCHEMA_NAME) {
-        return {
-          content: JSON.stringify({
-            situation: { same: false, reason: 'таблетка стала пилкой' },
-            choices: [
-              { id: 'radio', same: true, reason: 'ок' },
-              { id: 'walk', same: false, reason: 'действие другое' },
-            ],
-          }),
-          model: 'qwen3-8b',
-        };
+      if (input.temperature === 0) {
+        return { content: judgeDrift, model: 'qwen3-8b' };
       }
       return { content: validBody, model: 'qwen3-8b' };
     });
     await processor.process(job({ ...manual, reason: 'live', sessionId: 'sess-1' }));
+    expect(provider.complete).toHaveBeenCalledTimes(2);
     expect(prisma.scenarioTextVariant.create.mock.calls[0]?.[0].data).toMatchObject({
       status: 'REJECTED',
       reason: 'LIVE',
       sessionId: 'sess-1',
+      rejectReason: 'judge: ситуация: таблетка стала пилкой; judge: walk: действие другое',
     });
-    const reason = prisma.scenarioTextVariant.create.mock.calls[0]?.[0].data.rejectReason as string;
-    expect(reason).toContain('таблетка стала пилкой');
-    expect(reason).toContain('действие другое');
     expect(redis.incr).toHaveBeenCalledWith('llm:rejected');
     expect(pool.bindLive).not.toHaveBeenCalled();
+  });
+
+  it('пустой ответ судьи ретраится один раз и потом проходит', async () => {
+    const debug = vi.spyOn(Logger.prototype, 'debug').mockImplementation(() => undefined);
+    const { processor, prisma, provider } = harness(true, true);
+    const replies = ['', judgeOk];
+    provider.complete = vi.fn(async (input: LlmCompleteInput) => {
+      if (input.temperature === 0) {
+        return { content: replies.shift() ?? '', model: 'qwen3-8b' };
+      }
+      return { content: validBody, model: 'qwen3-8b' };
+    });
+    await processor.process(job(manual));
+    expect(provider.complete).toHaveBeenCalledTimes(3);
+    const reminder = vi.mocked(provider.complete).mock.calls[2]?.[0];
+    expect(reminder?.temperature).toBe(0);
+    expect(reminder?.jsonSchema).toBeUndefined();
+    expect(reminder?.messages[1]?.content).toContain('Прошлый ответ не разобран.');
+    expect(prisma.scenarioTextVariant.create.mock.calls[0]?.[0].data.status).toBe('APPROVED');
+    expect(debug.mock.calls.some((call) => String(call[0]).includes('ситуация: да'))).toBe(true);
+    debug.mockRestore();
+  });
+
+  it('второй кривой ответ — judge-unparsed, сырой текст не в базе', async () => {
+    const { processor, prisma, provider, redis } = harness(true, true);
+    provider.complete = vi.fn(async (input: LlmCompleteInput) => {
+      if (input.temperature === 0) {
+        return { content: 'не строка судьи, а болтовня', model: 'qwen3-8b' };
+      }
+      return { content: validBody, model: 'qwen3-8b' };
+    });
+    await processor.process(job(manual));
+    expect(provider.complete).toHaveBeenCalledTimes(3);
+    expect(prisma.scenarioTextVariant.create.mock.calls[0]?.[0].data).toMatchObject({
+      status: 'REJECTED',
+      rejectReason: 'judge-unparsed',
+    });
+    const stored = JSON.stringify(prisma.scenarioTextVariant.create.mock.calls[0]?.[0]);
+    expect(stored).not.toContain('болтовня');
+    const pushed = String(redis.lpush.mock.calls[0]?.[1]);
+    expect(pushed).toContain('judge-unparsed');
+    expect(pushed).not.toContain('болтовня');
   });
 
   it('слишком похожий текст не доходит до судьи', async () => {

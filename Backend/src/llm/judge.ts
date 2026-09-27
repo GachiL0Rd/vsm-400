@@ -1,19 +1,27 @@
 import type { LlmMessage } from './provider';
 import type { VariantPayload } from './validate-variant';
-import { unwrapJson } from './validate-variant';
 
-export const JUDGE_SCHEMA_NAME = 'scenario_text_judge';
-
-export const SITUATION_CHECK_ID = 'text';
+export const SITUATION_KEY = 'ситуация';
 
 export const JUDGE_SYSTEM = [
   'Ты проверяешь, сохранил ли перефраз смысл учебного узла проводника.',
   'Стиль не оценивай.',
-  'same=true, если действие и адресат те же, отличаются только слова.',
-  'Другая формулировка того же действия и того же адресата — same=true, в том числе на медицинском узле: таблетка во рту остаётся таблеткой во рту, доклад начальнику остаётся докладом начальнику.',
-  'same=false, только если подменено действие, предмет, место факта или адресат: таблетка стала пилкой, зевать стало топтаться, уже во рту стало в руке, начальник стал водителем, появился новый факт.',
-  'Верни checks на каждый id из схемы. id text — ситуация, остальные id — выборы. Ни один id не пропускай.',
-  'Верни только JSON.',
+  'Отвечай чистым текстом. Ровно одна строка на пункт.',
+  'Ключи — ровно слово «ситуация» и перечисленные id выборов. Каждый ключ один раз.',
+  'После ключа ответ только «да» или «нет».',
+  'После «нет» поставь тире и причину не длиннее 100 символов.',
+  'Без JSON, без markdown, без вступления и заключения.',
+  'Форма, ключи бери из задания, не из образца:',
+  'ситуация: да',
+  '<id>: нет — короткая причина',
+  '«да», если действие, адресат и смысл те же и отличаются только слова.',
+  '«нет», если изменились действие, адресат или факты, либо добавлены детали.',
+].join('\n');
+
+const RETRY_LEAD = [
+  'Прошлый ответ не разобран.',
+  'Ответь заново и только строками ниже. Где смысл другой, замени «да» на «нет — причина до 100 символов».',
+  'Без JSON, без markdown, без вступления и заключения.',
 ].join('\n');
 
 export function reviewStatus(
@@ -26,35 +34,10 @@ export function reviewStatus(
   return 'PENDING_REVIEW';
 }
 
-export function judgeJsonSchema(choiceIds: readonly string[]): Record<string, unknown> {
-  const ids = [SITUATION_CHECK_ID, ...choiceIds];
-  return {
-    type: 'object',
-    additionalProperties: false,
-    required: ['checks'],
-    properties: {
-      checks: {
-        type: 'array',
-        minItems: ids.length,
-        maxItems: ids.length,
-        items: {
-          type: 'object',
-          additionalProperties: false,
-          required: ['id', 'same', 'reason'],
-          properties: {
-            id: { type: 'string', enum: ids },
-            same: { type: 'boolean' },
-            reason: { type: 'string' },
-          },
-        },
-      },
-    },
-  };
-}
-
 export function buildJudgeMessages(
   source: VariantPayload,
   paraphrase: VariantPayload,
+  remind = false,
 ): LlmMessage[] {
   const lines = [
     'Исходная ситуация:',
@@ -68,159 +51,211 @@ export function buildJudgeMessages(
     const next = paraphrase.choices.find((item) => item.id === choice.id);
     lines.push(`- ${choice.id}: ${choice.text.trim()} || ${next?.text.trim() ?? ''}`);
   }
+  const ids = source.choices.map((choice) => choice.id);
+  lines.push('', 'Ключи ответа, каждый ровно один раз:', SITUATION_KEY, ...ids);
+  if (remind) {
+    lines.push('', RETRY_LEAD, `${SITUATION_KEY}: да`);
+    for (const id of ids) {
+      lines.push(`${id}: да`);
+    }
+  }
   return [
     { role: 'system', content: JUDGE_SYSTEM },
     { role: 'user', content: lines.join('\n') },
   ];
 }
 
-export type JudgeParse =
-  | { ok: true; passed: boolean; reason: string }
-  | { ok: false; reason: string };
+export type JudgeVerdict = {
+  same: boolean;
+  reason?: string;
+};
 
-export function parseJudge(raw: unknown, choiceIds: readonly string[]): JudgeParse {
-  const verdict = readVerdict(raw);
-  if (!verdict || hasForeignId(verdict.choices, choiceIds)) {
-    return { ok: false, reason: 'судья вернул неразборчивый ответ' };
-  }
-  const parts = driftParts(verdict.situation, verdict.choices, choiceIds);
-  if (parts.length === 0) {
-    return { ok: true, passed: true, reason: 'смысл совпал' };
-  }
-  return { ok: true, passed: false, reason: clip(parts.join('; ')) };
-}
+export type JudgeTextParse = {
+  situation: JudgeVerdict | null;
+  choices: Record<string, JudgeVerdict>;
+  missing: string[];
+};
 
-type JudgeBit = { same: boolean; reason: string };
+const REASON_LIMIT = 100;
+const REJECT_LIMIT = 500;
 
-function readVerdict(raw: unknown): { situation: JudgeBit; choices: Map<string, JudgeBit> } | null {
-  const value = typeof raw === 'string' ? parseJson(unwrapJson(raw)) : raw;
-  const record = asRecord(value);
-  if (!record) {
-    return null;
+export function parseJudgeText(raw: string, choiceIds: readonly string[]): JudgeTextParse {
+  const expected = new Map<string, string>();
+  expected.set(foldKey(SITUATION_KEY), SITUATION_KEY);
+  for (const id of choiceIds) {
+    expected.set(foldKey(id), id);
   }
-  if (Array.isArray(record.checks)) {
-    return readChecks(record.checks);
-  }
-  const situation = readBit(asRecord(record.situation));
-  if (!situation || !Array.isArray(record.choices)) {
-    return null;
-  }
-  const choices = readChoiceMap(record.choices);
-  if (!choices) {
-    return null;
-  }
-  return { situation, choices };
-}
-
-function readChecks(
-  items: readonly unknown[],
-): { situation: JudgeBit; choices: Map<string, JudgeBit> } | null {
-  let situation: JudgeBit | null = null;
-  const choices = new Map<string, JudgeBit>();
-  for (const item of items) {
-    const choice = asRecord(item);
-    const bit = readBit(choice);
-    if (!choice || typeof choice.id !== 'string' || !bit) {
-      return null;
-    }
-    if (choice.id === SITUATION_CHECK_ID) {
-      if (situation) {
-        return null;
-      }
-      situation = bit;
+  const found = new Map<string, JudgeVerdict>();
+  const text = raw.replace(/^\uFEFF/, '');
+  for (const line of text.split(/\r?\n/)) {
+    const parsed = parseLine(line);
+    if (!parsed) {
       continue;
     }
-    if (choices.has(choice.id)) {
-      return null;
+    const canonical = expected.get(parsed.key);
+    if (!canonical || found.has(canonical)) {
+      continue;
     }
-    choices.set(choice.id, bit);
+    found.set(canonical, parsed.verdict);
+  }
+  const choices: Record<string, JudgeVerdict> = {};
+  const missing: string[] = [];
+  const situation = found.get(SITUATION_KEY) ?? null;
+  if (!situation) {
+    missing.push(SITUATION_KEY);
+  }
+  for (const id of choiceIds) {
+    const verdict = found.get(id);
+    if (!verdict) {
+      missing.push(id);
+      continue;
+    }
+    choices[id] = verdict;
+  }
+  return { situation, choices, missing };
+}
+
+export function judgeOutcome(parsed: JudgeTextParse): { passed: boolean; reason: string } {
+  if (parsed.missing.length > 0 || !parsed.situation) {
+    return { passed: false, reason: 'judge-unparsed' };
+  }
+  const parts: string[] = [];
+  if (!parsed.situation.same) {
+    parts.push(rejectLine(SITUATION_KEY, parsed.situation.reason));
+  }
+  for (const [id, verdict] of Object.entries(parsed.choices)) {
+    if (!verdict.same) {
+      parts.push(rejectLine(id, verdict.reason));
+    }
+  }
+  if (parts.length === 0) {
+    return { passed: true, reason: 'смысл совпал' };
+  }
+  return { passed: false, reason: clip(parts.join('; '), REJECT_LIMIT) };
+}
+
+function rejectLine(id: string, reason: string | undefined): string {
+  const text = reason && reason.trim().length > 0 ? reason.trim() : 'смысл другой';
+  return `judge: ${id}: ${text}`;
+}
+
+function parseLine(line: string): { key: string; verdict: JudgeVerdict } | null {
+  const cleaned = stripNoise(line);
+  if (!cleaned) {
+    return null;
+  }
+  const split = splitKeyValue(cleaned);
+  if (!split) {
+    return null;
+  }
+  const key = foldKey(stripQuotes(split.key));
+  if (!key) {
+    return null;
+  }
+  const verdict = parseVerdict(split.value);
+  if (!verdict) {
+    return null;
+  }
+  return { key, verdict };
+}
+
+function stripNoise(line: string): string {
+  let text = line.replace(/\u00a0/g, ' ').trim();
+  let previous = '';
+  while (text !== previous) {
+    previous = text;
+    text = text.replace(/^(?:[-*]|\d+[.)])\s*/, '').trim();
+  }
+  return text.replace(/\*/g, '').trim();
+}
+
+// Дефис внутри id не режем: разделитель — двоеточие, тире или « - ».
+function splitKeyValue(line: string): { key: string; value: string } | null {
+  const marks: { at: number; size: number }[] = [];
+  const colon = line.indexOf(':');
+  if (colon >= 0) {
+    marks.push({ at: colon, size: 1 });
+  }
+  const em = line.indexOf('—');
+  if (em >= 0) {
+    marks.push({ at: em, size: 1 });
+  }
+  const en = line.indexOf('–');
+  if (en >= 0) {
+    marks.push({ at: en, size: 1 });
+  }
+  const spaced = line.indexOf(' - ');
+  if (spaced >= 0) {
+    marks.push({ at: spaced, size: 3 });
+  }
+  if (marks.length === 0) {
+    return null;
+  }
+  marks.sort((left, right) => left.at - right.at);
+  const mark = marks[0];
+  if (!mark) {
+    return null;
   }
   return {
-    situation: situation ?? { same: false, reason: 'нет пункта text' },
-    choices,
+    key: line.slice(0, mark.at),
+    value: line.slice(mark.at + mark.size),
   };
 }
 
-function readChoiceMap(items: readonly unknown[]): Map<string, JudgeBit> | null {
-  const choices = new Map<string, JudgeBit>();
-  for (const item of items) {
-    const choice = asRecord(item);
-    const bit = readBit(choice);
-    if (!choice || typeof choice.id !== 'string' || !bit || choices.has(choice.id)) {
-      return null;
-    }
-    choices.set(choice.id, bit);
-  }
-  return choices;
-}
-
-function readBit(record: Record<string, unknown> | null): JudgeBit | null {
-  if (!record) {
+function parseVerdict(value: string): JudgeVerdict | null {
+  const trimmed = value.trim();
+  if (!trimmed) {
     return null;
   }
-  const same = asBool(record.same);
-  const reason = asText(record.reason);
-  if (same === null || reason === null) {
+  const match = trimmed.match(/^(\S+)\s*([\s\S]*)$/);
+  if (!match) {
     return null;
   }
-  return { same, reason };
-}
-
-function driftParts(
-  situation: JudgeBit,
-  choices: Map<string, JudgeBit>,
-  choiceIds: readonly string[],
-): string[] {
-  const parts: string[] = [];
-  if (!situation.same) {
-    parts.push(`ситуация: ${situation.reason || 'смысл другой'}`);
+  const token = match[1] ?? '';
+  const word = firstWord(token);
+  if (word === 'да') {
+    return { same: true };
   }
-  for (const id of choiceIds) {
-    const choice = choices.get(id);
-    if (!choice) {
-      parts.push(`выбор ${id}: нет в ответе судьи`);
-    } else if (!choice.same) {
-      parts.push(`${id}: ${choice.reason || 'смысл другой'}`);
-    }
+  if (word === 'нет') {
+    const reason = clipReason(`${gluedTail(token)}${match[2] ?? ''}`);
+    return reason ? { same: false, reason } : { same: false };
   }
-  return parts;
+  return null;
 }
 
-function hasForeignId(choices: Map<string, JudgeBit>, choiceIds: readonly string[]): boolean {
-  for (const id of choices.keys()) {
-    if (!choiceIds.includes(id)) {
-      return true;
-    }
+function firstWord(token: string): string {
+  const match = foldKey(token).match(/[^a-zа-я]*([a-zа-я]+)/);
+  return match?.[1] ?? '';
+}
+
+function gluedTail(token: string): string {
+  const match = foldKey(token).match(/[^a-zа-я]*[a-zа-я]+([\s\S]*)/);
+  return match?.[1] ?? '';
+}
+
+function clipReason(tail: string): string | undefined {
+  const cleaned = stripQuotes(tail.replace(/^[\s—–:,!.?;"'«»„“-]+/, '').trim());
+  if (!cleaned) {
+    return undefined;
   }
-  return false;
+  return clip(cleaned, REASON_LIMIT);
 }
 
-function parseJson(raw: string): unknown {
-  try {
-    return JSON.parse(raw) as unknown;
-  } catch {
-    return null;
-  }
+function stripQuotes(value: string): string {
+  return value
+    .trim()
+    .replace(/^["'«„“]+/, '')
+    .replace(/["'»“”]+$/, '')
+    .trim();
 }
 
-function asRecord(value: unknown): Record<string, unknown> | null {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-    return null;
-  }
-  return value as Record<string, unknown>;
+function foldKey(value: string): string {
+  return value.replace(/Ё/g, 'е').replace(/ё/g, 'е').toLowerCase().trim();
 }
 
-function asBool(value: unknown): boolean | null {
-  return typeof value === 'boolean' ? value : null;
-}
-
-function asText(value: unknown): string | null {
-  return typeof value === 'string' ? value.trim() : null;
-}
-
-function clip(reason: string): string {
-  if (reason.length <= 500) {
+function clip(reason: string, limit: number): string {
+  if (reason.length <= limit) {
     return reason;
   }
-  return `${reason.slice(0, 497)}...`;
+  return reason.slice(0, limit);
 }

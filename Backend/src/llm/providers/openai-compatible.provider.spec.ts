@@ -61,6 +61,27 @@ describe('openai-совместимый провайдер', () => {
     expect(init?.headers?.authorization).toBe('Bearer local-key');
   });
 
+  it('без jsonSchema не шлёт response_format', async () => {
+    const fetchImpl = vi.fn<FetchLike>(async () => ({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ choices: [{ message: { content: 'ситуация: да' } }] }),
+    }));
+    await provider(fetchImpl).complete({
+      messages: [{ role: 'user', content: 'проверь' }],
+      temperature: 0,
+      topP: 1,
+    });
+    const body = JSON.parse(fetchImpl.mock.calls[0]?.[1]?.body ?? '{}') as {
+      response_format?: unknown;
+      temperature: number;
+      top_p: number;
+    };
+    expect(body.response_format).toBeUndefined();
+    expect(body.temperature).toBe(0);
+    expect(body.top_p).toBe(1);
+  });
+
   it('профиль yandex собирает URI и не шлёт repeat_penalty и thinking', async () => {
     const fetchImpl = vi.fn<FetchLike>(async () => ({
       ok: true,

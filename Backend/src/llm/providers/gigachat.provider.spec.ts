@@ -127,4 +127,31 @@ describe('GigaChatProvider', () => {
     expect(fetchImpl.mock.calls[0]?.[0]).toBe(GIGACHAT_CHAT_URL);
     expect(fetchImpl.mock.calls[0]?.[1]?.headers?.authorization).toBe('Bearer cached-token');
   });
+
+  it('без jsonSchema не шлёт response_format', async () => {
+    const fetchImpl = vi.fn<FetchLike>(async () => ({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ choices: [{ message: { content: 'ситуация: да' } }] }),
+    }));
+    const client = new GigaChatProvider({
+      authKey: 'base64-key',
+      scope: 'GIGACHAT_API_PERS',
+      model: 'GigaChat',
+      timeoutMs: 1_000,
+      cache: { get: async () => 'cached-token', set: async () => undefined },
+      caPem: 'not-a-real-cert',
+      fetchImpl,
+    });
+    await client.complete({
+      messages: [{ role: 'user', content: 'проверь' }],
+      temperature: 0,
+    });
+    const body = JSON.parse(fetchImpl.mock.calls[0]?.[1]?.body ?? '{}') as {
+      response_format?: unknown;
+      temperature: number;
+    };
+    expect(body.response_format).toBeUndefined();
+    expect(body.temperature).toBe(0);
+  });
 });

@@ -59,19 +59,7 @@ export class GigaChatProvider implements LlmProvider {
           accept: 'application/json',
           authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({
-          model: this.options.model,
-          messages: input.messages,
-          temperature: input.temperature ?? this.options.temperature ?? 1,
-          max_tokens: LLM_MAX_TOKENS,
-          repetition_penalty: 1,
-          // Форма GigaChat, не OpenAI: schema лежит рядом с type.
-          response_format: {
-            type: 'json_schema',
-            schema: input.jsonSchema,
-            strict: true,
-          },
-        }),
+        body: JSON.stringify(chatBody(this.options, input)),
       },
     });
     if (response.status < 200 || response.status >= 300) {
@@ -118,6 +106,28 @@ export class GigaChatProvider implements LlmProvider {
     }
     return issued.token;
   }
+}
+
+function chatBody(
+  options: { model: string; temperature?: number },
+  input: LlmCompleteInput,
+): Record<string, unknown> {
+  const body: Record<string, unknown> = {
+    model: options.model,
+    messages: input.messages,
+    temperature: input.temperature ?? options.temperature ?? 1,
+    max_tokens: LLM_MAX_TOKENS,
+    repetition_penalty: 1,
+  };
+  if (input.jsonSchema) {
+    // Форма GigaChat, не OpenAI: schema лежит рядом с type.
+    body.response_format = {
+      type: 'json_schema',
+      schema: input.jsonSchema,
+      strict: true,
+    };
+  }
+  return body;
 }
 
 export function readToken(body: unknown): { token: string; expiresAtMs: number } {

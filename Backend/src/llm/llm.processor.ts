@@ -7,13 +7,7 @@ import type { Prisma } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { RulesService } from '../rules/rules.service';
-import {
-  buildJudgeMessages,
-  JUDGE_SCHEMA_NAME,
-  judgeJsonSchema,
-  parseJudge,
-  reviewStatus,
-} from './judge';
+import { buildJudgeMessages, judgeOutcome, parseJudgeText, reviewStatus } from './judge';
 import {
   LLM_ERROR_LIMIT,
   LLM_ERRORS_KEY,
@@ -99,19 +93,14 @@ export class LlmProcessor extends WorkerHost {
     }
     const judgeEnabled = this.config.llmJudge && this.judgeProvider.name !== 'none';
     if (judgeEnabled) {
-      let judged: { content: string };
+      let reason: string | null;
       try {
-        judged = await this.judge(loaded.source, verdict.payload);
+        reason = await this.judgeVerdict(loaded.source, verdict.payload);
       } catch (error) {
         await this.note(data, errorText(error), false);
         throw error;
       }
-      const parsed = parseJudge(
-        judged.content,
-        verdict.payload.choices.map((choice) => choice.id),
-      );
-      if (!parsed.ok || !parsed.passed) {
-        const reason = parsed.reason;
+      if (reason) {
         await this.save(data, generated.model, verdict.payload, 'REJECTED', reason);
         await this.note(data, reason, true);
         return;
@@ -192,17 +181,45 @@ export class LlmProcessor extends WorkerHost {
     });
   }
 
-  private judge(
+  private async judgeVerdict(
     source: ReturnType<typeof sourceOf>,
     payload: VariantPayload,
-  ): Promise<{ content: string; model: string }> {
-    return this.judgeProvider.complete({
-      messages: buildJudgeMessages(source, payload),
-      jsonSchema: judgeJsonSchema(payload.choices.map((choice) => choice.id)),
-      schemaName: JUDGE_SCHEMA_NAME,
+  ): Promise<string | null> {
+    const ids = payload.choices.map((choice) => choice.id);
+    const first = await this.askJudge(buildJudgeMessages(source, payload));
+    let parsed = parseJudgeText(first, ids);
+    if (!judgeReady(first, parsed)) {
+      const retried = await this.retryJudge(source, payload, ids);
+      if (!retried) {
+        return 'judge-unparsed';
+      }
+      parsed = retried;
+    }
+    const outcome = judgeOutcome(parsed);
+    return outcome.passed ? null : outcome.reason;
+  }
+
+  private async retryJudge(
+    source: ReturnType<typeof sourceOf>,
+    payload: VariantPayload,
+    ids: readonly string[],
+  ): Promise<ReturnType<typeof parseJudgeText> | null> {
+    const second = await this.askJudge(buildJudgeMessages(source, payload, true));
+    const parsed = parseJudgeText(second, ids);
+    if (!judgeReady(second, parsed)) {
+      return null;
+    }
+    return parsed;
+  }
+
+  private async askJudge(messages: ReturnType<typeof buildJudgeMessages>): Promise<string> {
+    const judged = await this.judgeProvider.complete({
+      messages,
       temperature: 0,
       topP: 1,
     });
+    this.logger.debug(`судья сырой ответ: ${judged.content}`);
+    return judged.content;
   }
 
   private async save(
@@ -276,4 +293,8 @@ export function readJob(data: unknown): LlmJobData | null {
 
 function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function judgeReady(content: string, parsed: ReturnType<typeof parseJudgeText>): boolean {
+  return content.trim().length > 0 && parsed.missing.length === 0;
 }

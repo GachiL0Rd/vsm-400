@@ -7,9 +7,10 @@ export type LlmMessage = {
 
 export type LlmCompleteInput = {
   messages: readonly LlmMessage[];
-  jsonSchema: Record<string, unknown>;
-  schemaName: string;
-  /** Судья смысла зовёт ту же модель, но с нулевой температурой. */
+  /** Генерация шлёт json_schema. Судья поле не задаёт: ответ — обычный текст. */
+  jsonSchema?: Record<string, unknown>;
+  schemaName?: string;
+  /** Судья смысла зовёт модель с нулевой температурой. */
   temperature?: number;
   topP?: number;
 };
