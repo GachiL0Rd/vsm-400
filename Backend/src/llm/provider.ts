@@ -1,0 +1,33 @@
+import type { LlmProviderName } from './llm.constants';
+
+export type LlmMessage = {
+  role: 'system' | 'user';
+  content: string;
+};
+
+export type LlmCompleteInput = {
+  messages: readonly LlmMessage[];
+  /** Генерация шлёт json_schema. Судья поле не задаёт: ответ — обычный текст. */
+  jsonSchema?: Record<string, unknown>;
+  schemaName?: string;
+  /** Судья смысла зовёт модель с нулевой температурой. */
+  temperature?: number;
+  topP?: number;
+};
+
+export type LlmUsage = {
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
+};
+
+export type LlmCompleteResult = {
+  content: string;
+  model: string;
+  usage?: LlmUsage;
+};
+
+export interface LlmProvider {
+  readonly name: LlmProviderName;
+  complete(input: LlmCompleteInput, signal?: AbortSignal): Promise<LlmCompleteResult>;
+}

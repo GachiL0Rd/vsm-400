@@ -8,21 +8,38 @@
   },
   "scripts": {
     "dev": "vite --host 0.0.0.0",
-    "build": "vite build",
+    "server": "tsx src/server/main.ts",
+    "build": "node scripts/build-production.mjs",
     "preview": "vite preview --host 0.0.0.0",
     "format": "biome format --write .",
     "lint": "biome lint .",
     "check:biome": "biome ci .",
     "check:write": "biome check --write .",
     "typecheck": "tsc --noEmit",
-    "verify": "npm run check:biome && npm run typecheck && npm run build"
+    "test": "vitest run",
+    "check:bundle": "node scripts/check-bundle.mjs",
+    "verify": "npm run check:biome && npm run typecheck && npm run test && npm run build && npm run test:production && npm run check:bundle",
+    "audit:dead-code": "node scripts/check-dead-code.mjs",
+    "start:server": "node dist/server/main.mjs",
+    "test:production": "node scripts/test-production-server.mjs"
   },
   "dependencies": {
-    "phaser": "4.2.1"
+    "graphology": "0.26.0",
+    "graphology-shortest-path": "2.1.0",
+    "heap-js": "2.7.1",
+    "phaser": "4.2.1",
+    "pure-rand": "8.4.2",
+    "ws": "8.21.3",
+    "zod": "4.6.5"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.14",
+    "@types/ws": "8.18.1",
+    "knip": "6.38.0",
+    "playwright": "1.63.0",
+    "tsx": "4.23.15",
     "typescript": "5.9.3",
-    "vite": "8.3.1"
+    "vite": "8.3.1",
+    "vitest": "5.0.1"
   }
 }

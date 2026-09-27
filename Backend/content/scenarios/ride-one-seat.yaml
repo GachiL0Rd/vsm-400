@@ -1,0 +1,136 @@
+# Двое на место: Ситуации на борту.pdf, с. 13, ситуация 33.
+id: ride-one-seat
+title: "Двое на одно место"
+category: conflict
+stage: enroute
+carClasses: [ECONOMY]
+difficulty: 2
+competencies: [procedure, escalation, service]
+params:
+  occupancy: { min: 50, max: 100 }
+init: { loyalty: 62, safety: 70 }
+gates:
+  failIf:
+    safety: { lt: 30 }
+llm:
+  enabled: true
+  mode: pool
+  keep: [кресло, билет, место, начальник]
+  forbid: [medications, numbers, names, new-facts]
+  personas:
+    - говорит раздражённо
+    - говорит сухо и по делу
+    - говорит громко, без грубости
+start: open
+nodes:
+  open:
+    text: "В экономе двое стоят у одного кресла и повышают голос."
+    variants:
+      - if: { param: occupancy, gte: 90 }
+        text: "Свободных мест не видно, проход уже забит."
+    timer: 16
+    choices:
+      - id: both
+        text: "Проверить оба билета и звать начальника поезда"
+        effects: { safety: 8, loyalty: 2 }
+        skills: { procedure: 2, escalation: 1 }
+        set: [checked]
+        verdict: best
+        next: follow
+      - id: louder
+        text: "Оставить того, кто громче, второго поднять"
+        effects: { loyalty: 7, safety: -12 }
+        verdict: worse
+        better: "Место не отдают громкостью: сверяют оба билета"
+        basis: "Ситуации на борту.pdf, с. 13, ситуация 33"
+        next: risk
+      - id: phones
+        text: "Попросить показать билеты в телефоне, пока идёт начальник"
+        deviation: true
+        verdict: ok
+        better: "Документы смотрите сами, не только просите успокоиться"
+        basis: "Ситуации на борту.pdf, с. 13, ситуация 33"
+        set: [calmed]
+        next: follow
+    onTimeout:
+      effects: { safety: -10, loyalty: -6 }
+      verdict: missed
+      consequence: "Оба встали в проход, сумка упала на соседа"
+      next: late
+  follow:
+    text: "Начальник ещё идёт. Двое ждут у кресла."
+    timer: 18
+    choices:
+      - id: relay
+        text: "Повторить начальнику номера обоих билетов"
+        requires: { flags: [checked] }
+        effects: { safety: 4, loyalty: 2 }
+        verdict: best
+        next: end-ok
+      - id: stand
+        text: "Отправить одного стоять до конечной"
+        effects: { loyalty: -2, safety: -8 }
+        verdict: worse
+        better: "Стоять весь рейс не назначают: решает начальник"
+        basis: "Ситуации на борту.pdf, с. 13, ситуация 33"
+        next: end-bad
+      - id: check-now
+        text: "Проверить билеты сейчас и дождаться начальника"
+        effects: { safety: 4 }
+        set: [checked]
+        verdict: ok
+        better: "Билеты смотрят в первую минуту спора"
+        basis: "Ситуации на борту.pdf, с. 13, ситуация 33"
+        next: end-ok
+    onTimeout:
+      effects: { safety: -16, loyalty: -8 }
+      verdict: missed
+      consequence: "Толкнули друг друга, проход встал"
+      next: end-stop
+  late:
+    text: "Сумка на полу, голоса уже на весь вагон."
+    timer: 14
+    choices:
+      - id: apart
+        text: "Развести по сторонам и проверить оба билета"
+        effects: { safety: 6 }
+        set: [checked]
+        verdict: best
+        next: follow
+      - id: first
+        text: "Закрыть спор в пользу того, кто сел первым"
+        effects: { loyalty: 5, safety: -10 }
+        verdict: worse
+        better: "Кто сел первым, билет не заменяет"
+        basis: "Ситуации на борту.pdf, с. 13, ситуация 33"
+        next: end-bad
+    onTimeout:
+      effects: { safety: -18, loyalty: -8 }
+      verdict: missed
+      consequence: "Драка в проходе"
+      next: end-stop
+  risk:
+    text: "Один сидит довольный, второй снимает на телефон."
+    choices:
+      - id: back
+        text: "Вернуть проверку билетов и звать начальника"
+        effects: { safety: 6, loyalty: -2 }
+        set: [checked]
+        verdict: best
+        next: follow
+      - id: wait
+        text: "Попросить второго потерпеть до станции"
+        effects: { loyalty: 3, safety: -8 }
+        verdict: worse
+        better: "Терпеть до станции не вместо проверки билетов"
+        basis: "Ситуации на борту.pdf, с. 13, ситуация 33"
+        next: end-bad
+  end-ok:
+    end: completed
+    text: "Оба билета сверены, место решает начальник поезда"
+  end-bad:
+    end: incident
+    text: "Место отдали без проверки документов"
+  end-stop:
+    end: terminated
+    text: "Спор за место перешёл в драку"

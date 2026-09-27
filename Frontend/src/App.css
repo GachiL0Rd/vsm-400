@@ -1,0 +1,48 @@
+.app__main {
+  padding: 24px 16px calc(96px + env(safe-area-inset-bottom));
+}
+
+.screen {
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+  max-width: 960px;
+  margin: 0 auto;
+}
+
+.screen__head {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.screen__title {
+  font-size: 32px;
+  font-weight: 800;
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+}
+
+.screen__title:focus {
+  outline: none;
+}
+
+.screen__sub {
+  color: var(--iron);
+}
+
+.screen__action {
+  align-self: flex-start;
+}
+
+@media (min-width: 900px) {
+  .app__main {
+    /* Порог 900px парный с шириной .nav. */
+    margin-left: var(--nav-width);
+    padding: 48px 48px 64px;
+  }
+
+  .screen__title {
+    font-size: 44px;
+  }
+}

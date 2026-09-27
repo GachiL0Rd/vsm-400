@@ -2,21 +2,38 @@
 
 ## Контекст и границы
 
-`Game/` — самостоятельный модуль браузерной игры внутри многомодульного
-репозитория. `index.html` является локальной оболочкой разработки, а способ
-встраивания игры в будущий клиент пока не зафиксирован.
+`Game/` — самостоятельный модуль Browser Game Client и authoritative Game
+Server внутри многомодульного репозитория. `index.html` — локальная браузерная
+оболочка, `src/server/main.ts` — composition root Game Server. Platform Server
+внешний: он владеет авторизацией, попытками и постоянными результатами, но не
+должен импортировать код Game.
 
 Перед изменением прочитайте:
 
-- `../docs/user/README.md` — индекс действующих требований;
-- `../docs/user/vsm_baseline_vertical_slice.md` — первый целевой срез;
-- `../docs/user/project_direction.md` — границы модулей и переносимой логики.
+- `docs/user/README.md` — индекс действующих требований;
+- `docs/user/vsm_baseline_vertical_slice.md` — первый целевой срез;
+- `docs/user/project_direction.md` — границы модулей и переносимой логики.
+
+Для текущей реализации приоритет имеют документы
+[`docs/user/`](docs/user/README.md).
+Актуальные рабочие инструкции находятся в `docs/agent/`; исторический контекст перенесён в `docs/backlog/`.
+
+Текущее направление: `src/server/` владеет authoritative simulation и
+lifecycle попытки; `src/client/` отправляет intent и отображает только public
+presentation state через `src/common/`. Клиент не импортирует `simulation` и
+не принимает доменные решения. Детали — в
+[`docs/user/project_direction.md`](docs/user/project_direction.md) и
+[`docs/user/architecture/client-server.md`](docs/user/architecture/client-server.md).
 
 Необязательные локальные инструменты и их параметры описаны в
 `docs/agent/tools.md`.
 
 Не реализуйте механику по предположениям. Неопределённую продуктовую деталь
 оставляйте открытым вопросом.
+
+Новые зависимости должны иметь конкретное назначение и точную версию. Не
+создавайте пустые слои, framework-обёртки или интеграционные контракты до
+появления реального потребителя.
 
 ## Среда и команды
 
@@ -28,11 +45,31 @@
 - TypeScript: **5.9.3**.
 - Vite: **8.3.1**.
 
+## Phaser Skills и проверка API
+
+Работаем с Phaser 4. Перед изменениями используйте релевантный skill из
+официального набора
+[`phaserjs/phaser/skills`](https://github.com/phaserjs/phaser/tree/master/skills):
+
+- `scenes` — жизненный цикл сцены;
+- `loading-assets` — добавление или загрузка ассетов;
+- `animations` — анимации;
+- `physics-arcade` — коллизии;
+- `tilemaps` — Tiled и Phaser Tilemap;
+- `input-keyboard-mouse-touch` — управление.
+
+Для другой подсистемы Phaser выберите соответствующий skill из того же набора.
+
+Не используйте API, если не уверены, что он существует в установленном
+Phaser 4.2.1. Перед новым вызовом Phaser API объясните, почему он подходит,
+и проверьте его в типах/исходниках пакета или официальной документации.
+
 Из каталога `Game/`:
 
 ```powershell
 npm ci --include=dev
 npm run dev
+npm run server
 npm run verify
 ```
 
@@ -44,6 +81,8 @@ npm run verify
 
 - Чистые правила состояния, времени, событий, оценки, результатов и достижений
   не должны импортировать Phaser, DOM или Vite.
+- `src/server/` — composition root authoritative runtime; `src/client/`
+  импортирует только browser-safe `src/common/`, но не `src/simulation/`.
 - Phaser отвечает за сцены, ввод, отображение, звук и жизненный цикл движка.
 - Время и случайность должны иметь контролируемые границы, когда они влияют на
   доменную логику.
@@ -62,7 +101,5 @@ npm run verify
 - Доменное поведение после его появления проверяйте без запуска Phaser, если
   внешний контракт позволяет это сделать.
 - Перед runtime-зависимостью проверьте Phaser, Web API и стандартный TypeScript.
-- Vitest подключается вместе с первой содержательной доменной логикой, Knip —
-  после роста проекта, Playwright — после появления стабильного сквозного
-  сценария.
-- `node_modules/` и `dist/` не входят в Git.
+- Vitest используется для simulation unit-тестов; Knip доступен для аудита dead code, Playwright — для будущего стабильного сквозного сценария.
+- Не коммитьте секреты, `node_modules/`, `dist/` и локальное состояние tools.
