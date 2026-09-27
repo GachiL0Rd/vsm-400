@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Сквозной прогон API: demo, REST-смена до COMPLETED, билет WS и отчёт.
+# Сквозной прогон API: demo, открытие смены, билет и отчёт.
 # Сервер уже слушает. База с prisma:seed.
 #   BASE_URL=http://127.0.0.1:3000 npm run smoke
 # Админ: ADMIN_PASSWORD='пароль из лога первого старта' npm run smoke
@@ -89,7 +89,6 @@ runs_before="$WORK/runs-before.json"
 code="$(req GET '/api/v1/me/runs?limit=5' "$runs_before")"
 expect "$code" 200 "GET /me/runs" "$runs_before"
 total_before="$(jq -er '.total' "$runs_before")"
-first_before="$(jq -r '.runs[0].id // empty' "$runs_before")"
 step "GET /api/v1/me/runs total=$total_before"
 
 board="$WORK/board.json"
@@ -105,146 +104,69 @@ expect "$code" 200 "GET /notifications" "$notes"
 jq -e '.items | type == "array"' "$notes" >/dev/null || die "notifications без items" "$notes"
 step "GET /api/v1/notifications unread=$(jq -r '.unreadCount' "$notes") items=$(jq -r '.items | length' "$notes")"
 
-opened="$WORK/open-rest.json"
-code="$(req POST /api/v1/game-sessions "$opened" -H 'content-type: application/json' -d '{"transport":"REST"}')"
-expect "$code" 200 "POST game-sessions REST" "$opened"
-sid="$(jq -er '.sessionId' "$opened")"
-seed_commit="$(jq -er '.seedCommit' "$opened")"
-step "POST /api/v1/game-sessions REST session=$sid"
+rejected="$WORK/open-rest.json"
+code="$(req POST /api/v1/game-sessions "$rejected" -H 'content-type: application/json' -d '{"transport":"REST"}')"
+expect "$code" 422 "POST game-sessions REST" "$rejected"
+step "POST /api/v1/game-sessions REST 422"
 
-view="$WORK/view.json"
-decision="$WORK/decision.json"
-finished=0
-for step_n in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47 48 49 50 51 52 53 54 55 56 57 58 59 60; do
-  code="$(req GET "/api/v1/game-sessions/$sid" "$view")"
-  expect "$code" 200 "GET game-sessions/$sid шаг $step_n" "$view"
-  status="$(jq -r '.status' "$view")"
-  view_finished="$(jq -r '.view.finished' "$view")"
-  if [[ "$status" == "COMPLETED" || "$view_finished" == "true" ]]; then
-    finished=1
-    break
-  fi
-  choice="$(jq -r '.view.choices[0].id // empty' "$view")"
-  seq="$(jq -r '.seq' "$view")"
-  [[ -n "$choice" ]] || die "нет choice на шаге $step_n status=$status" "$view"
-  payload="$(jq -nc --argjson seq "$seq" --arg choice "$choice" '{seq:$seq, choiceId:$choice}')"
-  code="$(req POST "/api/v1/game-sessions/$sid/decisions" "$decision" -H 'content-type: application/json' -d "$payload")"
-  expect "$code" 200 "POST decisions шаг $step_n" "$decision"
-  if [[ "$(jq -r '.finished' "$decision")" == "true" || "$(jq -r '.status' "$decision")" == "COMPLETED" ]]; then
-    finished=1
-    break
-  fi
-done
-[[ "$finished" == "1" ]] || die "REST-смена не дошла до COMPLETED" "$view"
-step "REST-смена COMPLETED за шаги цикла"
+opened="$WORK/open-ws.json"
+code="$(req POST /api/v1/game-sessions "$opened" -H 'content-type: application/json' -d '{}')"
+expect "$code" 200 "POST game-sessions" "$opened"
+ws_id="$(jq -er '.sessionId' "$opened")"
+ticket="$(jq -er '.ticket' "$opened")"
+launch="$(jq -er '.launchUrl' "$opened")"
+[[ "$launch" == *"sessionKey="* ]] || die "launchUrl без sessionKey" "$opened"
+step "POST /api/v1/game-sessions session=$ws_id"
 
-runs_after="$WORK/runs-after.json"
-code="$(req GET '/api/v1/me/runs?limit=5' "$runs_after")"
-expect "$code" 200 "GET /me/runs после REST" "$runs_after"
-total_after="$(jq -er '.total' "$runs_after")"
-rest_run="$(jq -er '.runs[0].id' "$runs_after")"
-[[ "$total_after" == "$((total_before + 1))" ]] || die "total рейсов $total_before -> $total_after" "$runs_after"
-[[ "$rest_run" != "$first_before" ]] || die "новый рейс не первый" "$runs_after"
-step "GET /api/v1/me/runs новый рейс первым id=$rest_run total=$total_after"
-
-detail="$WORK/run.json"
-code="$(req GET "/api/v1/me/runs/$rest_run" "$detail")"
-expect "$code" 200 "GET /me/runs/$rest_run" "$detail"
-dec_n="$(jq -er '.decisions | length' "$detail")"
-[[ "$dec_n" -gt 0 ]] || die "разбор без decisions" "$detail"
-step "GET /api/v1/me/runs/:id decisions=$dec_n"
-
-reveal="$WORK/reveal.json"
-code="$(req GET "/api/v1/game-sessions/$sid/reveal" "$reveal")"
-expect "$code" 200 "GET reveal" "$reveal"
-seed_hex="$(jq -er '.seed' "$reveal")"
-commit_hex="$(jq -er '.commit' "$reveal")"
-actual="$(printf '%s' "$seed_hex" | xxd -r -p | openssl dgst -sha256 | awk '{print $NF}')"
-[[ "$actual" == "$commit_hex" && "$commit_hex" == "$seed_commit" ]] \
-  || die "sha256(seed)=$actual commit=$commit_hex open=$seed_commit" "$reveal"
-step "GET reveal sha256(seed)=commit"
-
-ws="$WORK/open-ws.json"
-code="$(req POST /api/v1/game-sessions "$ws" -H 'content-type: application/json' -d '{"transport":"WS"}')"
-expect "$code" 200 "POST game-sessions WS" "$ws"
-ws_id="$(jq -er '.sessionId' "$ws")"
-ticket="$(jq -er '.ticket' "$ws")"
-[[ "$ws_id" != "$sid" ]] || die "WS вернул ту же REST-сессию" "$ws"
-step "POST /api/v1/game-sessions WS session=$ws_id"
-
-verify="$WORK/verify.json"
-code="$(curl -sS --max-time 30 -o "$verify" -w '%{http_code}' \
+resolve="$WORK/resolve.json"
+code="$(curl -sS --max-time 30 -o "$resolve" -w '%{http_code}' \
   -H 'content-type: application/json' \
-  -H "X-Service-Token: $GAME_SERVER_TOKEN" \
-  -d "$(jq -nc --arg ticket "$ticket" '{ticket:$ticket}')" \
-  "$BASE/api/internal/v1/tickets/verify")"
-expect "$code" 200 "tickets/verify" "$verify"
-[[ "$(jq -r '.status' "$verify")" == "ACTIVE" ]] || die "билет не перевёл сессию в ACTIVE" "$verify"
-[[ "$(jq -r '.sessionId' "$verify")" == "$ws_id" ]] || die "verify.sessionId не совпал" "$verify"
-step "POST /api/internal/v1/tickets/verify ACTIVE"
+  -H "Authorization: Bearer $GAME_SERVER_TOKEN" \
+  -d "$(jq -nc --arg key "$ticket" '{key:$key}')" \
+  "$BASE/api/game/sessions/resolve")"
+expect "$code" 200 "sessions/resolve" "$resolve"
+[[ "$(jq -r '.attemptId' "$resolve")" == "$ws_id" ]] || die "resolve.attemptId не совпал" "$resolve"
+step "POST /api/game/sessions/resolve attempt=$ws_id"
 
 reused="$WORK/reused.json"
 code="$(curl -sS --max-time 30 -o "$reused" -w '%{http_code}' \
   -H 'content-type: application/json' \
-  -H "X-Service-Token: $GAME_SERVER_TOKEN" \
-  -d "$(jq -nc --arg ticket "$ticket" '{ticket:$ticket}')" \
-  "$BASE/api/internal/v1/tickets/verify")"
-expect "$code" 409 "tickets/verify повтор" "$reused"
-[[ "$(jq -r '.code' "$reused")" == "TICKET_REUSED" ]] || die "повтор билета не TICKET_REUSED" "$reused"
-step "POST tickets/verify повтор 409 TICKET_REUSED"
+  -H "Authorization: Bearer $GAME_SERVER_TOKEN" \
+  -d "$(jq -nc --arg key "$ticket" '{key:$key}')" \
+  "$BASE/api/game/sessions/resolve")"
+expect "$code" 410 "sessions/resolve повтор" "$reused"
+[[ "$(jq -r '.code' "$reused")" == "session-consumed" ]] || die "повтор билета не session-consumed" "$reused"
+step "POST sessions/resolve повтор 410 session-consumed"
 
-report="$WORK/report.json"
-report_req="$WORK/report-req.json"
-cat >"$report_req" <<'JSON'
-{
-  "contractVersion": 1,
-  "protocolVersion": 1,
-  "scenarioId": "ride-unwell",
-  "simulationSeconds": 40,
-  "outcome": "completed",
-  "outcomeNote": "Смена сдана",
-  "safety": 88,
-  "loyalty": 84,
-  "facts": { "prevented": 1, "incidents": 0, "complaints": 0, "interventions": 0 },
-  "decisions": [
-    {
-      "id": "ask",
-      "time": "09:40",
-      "stage": "ride",
-      "situation": "Пассажиру плохо",
-      "action": "Вызвать начальника поезда",
-      "verdict": "correct",
-      "safety": 4,
-      "loyalty": 2,
-      "reactionSec": 2
-    }
-  ],
-  "checks": [
-    {
-      "id": "panel",
-      "detected": true,
-      "reportRequired": true,
-      "reported": true,
-      "actionCorrect": true,
-      "consequenceRolled": false
-    }
-  ]
-}
-JSON
+report="$WORK/finish.json"
+report_req="$WORK/finish-req.json"
+jq -nc --arg attemptId "$ws_id" '{
+  attemptId: $attemptId,
+  content: {
+    gameLevelId: "level-1",
+    gameLevelVersion: "1",
+    simulationCompatibilityVersion: "1"
+  },
+  rootSeed: "root-seed",
+  userInputs: [],
+  achievements: { setVersion: "1", ids: [] },
+  termination: { kind: "route-completed", outcomeId: "arrived" },
+  scores: { safety: 88, customerSatisfaction: 84 }
+}' >"$report_req"
 code="$(curl -sS --max-time 30 -o "$report" -w '%{http_code}' \
   -H 'content-type: application/json' \
-  -H "X-Service-Token: $GAME_SERVER_TOKEN" \
+  -H "Authorization: Bearer $GAME_SERVER_TOKEN" \
   --data-binary @"$report_req" \
-  "$BASE/api/internal/v1/game-sessions/$ws_id/report")"
-expect "$code" 200 "report" "$report"
-ws_run="$(jq -er '.runId' "$report")"
-step "POST report runId=$ws_run"
+  "$BASE/api/game/sessions/$ws_id/finish")"
+expect "$code" 200 "finish" "$report"
+ws_run="$(jq -er '.resultId' "$report")"
+step "POST finish resultId=$ws_run"
 
 runs_ws="$WORK/runs-ws.json"
 code="$(req GET '/api/v1/me/runs?limit=5' "$runs_ws")"
 expect "$code" 200 "GET /me/runs после отчёта" "$runs_ws"
 [[ "$(jq -r '.runs[0].id' "$runs_ws")" == "$ws_run" ]] || die "отчёт не первый в журнале" "$runs_ws"
-[[ "$(jq -r '.total' "$runs_ws")" == "$((total_after + 1))" ]] || die "total после отчёта" "$runs_ws"
+[[ "$(jq -r '.total' "$runs_ws")" == "$((total_before + 1))" ]] || die "total после отчёта" "$runs_ws"
 step "GET /api/v1/me/runs рейс отчёта первым total=$(jq -r '.total' "$runs_ws")"
 
 if [[ -n "${ADMIN_PASSWORD:-}" ]]; then

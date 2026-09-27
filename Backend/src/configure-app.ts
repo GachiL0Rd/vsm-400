@@ -26,7 +26,7 @@ export async function configureApp(app: NestFastifyApplication): Promise<void> {
     origin: config.corsOrigins,
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-API-Key', 'X-Service-Token'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-API-Key'],
   });
   app.enableShutdownHooks();
 
@@ -37,7 +37,6 @@ export async function configureApp(app: NestFastifyApplication): Promise<void> {
     .addCookieAuth('vsm_access', { type: 'apiKey', in: 'cookie', name: 'vsm_access' }, 'vsm_access')
     .addBearerAuth({ type: 'http', scheme: 'bearer', bearerFormat: 'JWT' }, 'bearer')
     .addApiKey({ type: 'apiKey', in: 'header', name: 'X-API-Key' }, 'api-key')
-    .addApiKey({ type: 'apiKey', in: 'header', name: 'X-Service-Token' }, 'service-token')
     .addBearerAuth(
       {
         type: 'http',

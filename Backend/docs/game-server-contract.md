@@ -47,9 +47,7 @@ Authorization: Bearer <GAME_SERVER_TOKEN>
 `401` и `403` только про credential Game Server. Битый пользовательский ключ
 не даёт `401`.
 
-`X-Service-Token` на `/api/game/*` не принимается. Legacy
-`/api/internal/v1/*` по-прежнему ждёт `X-Service-Token` и этот заголовок
-не менялся.
+`X-Service-Token` не принимается. Сервисный секрет только Bearer.
 
 Ручки вне версии URI: контроллер `version: VERSION_NEUTRAL`, глобальный
 префикс `/api`. Итого точно:
@@ -75,8 +73,8 @@ Authorization: Bearer <GAME_SERVER_TOKEN>
 | Статус не `PENDING` и не `ACTIVE` (`COMPLETED`, `ABORTED`, `EXPIRED`) | 409 | `session-unavailable` |
 | Иначе | 200 | — |
 
-Погашение — тот же Redis `SET NX` (`vsm:ticket:<jti>`). Повторный `jti`
-ставит флаг `ticket-reused`, как legacy verify. Истёкший и битый JWT не
+Погашение — Redis `SET NX` (`vsm:ticket:<jti>`). Повторный `jti`
+ставит флаг `ticket-reused`. Истёкший и битый JWT не
 гасятся. Сначала проверка билета, потом сессия: чужой `sid` с живой подписью
 билет всё равно сжигает.
 
@@ -110,7 +108,7 @@ Guided и replay в этом адаптере не выдаются.
 | `COMPLETED`, хеш другой | 409 | `result-conflict`, запись не затирается |
 | `PENDING`, `ABORTED`, `EXPIRED` | 404 | `attempt-not-found` |
 
-Запись повторяет `acceptReport`: транзакция `updateMany` где
+Запись: транзакция `updateMany` где
 `status = ACTIVE` → `COMPLETED`, аудит `session.completed` от
 `GAME_SERVER`. Проигравший гонку читает уже сохранённый чек. Победитель
 шлёт `run.completed`. Если строки `run` ещё нет (процесс умер между commit
@@ -235,15 +233,15 @@ Guided и replay в этом адаптере не выдаются.
 | `interventions` | `emergency-brake` с `detail.activated === true` |
 | `complaints` | `service-request` с `verdict = missed` |
 
-`RunRecorder` пишет `summary.decisions` в `RunDecision` тем же путём, что журнал
-движка. Дольше 80 решений итог помечается подозрительным и режется до 80:
+`RunRecorder` пишет `summary.decisions` в `RunDecision`. Дольше 80 решений
+итог помечается подозрительным и режется до 80:
 это прежний потолок смены, не отдельное правило фактов.
 
 ## Переменные
 
 | Переменная | Смысл |
 | --- | --- |
-| `GAME_SERVER_TOKEN` | Секрет Bearer. На Game — `PLATFORM_SERVICE_TOKEN`. Тот же секрет у legacy `X-Service-Token`. Минимум 16 символов |
+| `GAME_SERVER_TOKEN` | Секрет Bearer. На Game — `PLATFORM_SERVICE_TOKEN`. Минимум 16 символов |
 | `PUBLIC_GAME_URL` | Абсолютный `http://` или `https://` клиента Game. По умолчанию `http://127.0.0.1:4174/` |
 | `PUBLIC_APP_URL` | Абсолютный `http://` или `https://` кабинета. По умолчанию `http://127.0.0.1:5173`. Хвост слэша допустим |
 | `GAME_LEVEL_ID` | Строка уровня для resolve. Пусто — `vsm-baseline-01` |
@@ -281,7 +279,5 @@ npm run build && node dist/server/main.mjs
   `expiresAt` становится `now + 3 ч`, только если новый срок позже текущего.
   Повторный resolve `ACTIVE` продлевает снова. Крон по-прежнему переводит в
   `EXPIRED` попытки, которые Game не завершил; finish после этого — `404`.
-- Legacy `/api/internal/v1/*` (`X-Service-Token`, verify / decisions / events
-  / report) оставлен для старого протокола и не заменяет эти две ручки.
-- Прокси снаружи не публикует `/api/game/*`, так же как `/api/internal/*`.
-  Иначе Bearer Game Server торчит в интернет. См. `docs/deploy.md`.
+- Прокси снаружи не публикует `/api/game/*`. Иначе Bearer Game Server торчит
+  в интернет. См. `docs/deploy.md`.

@@ -1,7 +1,6 @@
 import { Module } from '@nestjs/common';
 import { LlmModule } from '../llm/llm.module';
 import { ScenariosModule } from '../scenarios/scenarios.module';
-import { InternalSessionsController } from './internal.controller';
 import { PlatformController } from './platform.controller';
 import { PlatformSessionService } from './platform.service';
 import { SessionsController } from './sessions.controller';
@@ -11,7 +10,7 @@ import { TicketService } from './ticket.service';
 
 @Module({
   imports: [ScenariosModule, LlmModule],
-  controllers: [SessionsController, InternalSessionsController, PlatformController],
+  controllers: [SessionsController, PlatformController],
   providers: [SessionsService, TicketService, SessionExpiry, PlatformSessionService],
 })
 export class SessionsModule {}

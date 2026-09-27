@@ -1,11 +1,16 @@
 import type { RunView } from '../../src/achievements/interpret';
 import { generateShift } from '../../src/engine/generator';
 import { createRng, type Rng } from '../../src/engine/rng';
-import { isEndNode, type ScenarioGraph, type Verdict } from '../../src/engine/schema';
-import { createState, step } from '../../src/engine/step';
-import { summarize } from '../../src/engine/summarize';
-import type { EngineState, RunSummary, ShiftPlan, StepInput } from '../../src/engine/types';
-import { view } from '../../src/engine/view';
+import {
+  type Competency,
+  isEndNode,
+  type RunOutcome,
+  type ScenarioGraph,
+  type ScenarioNode,
+  type Verdict,
+} from '../../src/engine/schema';
+import { politenessOf } from '../../src/engine/summarize';
+import type { JournalEntry, RunSummary, ShiftPlan } from '../../src/engine/types';
 import { computePoints } from '../../src/progression/scoring';
 import type { PlayContext } from './content';
 
@@ -21,7 +26,7 @@ const WEIGHT = {
 export type SimulatedRun = {
   seed: Buffer;
   plan: ShiftPlan;
-  state: EngineState;
+  seq: number;
   summary: RunSummary;
   points: number;
   view: RunView;
@@ -37,13 +42,12 @@ export function simulateRun(
   const rng = createRng(seed);
   const count = rng.int(3, 5);
   const plan = generateShift(rng, ctx.catalog, { count }, ctx.routes);
-  const state = playOut(rng, plan, ctx.graphs, skill);
-  const summary = summarize(state, ctx.graphs);
+  const summary = buildSummary(rng, plan, ctx.graphs, skill);
   const points = computePoints(summary, hardest(plan, ctx.graphs), ctx.scoring);
   return {
     seed,
     plan,
-    state,
+    seq: summary.decisions.length,
     summary,
     points,
     view: toView(summary, ctx.graphs),
@@ -51,69 +55,269 @@ export function simulateRun(
   };
 }
 
-function playOut(
+const DELTA = {
+  best: { safety: 4, loyalty: 3 },
+  ok: { safety: 1, loyalty: 1 },
+  worse: { safety: -6, loyalty: -4 },
+  missed: { safety: -8, loyalty: -5 },
+} as const;
+
+const SKILL_DELTA = {
+  best: 2,
+  ok: 1,
+  worse: -1,
+  missed: -2,
+} as const;
+
+function clockOf(minute: number): string {
+  const wrapped = ((minute % (24 * 60)) + 24 * 60) % (24 * 60);
+  const hours = Math.floor(wrapped / 60);
+  const mins = wrapped % 60;
+  return `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;
+}
+
+type Walk = {
+  loyalty: number;
+  safety: number;
+  minute: number;
+  timeouts: number;
+  worse: number;
+  best: number;
+  skills: Partial<Record<Competency, number>>;
+  decisions: JournalEntry[];
+};
+
+function buildSummary(
   rng: Rng,
   plan: ShiftPlan,
   graphs: readonly ScenarioGraph[],
   skill: number,
-): EngineState {
-  let state = createState(plan, graphs);
-  for (let guard = 0; guard < 48 && state.outcome === null; guard += 1) {
-    const scenario = graphs.find((item) => item.id === state.scenarioId);
-    if (!scenario) {
-      throw new Error(`Нет графа ${state.scenarioId}`);
+): RunSummary {
+  const walk = emptyWalk();
+  for (const item of plan.scenarios) {
+    const graph = graphs.find((entry) => entry.id === item.scenarioId);
+    if (!graph) {
+      throw new Error(`Нет графа ${item.scenarioId}`);
     }
-    const node = scenario.nodes[state.nodeId];
-    if (!node || isEndNode(node)) {
-      break;
+    if (walkScenario(rng, graph, skill, walk)) {
+      return finish(walk, 'terminated', graphs);
     }
-    const input = chooseInput(rng, scenario, state, skill);
-    const elapsedMs = reactionMs(rng, node.timer, skill, input);
-    state = applyStep(state, scenario, input, elapsedMs, plan, graphs);
   }
-  if (state.outcome === null) {
-    throw new Error(`Смена не дошла до финала: ${state.scenarioId}/${state.nodeId}`);
-  }
-  return state;
+  const outcome: RunOutcome = walk.worse > walk.best ? 'incident' : 'completed';
+  return finish(walk, outcome, graphs);
 }
 
-function applyStep(
-  state: EngineState,
-  scenario: ScenarioGraph,
-  input: StepInput,
-  elapsedMs: number,
-  plan: ShiftPlan,
-  graphs: readonly ScenarioGraph[],
-): EngineState {
-  try {
-    return step(state, scenario, input, { elapsedMs, plan, scenarios: graphs }).state;
-  } catch (error) {
-    if (input === 'timeout') {
-      throw error;
-    }
-    return step(state, scenario, 'timeout', { elapsedMs: 0, plan, scenarios: graphs }).state;
-  }
+function emptyWalk(): Walk {
+  return {
+    loyalty: 72,
+    safety: 72,
+    minute: 6 * 60 + 20,
+    timeouts: 0,
+    worse: 0,
+    best: 0,
+    skills: {},
+    decisions: [],
+  };
 }
 
-function chooseInput(
+function walkScenario(rng: Rng, graph: ScenarioGraph, skill: number, walk: Walk): boolean {
+  let nodeId: string | null = graph.start;
+  for (let guard = 0; guard < 8 && nodeId !== null; guard += 1) {
+    const step = recordNode(rng, graph, nodeId, skill, walk);
+    if (step.fail) {
+      return true;
+    }
+    nodeId = step.next;
+  }
+  return false;
+}
+
+function recordNode(
   rng: Rng,
-  scenario: ScenarioGraph,
-  state: EngineState,
+  graph: ScenarioGraph,
+  nodeId: string,
   skill: number,
-): StepInput {
-  const node = scenario.nodes[state.nodeId];
+  walk: Walk,
+): { fail: boolean; next: string | null } {
+  const node: ScenarioNode | undefined = graph.nodes[nodeId];
   if (!node || isEndNode(node)) {
-    return 'timeout';
+    return { fail: false, next: null };
   }
-  const shown = view(state, scenario).choices;
-  if (shown.length === 0 || (node.onTimeout && rng.nextFloat() < (1 - skill) * 0.22)) {
-    return 'timeout';
+  const choice = selectChoice(rng, node, skill);
+  pushDecision(rng, graph, node, nodeId, choice, skill, walk);
+  if (walk.safety < 30) {
+    return { fail: true, next: null };
   }
-  const weighted = shown.map((choice) => ({
+  return { fail: false, next: choice ? choice.next : (node.onTimeout?.next ?? null) };
+}
+
+function selectChoice(rng: Rng, node: Extract<ScenarioNode, { choices: unknown }>, skill: number) {
+  const timedOut = node.onTimeout !== undefined && rng.nextFloat() < (1 - skill) * 0.22;
+  if (timedOut) {
+    return null;
+  }
+  const picked = pickChoice(rng, node.choices, skill);
+  for (const item of node.choices) {
+    if (item.id === picked) {
+      return item;
+    }
+  }
+  return null;
+}
+
+function pushDecision(
+  rng: Rng,
+  graph: ScenarioGraph,
+  node: Extract<ScenarioNode, { choices: unknown }>,
+  nodeId: string,
+  choice: ReturnType<typeof selectChoice>,
+  skill: number,
+  walk: Walk,
+): void {
+  const verdict: Verdict = choice ? verdictOf(node, choice.id) : 'missed';
+  const shift = DELTA[verdict];
+  walk.loyalty = scale(walk.loyalty + shift.loyalty);
+  walk.safety = scale(walk.safety + shift.safety);
+  countVerdict(walk, verdict);
+  addSkills(walk.skills, graph.competencies, SKILL_DELTA[verdict]);
+  const timerSec = typeof node.timer === 'number' ? node.timer : null;
+  walk.decisions.push(
+    toEntry(walk, graph, node, nodeId, choice, verdict, shift, timerSec, rng, skill),
+  );
+  walk.minute += 5;
+}
+
+function countVerdict(walk: Walk, verdict: Verdict): void {
+  if (verdict === 'best') {
+    walk.best += 1;
+  }
+  if (verdict === 'worse' || verdict === 'missed') {
+    walk.worse += 1;
+  }
+  if (verdict === 'missed') {
+    walk.timeouts += 1;
+  }
+}
+
+function toEntry(
+  walk: Walk,
+  graph: ScenarioGraph,
+  node: Extract<ScenarioNode, { text: string }>,
+  nodeId: string,
+  choice: {
+    id: string;
+    text: string;
+    consequence?: string;
+    lucky?: boolean;
+    better?: string;
+    basis?: string;
+    deviation?: boolean;
+  } | null,
+  verdict: Verdict,
+  shift: { safety: number; loyalty: number },
+  timerSec: number | null,
+  rng: Rng,
+  skill: number,
+): JournalEntry {
+  return {
+    idx: walk.decisions.length,
+    gameTime: clockOf(walk.minute),
+    stage: graph.stage,
+    scenarioId: graph.id,
+    nodeId,
+    choiceId: choice?.id ?? 'timeout',
+    situation: node.text,
+    action: choice?.text ?? 'Нет решения — время вышло',
+    verdict,
+    loyaltyDelta: shift.loyalty,
+    safetyDelta: shift.safety,
+    reactionMs: reactionMs(rng, timerSec, skill, choice === null),
+    timerSec,
+    consequence: choice?.consequence ?? null,
+    lucky: choice?.lucky ?? false,
+    better: choice?.better ?? null,
+    basis: choice?.basis ?? null,
+    deviation: choice?.deviation ?? false,
+  };
+}
+
+function finish(walk: Walk, outcome: RunOutcome, graphs: readonly ScenarioGraph[]): RunSummary {
+  const facts = tally(walk.decisions, graphs);
+  return {
+    outcome,
+    loyalty: walk.loyalty,
+    safety: walk.safety,
+    politeness: politenessOf(walk.loyalty, walk.decisions, graphs),
+    timeouts: walk.timeouts,
+    reactionAvgMs: facts.reactionAvgMs,
+    competencyDelta: walk.skills,
+    decisions: walk.decisions,
+    facts: {
+      prevented: facts.prevented,
+      incidents: outcome === 'incident' ? 1 : 0,
+      complaints: facts.complaints,
+      interventions: facts.interventions,
+    },
+  };
+}
+
+function tally(decisions: readonly JournalEntry[], graphs: readonly ScenarioGraph[]) {
+  let reactionSum = 0;
+  let reactionCount = 0;
+  let prevented = 0;
+  let complaints = 0;
+  let interventions = 0;
+  for (const decision of decisions) {
+    const bucket = factBucket(decision, graphs);
+    reactionSum += bucket.reaction;
+    reactionCount += bucket.reaction > 0 ? 1 : 0;
+    prevented += bucket.prevented;
+    complaints += bucket.complaints;
+    interventions += bucket.interventions;
+  }
+  return {
+    prevented,
+    complaints,
+    interventions,
+    reactionAvgMs: reactionCount === 0 ? 0 : Math.round(reactionSum / reactionCount),
+  };
+}
+
+function factBucket(decision: JournalEntry, graphs: readonly ScenarioGraph[]) {
+  const graph = graphs.find((item) => item.id === decision.scenarioId);
+  const reaction =
+    decision.reactionMs !== null && decision.choiceId !== 'timeout' ? decision.reactionMs : 0;
+  return {
+    reaction,
+    prevented:
+      graph && decision.verdict === 'best' && graph.competencies.includes('safety') ? 1 : 0,
+    complaints:
+      graph && decision.verdict === 'worse' && graph.competencies.includes('service') ? 1 : 0,
+    interventions:
+      graph && decision.verdict === 'best' && graph.competencies.includes('escalation') ? 1 : 0,
+  };
+}
+
+function addSkills(
+  skills: Partial<Record<Competency, number>>,
+  competencies: readonly Competency[],
+  delta: number,
+): void {
+  for (const competency of competencies) {
+    skills[competency] = (skills[competency] ?? 0) + delta;
+  }
+}
+
+function pickChoice(
+  rng: Rng,
+  choices: readonly { id: string; verdict?: Verdict }[],
+  skill: number,
+): string {
+  const weighted = choices.map((choice) => ({
     id: choice.id,
-    weight: choiceWeight(verdictOf(node, choice.id), skill),
+    weight: choiceWeight(verdictOf({ choices }, choice.id), skill),
   }));
-  return { choiceId: pickWeighted(rng, weighted) };
+  return pickWeighted(rng, weighted);
 }
 
 function verdictOf(
@@ -158,12 +362,12 @@ function pickWeighted(rng: Rng, items: readonly { id: string; weight: number }[]
 
 function reactionMs(
   rng: Rng,
-  timerSec: number | null | undefined,
+  timerSec: number | null,
   skill: number,
-  input: StepInput,
-): number {
-  if (input === 'timeout') {
-    return 0;
+  missed: boolean,
+): number | null {
+  if (missed) {
+    return null;
   }
   const timer = (timerSec ?? 30) * 1000;
   const fraction = 0.12 + (1 - skill) * 0.75 * rng.nextFloat();

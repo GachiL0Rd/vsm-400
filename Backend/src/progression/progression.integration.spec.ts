@@ -232,7 +232,6 @@ describe('прогрессия в базе', () => {
         },
         seedCommit: 'ab'.repeat(32),
         seedEnc: 'enc',
-        state: {},
         startedAt: new Date(finishedAt.getTime() - 600_000),
         finishedAt,
         expiresAt: new Date(finishedAt.getTime() + 3_600_000),

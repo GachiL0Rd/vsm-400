@@ -89,6 +89,6 @@ describe('GET /api/health', () => {
     expect(document.components.securitySchemes.vsm_access?.name).toBe('vsm_access');
     expect(document.components.securitySchemes.bearer?.type).toBe('http');
     expect(document.components.securitySchemes['api-key']?.name).toBe('X-API-Key');
-    expect(document.components.securitySchemes['service-token']?.name).toBe('X-Service-Token');
+    expect(document.components.securitySchemes['service-token']).toBeUndefined();
   });
 });

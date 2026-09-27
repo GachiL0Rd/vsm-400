@@ -1,23 +1,12 @@
 import { clampScale } from './scale';
-import type { RunOutcome, ScenarioGraph } from './schema';
-import { copySkills } from './skills';
-import type { EngineState, JournalEntry, RunSummary } from './types';
-import {
-  actionFlags,
-  actionServiceSkill,
-  copyEntry,
-  countIncidents,
-  followedEnd,
-  nodeTags,
-  skipUnfollowed,
-} from './walk';
+import { isEndNode, type ScenarioGraph } from './schema';
+import type { JournalEntry } from './types';
 
 /**
  * Вежливость — шкала сессии, не штраф.
  * Вежливое/сервисное решение: не timeout, вердикт best или ok
- * (deviation не вычитает) и хотя бы одно из: skill service > 0,
- * компетенция сценария service, loyaltyDelta > 0.
- * Доля при пустом журнале = loyalty/100, до первого хода шкала совпадает с лояльностью.
+ * и хотя бы одно из: skill service > 0, компетенция сценария service, loyaltyDelta > 0.
+ * Доля при пустом журнале = loyalty/100.
  * politeness = clamp(round(0.5 * loyalty + 0.5 * 100 * politeShare)).
  */
 export function politenessOf(
@@ -36,26 +25,6 @@ export function politenessOf(
   return clampScale(Math.round(0.5 * loyalty + 0.5 * 100 * share));
 }
 
-export function summarize(state: EngineState, scenarios: readonly ScenarioGraph[]): RunSummary {
-  return {
-    outcome: summaryOutcome(state, scenarios),
-    loyalty: state.loyalty,
-    safety: state.safety,
-    politeness: politenessOf(state.loyalty, state.journal, scenarios),
-    timeouts: state.timeouts,
-    reactionAvgMs: reactionAvg(state.journal),
-    competencyDelta: copySkills(state.skills),
-    // timerSec уже лежит в журнале: step пишет длину таймера узла. Повторный поиск его затирал.
-    decisions: state.journal.map((entry) => copyEntry(entry)),
-    facts: {
-      prevented: countPrevented(state, scenarios),
-      incidents: countIncidents(state, scenarios),
-      complaints: countTagged(state, scenarios, 'complaint'),
-      interventions: countTagged(state, scenarios, 'intervention'),
-    },
-  };
-}
-
 function isPolite(entry: JournalEntry, scenarios: readonly ScenarioGraph[]): boolean {
   if (entry.choiceId === 'timeout') {
     return false;
@@ -63,7 +32,7 @@ function isPolite(entry: JournalEntry, scenarios: readonly ScenarioGraph[]): boo
   if (entry.verdict !== 'best' && entry.verdict !== 'ok') {
     return false;
   }
-  if (actionServiceSkill(scenarios, entry) > 0) {
+  if (serviceSkill(scenarios, entry) > 0) {
     return true;
   }
   const scenario = scenarios.find((item) => item.id === entry.scenarioId);
@@ -73,70 +42,12 @@ function isPolite(entry: JournalEntry, scenarios: readonly ScenarioGraph[]): boo
   return entry.loyaltyDelta > 0;
 }
 
-function summaryOutcome(state: EngineState, scenarios: readonly ScenarioGraph[]): RunOutcome {
-  if (state.outcome) {
-    return state.outcome;
-  }
-  if (countIncidents(state, scenarios) > 0) {
-    return 'incident';
-  }
-  return 'completed';
-}
-
-function reactionAvg(journal: readonly JournalEntry[]): number {
-  let sum = 0;
-  let count = 0;
-  for (const entry of journal) {
-    if (entry.reactionMs === null) {
-      continue;
-    }
-    sum += entry.reactionMs;
-    count += 1;
-  }
-  if (count === 0) {
+function serviceSkill(scenarios: readonly ScenarioGraph[], entry: JournalEntry): number {
+  const scenario = scenarios.find((item) => item.id === entry.scenarioId);
+  const node = scenario?.nodes[entry.nodeId];
+  if (!node || isEndNode(node)) {
     return 0;
   }
-  return Math.round(sum / count);
-}
-
-function countPrevented(state: EngineState, scenarios: readonly ScenarioGraph[]): number {
-  let count = 0;
-  for (const entry of state.journal) {
-    if (entry.verdict !== 'best') {
-      continue;
-    }
-    const scenario = scenarios.find((item) => item.id === entry.scenarioId);
-    if (scenario?.category === 'safety' || scenario?.category === 'technical') {
-      count += 1;
-    }
-  }
-  return count;
-}
-
-function countTagged(
-  state: EngineState,
-  scenarios: readonly ScenarioGraph[],
-  flag: string,
-): number {
-  let count = 0;
-  for (const entry of state.journal) {
-    if (actionFlags(scenarios, entry).includes(flag)) {
-      count += 1;
-    }
-  }
-  const last = state.journal.length - 1;
-  for (let index = 0; index < state.journal.length; index += 1) {
-    if (skipUnfollowed(state, scenarios, index, last)) {
-      continue;
-    }
-    const entry = state.journal[index];
-    if (!entry) {
-      continue;
-    }
-    const hit = followedEnd(scenarios, entry);
-    if (hit && nodeTags(hit.node).includes(flag)) {
-      count += 1;
-    }
-  }
-  return count;
+  const choice = node.choices.find((item) => item.id === entry.choiceId);
+  return choice?.skills?.service ?? 0;
 }

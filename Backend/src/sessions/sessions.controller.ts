@@ -1,15 +1,4 @@
-import {
-  Body,
-  Controller,
-  Get,
-  HttpCode,
-  HttpStatus,
-  Inject,
-  Param,
-  Post,
-  Req,
-  Res,
-} from '@nestjs/common';
+import { Body, Controller, HttpCode, HttpStatus, Inject, Param, Post, Req } from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiBody,
@@ -22,20 +11,8 @@ import {
 } from '@nestjs/swagger';
 import { ZodValidationPipe } from 'nestjs-zod';
 import type { AuthUser } from '../auth/auth-user';
-import type { CookieReply } from '../auth/cookies';
 import { CurrentUser } from '../auth/current-user.decorator';
-import { APP_CONFIG, type AppConfig } from '../config/env';
-import { ActorType } from '../generated/prisma/client';
-import {
-  AbortResultDto,
-  DecisionDto,
-  DecisionViewDto,
-  OpenedSessionDto,
-  OpenSessionDto,
-  RevealDto,
-  SessionViewDto,
-} from './dto';
-import { GAME_COOKIE, gameCookieOptions } from './game-cookie';
+import { AbortResultDto, OpenedSessionDto, OpenSessionDto } from './dto';
 import { SessionsService } from './sessions.service';
 
 type HttpRequest = { ip?: string };
@@ -45,10 +22,7 @@ type HttpRequest = { ip?: string };
 @ApiBearerAuth('bearer')
 @Controller({ path: 'game-sessions', version: '1' })
 export class SessionsController {
-  constructor(
-    @Inject(SessionsService) private readonly sessions: SessionsService,
-    @Inject(APP_CONFIG) private readonly config: AppConfig,
-  ) {}
+  constructor(@Inject(SessionsService) private readonly sessions: SessionsService) {}
 
   @Post()
   @HttpCode(HttpStatus.OK)
@@ -57,46 +31,12 @@ export class SessionsController {
   @ApiOkResponse({ type: OpenedSessionDto })
   @ApiCreatedResponse({ description: 'Ответ 200: новая смена и повтор отдают одно и то же тело' })
   @ApiUnauthorizedResponse({ description: 'Нет сессии' })
-  async open(
+  open(
     @CurrentUser() user: AuthUser,
     @Body(new ZodValidationPipe(OpenSessionDto)) body: OpenSessionDto,
     @Req() request: HttpRequest,
-    @Res({ passthrough: true }) reply: CookieReply,
   ) {
-    const opened = await this.sessions.open(user, body, readIp(request));
-    reply.setCookie(GAME_COOKIE, opened.ticket, gameCookieOptions(this.config.cookieSecure));
-    return opened;
-  }
-
-  @Get(':id')
-  @ApiOperation({
-    summary: 'Текущий узел смены. Просроченный дедлайн REST сервер закрывает сам',
-  })
-  @ApiOkResponse({ type: SessionViewDto })
-  view(@CurrentUser() user: AuthUser, @Param('id') id: string) {
-    return this.sessions.viewSession(user.id, id);
-  }
-
-  @Post(':id/decisions')
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Ход REST-смены. Повтор того же seq и choiceId отдаёт прежний ответ' })
-  @ApiBody({ type: DecisionDto })
-  @ApiOkResponse({ type: DecisionViewDto })
-  decide(
-    @CurrentUser() user: AuthUser,
-    @Param('id') id: string,
-    @Body(new ZodValidationPipe(DecisionDto)) body: DecisionDto,
-    @Req() request: HttpRequest,
-  ) {
-    return this.sessions.decide({
-      sessionId: id,
-      seq: body.seq,
-      choiceId: body.choiceId,
-      clientTs: body.clientTs,
-      ownerId: user.id,
-      transport: 'REST',
-      actor: { type: ActorType.USER, id: user.id, ip: readIp(request) },
-    });
+    return this.sessions.open(user, body, readIp(request));
   }
 
   @Post(':id/abort')
@@ -105,13 +45,6 @@ export class SessionsController {
   @ApiOkResponse({ type: AbortResultDto })
   abort(@CurrentUser() user: AuthUser, @Param('id') id: string, @Req() request: HttpRequest) {
     return this.sessions.abort(user.id, id, readIp(request));
-  }
-
-  @Get(':id/reveal')
-  @ApiOperation({ summary: 'Раскрыть seed после завершённой смены' })
-  @ApiOkResponse({ type: RevealDto })
-  reveal(@CurrentUser() user: AuthUser, @Param('id') id: string) {
-    return this.sessions.reveal(user.id, id);
   }
 }
 

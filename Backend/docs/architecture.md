@@ -1,13 +1,13 @@
 # Архитектура Backend «Перегон»
 
-Каркас этой ветки: NestJS 11 на Fastify, Prisma 7, Postgres, Redis-клиент,
-health, схема движка, событие `run.completed`. Таблица модулей ниже — границы
-из SPEC §2. Доменные модули подключаются в той же интеграции, пустыми
-папками их нет.
+Каркас: NestJS 11 на Fastify, Prisma 7, Postgres, Redis-клиент, health,
+словарь сценария и план смены, событие `run.completed`. Таблица модулей
+ниже — границы из SPEC §2. Доменные модули подключаются в той же интеграции,
+пустыми папками их нет.
 
-GameServer в репозитории нет. Пространственный клиент уже говорит по
-WebSocket v1 (`Game/docs/agent/game-websocket-contract.md` на `origin/main`).
-Backend этот протокол не подменяет.
+Симуляция живёт в `Game/`: клиент и Game Server. Backend этот протокол не
+подменяет. Запуск смены и итог попытки —
+[game-server-contract.md](game-server-contract.md).
 
 ## Компоненты
 
@@ -34,13 +34,11 @@ flowchart LR
 
   SPA -->|"REST /api/v1"| Auth
   SPA -->|"REST /api/v1"| Sessions
-  Game -->|"WS /game-ws"| GS
-  GS -->|"HTTP /api/internal/v1 + X-Service-Token"| Sessions
+  Game -->|"WS"| GS
+  GS -->|"HTTP /api/game Bearer"| Sessions
   Sessions --> Engine
   Sessions --> PG
   Sessions --> RD
-  GS -.->|"pub/sub vsm:game:sessionId"| RD
-  RD -.-> GS
   Auth --> PG
   Prog --> PG
   Prog --> RD
@@ -64,21 +62,21 @@ GameServer в Postgres не пишет. Учётки HR заводит сама,
 Глобальный префикс `/api` (`src/configure-app.ts`). Версия URI, по умолчанию
 `1`: доменная ручка без своего `version` становится `/api/v1/...`.
 `GET /api/health`, `/api/docs`, `/api/openapi.json` вне версии.
-Внутренний API монтируется как `/api/internal/v1/...`
-(`VERSION_NEUTRAL`, путь `internal/v1/...`): при обычном `version: '1'`
-Nest поставил бы `/api/v1/internal/...`, это не путь SPEC §13.
+Туда же входят `POST /api/game/sessions/resolve` и
+`POST /api/game/sessions/:attemptId/finish`: Bearer `GAME_SERVER_TOKEN`,
+без префикса `v1`.
 
 | Модуль | Ответственность |
 | --- | --- |
 | `config` | Схема env (zod). Пустой или короткий секрет роняет процесс до `listen`. |
 | `prisma` | Единственная точка записи в Postgres. Адаптер `@prisma/adapter-pg`. |
-| `redis` | ZSET рейтинга, jti билетов, rate limit, pub/sub. |
+| `redis` | ZSET рейтинга, jti билетов, rate limit, pub/sub уведомлений (`vsm:notify:<userId>`). |
 | `health` | `GET /api/health`: ping Postgres и Redis. |
-| `engine` | Чистый TypeScript: граф сценария, `step`, `view`, `summarize`, HMAC-счётчик. Без Nest, Prisma, Redis, файлов. |
+| `engine` | Словарь сценария и план смены: компетенции, граф, `generateShift`, `validateScenario`, `politenessOf`, HMAC-счётчик `rng`. Без Nest, Prisma, Redis, файлов. Ход симуляции — в Game. |
 | `auth` | Логин, ротация refresh, пароль argon2id, игровой билет. Регистрации нет. |
 | `users`, `org` | Учётка, депо, бригада. Позывной, не ФИО. |
 | `scenarios` | YAML → версия графа в БД. Прогон ссылается на версию. |
-| `sessions` | Смена, REST-рантайм, билет, internal API для GameServer. |
+| `sessions` | Запуск смены, билет, resolve и finish для Game Server, abort, срок сессии. |
 | `progression` | `Run`, леджер очков, уровень, EWMA компетенций, streak. |
 | `achievements` | Правила из `content/achievements.yaml`, прогресс, бонус. |
 | `leaderboard` | ZSET сезона и копия `SeasonScore`. |
@@ -108,9 +106,8 @@ Nest поставил бы `/api/v1/internal/...`, это не путь SPEC §1
 5. `promotion` — условия грейда → `PromotionRecommendation` (PENDING). Подтверждает человек.
 6. `integration` — вебхуки `run.completed`, `achievement.granted`, `promotion.recommended`. Подпись `X-VSM-Signature` (HMAC-SHA256). Повтор — cron, не pub/sub.
 
-Redis pub/sub (`vsm:game:<sessionId>`) — не эта шина. Это сигнал GameServer
-(отмена сессии). Доставка at-most-once: кто не был подписан, сообщение не
-догонит. Итог рейса туда не кладётся.
+Redis pub/sub (`vsm:notify:<userId>`) — доставка уведомления на SSE другой
+реплики, не эта шина. Доставка at-most-once. Итог рейса туда не кладётся.
 
 Cron (`@nestjs/schedule`): сгорание баллов раз в час, предупреждение за 3 дня,
 закрытие сезона в понедельник 00:00 МСК, ретраи вебхуков. BullMQ в v1 нет.
@@ -145,7 +142,7 @@ cookie `vsm_refresh` (HttpOnly, SameSite=Strict, Path=/api/v1/auth).
 `admin` со случайным паролем (CSPRNG), `mustChangePassword=true`, и один раз
 печатает логин, пароль и URL в лог.
 
-## «Играть» через GameServer
+## «Играть»
 
 ```mermaid
 sequenceDiagram
@@ -153,96 +150,57 @@ sequenceDiagram
   participant Game as Game client
   participant API as Backend
   participant RD as Redis
-  participant GS as GameServer
+  participant GS as Game Server
   SPA->>API: POST /api/v1/game-sessions
-  Note over API: seed 32 байта, commit sha256, план смены, JWT билета
-  API-->>SPA: sessionId, ticket, wsUrl, seedCommit, план
-  Note over SPA: cookie vsm_game, HttpOnly, SameSite=Strict
-  Game->>GS: WS /game-ws, hello v1 и ticket или cookie
-  GS->>API: POST /api/internal/v1/tickets/verify
+  Note over API: seed 32 байта, commit sha256, план смены, JWT билета, статус PENDING
+  API-->>SPA: sessionId, ticket, wsUrl, launchUrl, seedCommit, план
+  SPA->>Game: браузер открывает launchUrl, query sessionKey
+  Game->>GS: hello, sessionKey
+  GS->>API: POST /api/game/sessions/resolve, Bearer
   API->>RD: SET vsm:ticket:jti NX EX
-  API-->>GS: userId, sessionId, plan
-  GS-->>Game: snapshot protocolVersion 1
-  Game->>GS: command v1, намерение
-  GS->>API: POST /api/internal/v1/game-sessions/id/decisions
-  API-->>GS: view узла без эффектов
-  GS->>API: POST /api/internal/v1/game-sessions/id/events
-  Game->>GS: command finish
-  GS->>API: POST /api/internal/v1/game-sessions/id/report
+  API-->>GS: attemptId, gameLevelId, mode live
+  Note over API: PENDING становится ACTIVE
+  Note over GS: ход смены на Game Server, Backend не вызывается
+  GS->>API: POST /api/game/sessions/attemptId/finish
   Note over API: RunSummary, очки считает Backend
   API-->>API: событие run.completed
   Note over API: прогрессия, рейтинг, уведомления, вебхуки HR
 ```
 
-Диалоговый перегон и пространственная симуляция — разные входы в один итог.
-Решения перегона GameServer проводит через `decisions`. Окончание симуляции —
-`report` с `RunReport` v1. Оба пути публикуют `run.completed`. Подробности
-полей — в `game-server-contract.md`.
-
-Канал `vsm:game:<sessionId>`: Backend публикует отмену, GameServer закрывает
-сокет. Подписчик, которого не было в момент `PUBLISH`, кадр не получит.
-
-## REST без GameServer
-
-Тот же движок, транспорт `REST`. Клиент кабинета или тонкий клиент.
-
-```mermaid
-sequenceDiagram
-  participant SPA as Frontend SPA
-  participant API as Backend
-  participant PG as Postgres
-  SPA->>API: POST /api/v1/game-sessions
-  API-->>SPA: sessionId, seedCommit, план, deadlineAt
-  SPA->>API: GET /api/v1/game-sessions/id
-  API-->>SPA: view, шкалы, seq, deadlineAt
-  SPA->>API: POST /api/v1/game-sessions/id/decisions
-  Note over API: seq, дедлайн сервера, step
-  API->>PG: состояние и GameEvent
-  API-->>SPA: следующий view
-  Note over API: финал узла публикует run.completed
-  SPA->>API: GET /api/v1/me/runs/id
-  API-->>SPA: разбор, seed раскрыт
-```
-
-`POST .../abort` снимает сессию. Опоздание относительно `nodeDeadlineAt`
-(допуск 500 мс на сеть) — переход `timeout`, не ошибка HTTP. Повтор того же
-`seq` возвращает тот же ответ. Другой `seq`, чем ждёт сервер, — 409.
-Чужая сессия — 404. Выбор с невыполненным `requires` — 422
-`CHOICE_NOT_AVAILABLE`.
+Ход смены считает Game Server. Финал — `finish` с `FinishedGameResult`.
+Поля — в `game-server-contract.md`. `POST /api/v1/game-sessions/:id/abort`
+ставит сессию `ABORTED` без рейса. Сокет Game этот вызов не закрывает.
 
 Итог с клиента не принимается: нет ручки «вот мои очки».
 
 ## Почему источник истины — Backend
 
 Очки, уровень, компетенции, рейтинг, ачивки и рекомендации к грейду пишет
-только Backend. Клиент и GameServer присылают намерение или нормализуемый
-отчёт. `view()` не отдаёт эффекты, вердикт и `better` до разбора.
+только Backend. Game Server присылает нормализуемый итог `finish`.
 
-Два писателя в ZSET на ретрае засчитают рейс дважды. Поэтому GameServer без
-`DATABASE_URL` и без `ZINCRBY`. Повтор `report` по тому же `sessionId` не
-публикует `run.completed` второй раз.
+Два писателя в ZSET на ретрае засчитают рейс дважды. Поэтому Game Server без
+`DATABASE_URL` и без `ZINCRBY`. Повтор `finish` с тем же телом не публикует
+`run.completed` второй раз, когда строка `run` уже есть.
 
 Seed смены генерирует сервер (`crypto.randomBytes(32)`). Наружу уходит
-`sha256(seed)`. Сам seed лежит в `seedEnc` (AES-256-GCM, ключ `SEED_ENC_KEY`)
-и раскрывается в разборе. Клиентский `Math.random` на результат не влияет.
+`sha256(seed)` как `seedCommit`. Сам seed лежит в `seedEnc` (AES-256-GCM,
+ключ `SEED_ENC_KEY`). Публичной ручки раскрытия нет. Разбор
+`GET /api/v1/me/runs/:id` отдаёт исход, шкалы и решения, не seed.
+Клиентский `Math.random` на результат не влияет.
 
-Дедлайн диалогового узла — `nodeDeadlineAt` в базе. Часы телефона не
-продлевают ход. В симуляции мягкий и жёсткий дедлайн задачи считает
-GameServer в игровых секундах; клиент только рисует HUD (контракт v1).
+Срок попытки — `expiresAt`. Раз в минуту просроченные `PENDING` и `ACTIVE`
+становятся `EXPIRED`. Дедлайны задач внутри смены считает Game Server.
 
 ## Масштабирование
 
 REST-API без состояния в процессе: access-JWT, сессия refresh в Postgres,
 jti и лимиты в Redis. Несколько реплик Backend за одним прокси делят Postgres
-и Redis. Pub/sub для отмены сессии при двух репликах API достаточен: сообщение
-не хранит мир.
+и Redis. Уведомления между репликами идут pub/sub `vsm:notify:<userId>`.
 
-GameServer держит мир рейса в памяти. Вторая реплика без привязки сокета к
-процессу разъедет ревизии. На этот контур — один процесс GameServer.
+Game Server держит мир рейса в памяти. Вторая реплика без привязки сокета к
+процессу разъедет ревизии. На этот контур — один процесс Game Server.
 Горизонтально его не клонируем, пока мир не вынесен из памяти.
 
-`src/engine/` не импортирует Nest и Prisma, чтобы позже отдать `step()`
-процессу GameServer. Общий пакет не заводится, пока этот процесс не появился:
-так сказано в `docs/user/project_direction.md`. Доменная логика самой игры
-пока живёт в `Game/` и в рантайм сцены не вшита; границей интеграции служит
-`RunReport`, а не общий package.
+`src/engine/` не импортирует Nest и Prisma: это словарь сценария и план смены,
+не рантайм хода. Ход симуляции живёт в `Game/`. Общий пакет не заводится.
+Граница интеграции — `finish`, см. `game-server-contract.md`.

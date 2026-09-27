@@ -37,10 +37,7 @@ npm run openapi:export
 | PUT | `/api/v1/admin/scenarios/{id}` | METHODIST, ADMIN | граф, в документе `object` | 200 ScenarioDetailDto, 401, 403, 404, 422 |
 | POST | `/api/v1/admin/scenarios/{id}/status` | METHODIST, ADMIN | ScenarioStatusDto | 200 ScenarioStatusViewDto, 401, 403, 404, 422 |
 | POST | `/api/v1/game-sessions` | любая роль, cookie или Bearer | OpenSessionDto | 200 OpenedSessionDto (`launchUrl`), 201, 401 |
-| GET | `/api/v1/game-sessions/{id}` | любая роль, cookie или Bearer | — | 200 SessionViewDto |
-| POST | `/api/v1/game-sessions/{id}/decisions` | любая роль, cookie или Bearer | DecisionDto | 200 DecisionViewDto |
 | POST | `/api/v1/game-sessions/{id}/abort` | любая роль, cookie или Bearer | — | 200 AbortResultDto |
-| GET | `/api/v1/game-sessions/{id}/reveal` | любая роль, cookie или Bearer | — | 200 RevealDto |
 | GET | `/api/v1/analytics/brigades/{id}/heatmap` | CHIEF своей бригады, METHODIST, ADMIN | — | default HeatmapDto_Output |
 | GET | `/api/v1/analytics/brigades/{id}/gaps` | CHIEF своей бригады, METHODIST, ADMIN | — | default GapsDto_Output |
 | GET | `/api/v1/analytics/scenarios/{id}` | METHODIST, ADMIN | — | default ScenarioFunnelDto_Output |
@@ -64,10 +61,6 @@ npm run openapi:export
 | POST | `/api/v1/admin/api-clients/{id}/revoke` | ADMIN | — | 200 object, 404 object |
 | POST | `/api/game/sessions/resolve` | Bearer `GAME_SERVER_TOKEN` | ResolveSessionDto | 200 ResolveResponseDto, 400, 401, 404, 409, 410 |
 | POST | `/api/game/sessions/{attemptId}/finish` | Bearer `GAME_SERVER_TOKEN` | FinishedGameResultDto | 200 FinishResponseDto, 400, 401, 404, 409 |
-| POST | `/api/internal/v1/tickets/verify` | X-Service-Token | VerifyTicketDto | 200 VerifyResultDto |
-| POST | `/api/internal/v1/game-sessions/{id}/decisions` | X-Service-Token | DecisionDto | 200 DecisionViewDto |
-| POST | `/api/internal/v1/game-sessions/{id}/events` | X-Service-Token | EventsDto | 200 EventsResultDto |
-| POST | `/api/internal/v1/game-sessions/{id}/report` | X-Service-Token | RunReportDto | 200 ReportResultDto |
 | PUT | `/api/integration/v1/employees/{extId}` | X-API-Key `employees:write` | UpsertEmployeeDto | 200, 401, 403, 404, 422 object |
 | GET | `/api/integration/v1/employees/{extId}/progress` | X-API-Key `progress:read` | — | 200, 401, 404 object |
 | GET | `/api/integration/v1/org` | X-API-Key `org:read` | — | 200, 401 object |
@@ -75,7 +68,7 @@ npm run openapi:export
 | POST | `/api/integration/v1/webhooks` | X-API-Key `webhooks:manage` | CreateWebhookDto | 201, 401, 422 object |
 | DELETE | `/api/integration/v1/webhooks/{id}` | X-API-Key `webhooks:manage` | — | 204, 404 object |
 
-`POST /api/v1/game-sessions` добавляет `launchUrl`: абсолютный `PUBLIC_GAME_URL` с query `sessionKey`. `wsUrl` остаётся. Смысл статусов `/api/game/sessions/*` — в [game-server-contract.md](game-server-contract.md). Невалидное тело этих двух ручек — `400`, не `422`. Прокси снаружи их не публикует.
+`POST /api/v1/game-sessions` отдаёт `launchUrl`: абсолютный `PUBLIC_GAME_URL` с query `sessionKey`. `wsUrl` остаётся. `OpenSessionDto.transport` необязателен и равен только `WS` (по умолчанию `WS`); `REST` — 422. Смысл статусов `/api/game/sessions/*` — в [game-server-contract.md](game-server-contract.md). Невалидное тело этих двух ручек — `400`, не `422`. Прокси снаружи их не публикует.
 
 `GET /api/v1/scenarios` на одном процессе может отдать каталог не старше 30 секунд. Запись сценария на этом же процессе кэш сбрасывает. Чужая реплика за эти 30 секунд может ещё держать старый список.
 
@@ -137,7 +130,7 @@ npm run openapi:export
 
 Имена и пределы — `src/config/env.ts`. Пустое или короткое значение роняет процесс до `listen` текстом `Некорректное окружение`.
 
-- `COOKIE_SECURE` — `true` или `false`, по умолчанию `false`. Флаг Secure у `vsm_access`, `vsm_refresh` и `vsm_game`. В `production` старт требует `true`.
+- `COOKIE_SECURE` — `true` или `false`, по умолчанию `false`. Флаг Secure у `vsm_access` и `vsm_refresh`. В `production` старт требует `true`.
 - `TRUST_PROXY` — пусто, `false` или `0`: адрес сокета, `X-Forwarded-For` не читается. Иначе список IP, CIDR или `loopback` / `linklocal` / `uniquelocal` — адреса прокси, которым верим. `true` и число хопов роняют старт: Fastify 5.12 не доверяет заголовку по числу хопов. Лимит входа считает клиентский адрес, IPv6 режется до /64.
 - `WEBHOOK_ALLOWED_HOSTS` — hostname через запятую. Пусто — список пуст, и фильтр хоста не включается. Непустой список оставляет только эти хосты и не открывает частные адреса. На создании подписки и на каждой отправке URL разбирается заново: схема, DNS A/AAAA, отсечение loopback, link-local, unique-local, RFC1918, CGNAT `100.64/10`, `0.0.0.0/8`, `198.18/15`, документационных сетей, 6to4 `2002::/16`, multicast и имён metadata. NAT64 `64:ff9b::/96` и `64:ff9b:1::/48` проверяется по вложенному IPv4. Сбой DNS при доставке ретраится, остальные отказы сразу `FAILED`. В `production` схема только `https`. Сокет идёт на уже проверенный адрес, тело ответа не читается.
 - `BOOTSTRAP_ADMIN_PASSWORD` — не поле zod-объекта. `loadConfig` читает его отдельно. Пусто — случайный пароль первого `admin`. Иначе минимум 10 символов. В `production` любое непустое значение роняет старт.

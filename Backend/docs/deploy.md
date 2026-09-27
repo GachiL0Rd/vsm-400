@@ -69,8 +69,9 @@ compose, например `172.28.0.0/16`, если сеть такая, или 
 
 `/api/*` уводит на Backend и `/api/docs`, и `/api/openapi.json`. Префиксы
 `/api/internal` и `/api/game` до приложения не доходят: Bearer
-`GAME_SERVER_TOKEN` и `X-Service-Token` снаружи не публикуются. Game Server
-в контуре ходит на Backend напрямую, не через этот Caddy.
+`GAME_SERVER_TOKEN` снаружи не публикуется. Ручек на `/api/internal` нет,
+префикс на прокси всё равно закрыт. Game Server в контуре ходит на Backend
+напрямую, не через этот Caddy.
 `PUBLIC_GAME_WS_URL` — legacy `wsUrl` кабинета. Если сокет ещё нужен, URL
 должен совпасть с `/game-ws` (`wss://<хост>/game-ws`). Значение
 `ws://127.0.0.1:3001/game` из `.env.example` — локальная заготовка.

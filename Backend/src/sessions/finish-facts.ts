@@ -3,12 +3,50 @@ import type { Competency, Stage, Verdict } from '../engine/schema';
 import { addSkills } from '../engine/skills';
 import type { JournalEntry, RunSummary } from '../engine/types';
 import type { FinishedGameResult } from './platform.dto';
-import { averageReaction, countMissed, mapVerdict } from './report-map';
 
 export type GameAssessment = NonNullable<FinishedGameResult['assessment']>;
 
 type Fact = GameAssessment['facts'][number];
 type Detail = Fact['detail'];
+
+function mapVerdict(verdict: Fact['verdict']): Verdict {
+  if (verdict === 'correct') {
+    return 'best';
+  }
+  if (verdict === 'late') {
+    return 'ok';
+  }
+  if (verdict === 'incorrect') {
+    return 'worse';
+  }
+  return 'missed';
+}
+
+function countMissed(decisions: readonly JournalEntry[]): number {
+  let count = 0;
+  for (const decision of decisions) {
+    if (decision.verdict === 'missed') {
+      count += 1;
+    }
+  }
+  return count;
+}
+
+function averageReaction(decisions: readonly JournalEntry[]): number {
+  let sum = 0;
+  let count = 0;
+  for (const decision of decisions) {
+    if (decision.reactionMs === null) {
+      continue;
+    }
+    sum += decision.reactionMs;
+    count += 1;
+  }
+  if (count === 0) {
+    return 0;
+  }
+  return Math.round(sum / count);
+}
 
 const US_PER_MINUTE = 60_000_000;
 

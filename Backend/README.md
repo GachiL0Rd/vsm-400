@@ -1,8 +1,8 @@
 # Backend «Перегон»
 
 API тренажёра проводника ВСМ. NestJS 11 на Fastify, Prisma 7, PostgreSQL 18,
-Valkey 9, Zod 4. Смены и прогрессия уже в коде: движок `src/engine`, сессии
-`src/sessions`, кабинет `src/cabinet`.
+Valkey 9, Zod 4. Смены и прогрессия уже в коде: словарь сценария и план смены
+`src/engine`, сессии `src/sessions`, кабинет `src/cabinet`. Ход симуляции — в `Game/`.
 
 ## Запуск
 
@@ -46,8 +46,9 @@ docker compose --profile app up --build -d
 
 Доменные контроллеры получают префикс `/api/v1` (URI versioning, версия по
 умолчанию `1`). Health и документация без версии: `/api/health`, `/api/docs`,
-`/api/openapi.json`. Внутренний API GameServer — `/api/internal/v1`, раздел
-ниже. Полная таблица ручек — [docs/api.md](docs/api.md).
+`/api/openapi.json`. Game Server ходит без версии: `POST /api/game/sessions/resolve`
+и `POST /api/game/sessions/:attemptId/finish`. Полная таблица ручек —
+[docs/api.md](docs/api.md). Контракт — [docs/game-server-contract.md](docs/game-server-contract.md).
 
 ## Переменные окружения
 
@@ -62,7 +63,7 @@ docker compose --profile app up --build -d
 | `REDIS_URL` | Redis или Valkey (`redis://` или `rediss://`) |
 | `JWT_ACCESS_SECRET` | Секрет access-JWT, минимум 32 символа |
 | `GAME_TICKET_SECRET` | Секрет игрового билета, минимум 32 символа |
-| `GAME_SERVER_TOKEN` | Секрет `X-Service-Token` и Bearer `/api/game/*`, минимум 16 символов. На Game это `PLATFORM_SERVICE_TOKEN` |
+| `GAME_SERVER_TOKEN` | Bearer `/api/game/*`, минимум 16 символов. На Game это `PLATFORM_SERVICE_TOKEN` |
 | `SEED_ENC_KEY` | 32 байта hex (64 символа), ключ AES-256-GCM для seed сессии |
 | `EXT_ID_PEPPER` | Перец HMAC табельного номера, минимум 16 символов. ФИО не хранится |
 | `CORS_ORIGINS` | Список origin через запятую, хотя бы один |
@@ -106,7 +107,7 @@ docker compose --profile app up --build -d
 | `npm run prisma:migrate` | `migrate dev` |
 | `npm run prisma:deploy` | `migrate deploy` |
 | `npm run prisma:seed` | Синтетические депо, бригады и рейсы |
-| `npm run smoke` | Сквозной прогон: demo, REST-смена, билет и отчёт. Сервер уже слушает |
+| `npm run smoke` | Сквозной прогон: demo, открытие смены, билет, resolve и finish. Сервер уже слушает |
 | `npm run openapi:export` | Пишет `dist/openapi.json`. `-- -` печатает JSON в stdout. Файл не коммитится |
 | `npm run verify` | Biome, типы, тесты, сборка |
 
@@ -159,10 +160,6 @@ SameSite=Strict). Оба HttpOnly, флаг Secure берётся из `COOKIE_S
 `/org/brigades/:id`. Логины участников видит только ADMIN. CHIEF и CONDUCTOR
 открывают состав только своей бригады, METHODIST — любой.
 
-Внутренние ручки помечаются `@InternalService()`: это `@Public()`,
-`ServiceTokenGuard` (заголовок `X-Service-Token`, сверка через `timingSafeEqual`)
-и схема Swagger `service-token`. Guard и декоратор экспортирует `AuthModule`.
-
 Лимит логина считает `RedisThrottlerStorage` поверх уже созданного `RedisService`.
 Пакет `@nest-lab/throttler-storage-redis@1.2.0` совместим с Nest 11, но открывает
 второй клиент ioredis и не закрывает его при остановке приложения.
@@ -204,8 +201,7 @@ yaml снова становится версией. Пока последняя
 файл не главный.
 
 Чтение версии кэшируется в памяти процесса: пара (сценарий, номер) неизменна,
-LRU на 64 графа. Наружу отдаётся замороженный объект. Ход клонирует состояние
-сессии и в граф не пишет, так что общий объект ходу не мешает. Каталог
+LRU на 64 графа. Наружу отдаётся замороженный объект. Каталог
 `GET /api/v1/scenarios` сбрасывается на этом процессе при `PUT`, смене статуса
 и синке с диска. Другая реплика о смене не узнает, поэтому каталог живёт не
 дольше 30 секунд.
@@ -269,44 +265,26 @@ METHODIST и ADMIN любой. `GET /api/v1/analytics/scenarios/:id` — вор�
 
 ### Игровые сессии
 
-`POST /api/v1/game-sessions` `{transport, carClass?}` — любой залогиненный.
-Если своя смена уже `PENDING` или `ACTIVE`, возвращается она и новый билет,
-в аудит пишется `session.resumed` (это не флаг). Иначе собирается план, seed
-шифруется AES-256-GCM, в cookie `vsm_game` (HttpOnly, SameSite=Strict,
-Path=/game-ws, 2 минуты) и в тело кладётся билет. Ответ: `{sessionId, ticket,
-wsUrl, launchUrl, seedCommit, plan}`. `launchUrl` — `PUBLIC_GAME_URL` с
-query `sessionKey`. `wsUrl` остаётся для старого сокета. План публичный,
-без графа: поезд, маршрут, вагон,
-класс, отправление, число перегонов и названия. Назначенная `PLANNED` смена
-становится `STARTED`.
-
-`GET /api/v1/game-sessions/:id` — узел, шкалы, дедлайн, seq. У `transport=REST`
-просроченный дедлайн на GET сервер закрывает сам. У `WS` GET только показывает
-узел. `POST /:id/decisions` принимает ход только у `REST`, иначе 409
-`WRONG_TRANSPORT`. Тело `{seq, choiceId, clientTs?}`: `clientTs` — метка
-журнала (целое до 8.64e15 мс, иначе 422), в античит не входит. Опоздание
-больше 500 мс — timeout. Повтор того же seq и choiceId отдаёт прежний ответ,
-иной — 409 `SEQ_MISMATCH`. `POST /:id/abort` ставит `ABORTED` без рейса.
-`GET /:id/reveal` после `COMPLETED` отдаёт seed и commit.
+`POST /api/v1/game-sessions` `{transport?: "WS", carClass?}` — любой залогиненный.
+`transport` можно не присылать: по умолчанию `WS`. `REST` — 422. Если своя
+смена уже `PENDING` или `ACTIVE`, возвращается она и новый билет, в аудит
+пишется `session.resumed` (это не флаг). Иначе собирается план, seed шифруется
+AES-256-GCM. Новая смена `PENDING`, в `ACTIVE` её переводит `resolve`.
+Ответ: `{sessionId, ticket, wsUrl, launchUrl, seedCommit, plan}`. `launchUrl` —
+`PUBLIC_GAME_URL` с query `sessionKey`. `wsUrl` остаётся legacy. План публичный,
+без графа: поезд, маршрут, вагон, класс, отправление, число перегонов и названия.
+Назначенная `PLANNED` смена становится `STARTED`. `POST /:id/abort` ставит
+`ABORTED` без рейса.
 
 Итог завершённой смены лежит в `GameSession.result` (`runId`, `suspicious`,
 `summary`, для Game Server ещё `platform`). В аудит `session.completed`
 пишутся только `runId` и `suspicious`.
 
 `POST /api/game/sessions/resolve` и `POST /api/game/sessions/:attemptId/finish`
-— Platform Server для текущего Game Server: Bearer `GAME_SERVER_TOKEN`, без
-префикса `v1`. Статусы и маппинг итога — в
+— Platform Server для Game Server: Bearer `GAME_SERVER_TOKEN`, без префикса
+`v1`. `resolve` гасит jti в Redis (`vsm:ticket:<jti>`). Повтор — 410
+`session-consumed` и флаг `ticket-reused`. Статусы и маппинг итога — в
 [docs/game-server-contract.md](docs/game-server-contract.md).
-
-Внутренний контур `/api/internal/v1` (заголовок `X-Service-Token`):
-`POST /tickets/verify` гасит jti в Redis (`vsm:ticket:<jti>`, 300 с), повтор —
-409 `TICKET_REUSED`, сессия `PENDING` становится `ACTIVE`.
-`POST /game-sessions/:id/decisions` — только `transport=WS`.
-`POST /game-sessions/:id/events` пишет телеметрию в `game_telemetry`; её `seq`
-не общий с номерами ходов. `POST /game-sessions/:id/report` — отчёт v1
-нормализуется в итог рейса (correct→best, late→ok, incorrect→worse,
-missed→missed, ride→enroute) и кладётся в `GameSession.result`. Повтор отчёта
-— 200 и тот же `runId`. Отмена и истечение публикуют `vsm:game:<sessionId>`.
 Раз в минуту просроченные `PENDING`/`ACTIVE` становятся `EXPIRED`.
 
 ### Перефразы LLM
@@ -328,4 +306,4 @@ missed→missed, ride→enroute) и кладётся в `GameSession.result`. П
 | `chief` | `chief` | Начальник поезда бригады 12 |
 | `methodist` | `methodist` | Методист |
 
-История рейсов считается движком (`generateShift`, `step`, `summarize`) и тем же `run.completed`, что прод. Время рейса пишется в `finishedAt` сессии до события, серия считается по нему. Срок баллов и `createdAt` леджера сервисы берут от `new Date()` — после записи сид сдвигает их к `finishedAt` и заново применяет правило «рейс продлевает живые начисления на 30 суток». У demo ближайшие 120 баллов сгорают через 3 дня.
+История рейсов собирается как `RunSummary` (`generateShift` и тот же rng) и пишется тем же `run.completed`, что прод. Время рейса пишется в `finishedAt` сессии до события, серия считается по нему. Срок баллов и `createdAt` леджера сервисы берут от `new Date()` — после записи сид сдвигает их к `finishedAt` и заново применяет правило «рейс продлевает живые начисления на 30 суток». У demo ближайшие 120 баллов сгорают через 3 дня.
