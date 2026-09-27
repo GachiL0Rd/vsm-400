@@ -1,7 +1,7 @@
 import type { LlmMessage } from './provider';
 
 /** Меняется, когда меняется инструкция. Пул хранит версию рядом с текстом. */
-export const PROMPT_VERSION = '2026-09-27.2';
+export const PROMPT_VERSION = '2026-09-27.3';
 
 /** Бенч 2026-09-27: 256 хватает на узел из трёх коротких реплик. */
 export const LLM_MAX_TOKENS = 256;
@@ -24,7 +24,7 @@ export const SYSTEM_PROMPT = [
   '- Не добавляй чисел, имён людей, названий лекарств, диагнозов и латиницы, если их не было в исходнике.',
   '- Сохрани якоря смысла. Допустима другая форма того же слова.',
   '- Не меняй id вариантов и их число. Не объединяй и не пропускай варианты.',
-  '- Не копируй формулировки дословно. Варианты не должны повторять друг друга.',
+  '- Не копируй формулировки дословно: каждое поле text должно отличаться словами. Варианты не должны повторять друг друга.',
   '- Если в задании есть блок «Не повторяй эти формулировки», не пересказывай их.',
   '- Каждый text не длиннее 160 символов. Без канцелярита и без текста вне JSON.',
   '- Персона пассажира в задании задаёт только тон реплики ситуации.',
@@ -72,17 +72,18 @@ export function buildMessages(input: {
   const persona = input.persona.trim().length > 0 ? input.persona.trim() : DEFAULT_PERSONA;
   const anchors = input.keep.length > 0 ? input.keep.join(', ') : 'нет';
   const bans = input.forbid.length > 0 ? input.forbid.join(', ') : 'нет';
-  const choiceLines = input.choices.map((choice) => `- ${choice.id}: ${choice.text.trim()}`);
+  const source = {
+    text: input.text.trim(),
+    choices: input.choices.map((choice) => ({ id: choice.id, text: choice.text.trim() })),
+  };
   const user = [
     `Персона пассажира: ${persona}`,
-    `Якоря, которые уже есть в исходнике и должны остаться: ${anchors}`,
+    'Исходный узел JSON:',
+    JSON.stringify(source),
+    `Якоря ситуации: ${anchors}`,
     `Не добавлять: ${bans}`,
-    '',
-    'Ситуация:',
-    input.text.trim(),
-    '',
-    'Варианты, id не менять:',
-    ...choiceLines,
+    'Перефразируй text ситуации и text каждого выбора. id не меняй.',
+    'Если хотя бы один text совпал с исходником, ответ неверный.',
     ...avoidLines(input.avoid ?? []),
   ].join('\n');
   return [

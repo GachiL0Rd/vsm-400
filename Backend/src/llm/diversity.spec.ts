@@ -41,10 +41,11 @@ describe('разнообразие формулировок', () => {
       avoid: [{ text: 'Не эту фразу', choices: [{ id: 'radio', text: 'Иной доклад' }] }],
     });
     expect(messages[1]?.content).toContain('Персона пассажира: тихо');
+    expect(messages[1]?.content).toContain('Исходный узел JSON:');
     expect(messages[1]?.content).toContain('Не повторяй эти формулировки:');
     expect(messages[1]?.content).toContain('Не эту фразу');
     expect(SYSTEM_PROMPT).toContain('зевать остаётся зевотой');
     expect(SYSTEM_PROMPT).toContain('уже во рту не становится в руке');
-    expect(PROMPT_VERSION).toBe('2026-09-27.2');
+    expect(PROMPT_VERSION).toBe('2026-09-27.3');
   });
 });
