@@ -18,12 +18,14 @@ content/
 │   ├── level.json
 │   ├── scenario.json
 │   ├── actions.json
+│   ├── hints.json
 │   └── assessment.json
 └── vsm-train2-01/
     ├── map-bindings.json
     ├── level.json
     ├── scenario.json
     ├── actions.json
+    ├── hints.json
     └── assessment.json
 ```
 
@@ -44,6 +46,7 @@ content/
       "level": "vsm-baseline-01/level.json",
       "scenario": "vsm-baseline-01/scenario.json",
       "actions": "vsm-baseline-01/actions.json",
+      "hints": "vsm-baseline-01/hints.json",
       "assessment": "vsm-baseline-01/assessment.json"
     },
     {
@@ -53,6 +56,7 @@ content/
       "level": "vsm-train2-01/level.json",
       "scenario": "vsm-train2-01/scenario.json",
       "actions": "vsm-train2-01/actions.json",
+      "hints": "vsm-train2-01/hints.json",
       "assessment": "vsm-train2-01/assessment.json"
     }
   ]
@@ -81,6 +85,30 @@ Simulation times in canonical JSON are integer microseconds (`*Us`). Authoring t
 
 Serializable NPC action/trait content consumed by `loadActionContent`: action definitions, trait modifiers, and base action lists. Handler names reference compiled server handlers; arbitrary executable code is not loaded from content.
 
+### `hints.json`
+
+Coaching copy for guided sessions. Parsed by `hintContentSchema` (`schemaVersion: 1`) before the server accepts sessions. Both shipped bundles carry the same catalog. The observer emits nothing from this file in live or replay mode.
+
+Each entry has a stable `id` (the wire `hintId`), a `trigger`, a `role` (`suggestion`, `attention`, or `feedback`), and a presentation of `message` or `toast`. `highlight` is not a parent presentation: `journal-taken` lists child highlights with their own ids and object ids.
+
+Triggers:
+
+| `id` | `trigger` | When it fires |
+| --- | --- | --- |
+| `attempt-start` | `attempt-start` | First guided capture. Message, target `acceptance-journal`. |
+| `journal-taken` | `journal-taken` | Journal is held and not yet filled. |
+| `highlight-extinguisher`, `highlight-emergency-brake`, `highlight-climate-control`, `highlight-driver-comms` | children of `journal-taken` | Same moment, only when highlights are enabled. |
+| `journal-filled` | `journal-filled` | Checklist is complete, accepted, and not submitted. |
+| `meet-passengers` | `meet-passengers` | Journal submitted, or the origin stop has started. |
+| `passenger-waiting` | `passenger-request-unhandled` | `request-drink` or `request-food` is still open `afterUs` later (30s). Target is that passenger. Once per request occurrence. |
+| `feedback-false-journal` | `feedback-false-journal` | Submitted journal is a false critical report. |
+| `feedback-unsafe-admit` | `feedback-unsafe-admit` | Admitted a passenger who should have been rejected. |
+| `feedback-wrong-reject` | `feedback-wrong-reject` | Rejected a passenger who should have been admitted. |
+| `feedback-false-emergency-brake` | `feedback-false-emergency-brake` | Brake activated with no active safety hazard. |
+| `inactivity` | `inactivity` | No gameplay command for `afterUs` (60s) during pre-departure. Repeatable. Text is copied from the current objective hint. |
+
+Object ids in the catalog must exist in that bundle's level. Request action ids must exist in `actions.json`. A duplicate hint id or trigger fails startup.
+
 ### `assessment.json`
 
 Versioned assessment tuning. Baseline v2 currently configures:
@@ -107,6 +135,7 @@ The content registry is loaded before the HTTP/WebSocket listener is opened. Sta
 - duplicate `gameLevelId` values exist;
 - Level/Scenario validation fails;
 - action content is invalid;
+- hint content is invalid;
 - assessment schema validation fails.
 
 An unknown `gameLevelId` supplied later by Platform Server rejects that session instead of selecting an arbitrary fallback.

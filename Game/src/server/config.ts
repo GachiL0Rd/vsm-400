@@ -68,7 +68,7 @@ export function parseServerConfig(environment: Record<string, string | undefined
     mock: {
       attemptId: input.GAME_MOCK_ATTEMPT_ID ?? 'local-attempt',
       gameLevelId: input.GAME_MOCK_LEVEL_ID ?? 'vsm-train2-01',
-      mode: input.GAME_MOCK_MODE ?? 'live',
+      mode: input.GAME_MOCK_MODE ?? 'guided',
     },
   };
 }

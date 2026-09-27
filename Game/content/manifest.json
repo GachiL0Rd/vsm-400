@@ -8,6 +8,7 @@
       "level": "vsm-baseline-01/level.json",
       "scenario": "vsm-baseline-01/scenario.json",
       "actions": "vsm-baseline-01/actions.json",
+      "hints": "vsm-baseline-01/hints.json",
       "assessment": "vsm-baseline-01/assessment.json"
     },
     {
@@ -17,6 +18,7 @@
       "level": "vsm-train2-01/level.json",
       "scenario": "vsm-train2-01/scenario.json",
       "actions": "vsm-train2-01/actions.json",
+      "hints": "vsm-train2-01/hints.json",
       "assessment": "vsm-train2-01/assessment.json"
     }
   ]

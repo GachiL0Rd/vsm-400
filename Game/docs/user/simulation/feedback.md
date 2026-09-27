@@ -1,12 +1,12 @@
 # Assessment, achievements и coaching
 
-**Версия документа:** 0.4.0
+**Версия документа:** 0.5.0
 **Статус:** Draft  
 **Дата редакции:** 2026-09-27
 
 ## 1. Общий принцип
 
-Документ объединяет реализованные feedback-механизмы и baseline coaching design. В release `0.1.0` assessment и achievements являются рабочими возможностями; runtime coaching/hint generation остаётся deferred baseline capability. Публичные реплики `speech`, уведомления о фазе и `achievement-unlocked` относятся к presentation-потоку. Генерация coaching hints остаётся deferred.
+Документ описывает assessment, achievements и coaching. В release `0.1.0` assessment, achievements и guided hint events являются рабочими возможностями. Публичные реплики `speech`, уведомления о фазе, `achievement-unlocked` и guided `hint` идут одним presentation-потоком.
 
 Assessment, achievements и coaching наблюдают за authoritative simulation, но не должны становиться источником правил мира.
 
@@ -112,27 +112,29 @@ Game Server определяет только достижения, провер
 
 ## 6. Coaching/Hints
 
-Coaching активируется SessionMode policy и выдаёт transient presentation events.
+Coaching включается только режимом `guided` и читает каталог `hints.json`. Он наблюдает authoritative progress и пишет transient `hint` events. Simulation, seed, RNG, assessment и achievements от этого не меняются.
 
-Он может реагировать на:
+Реализованные реакции:
 
-- ошибочное действие;
-- пропущенное важное наблюдение;
-- слишком долгое бездействие;
-- приближающийся критический момент;
-- возможность выполнить полезный следующий шаг.
+- старт попытки — suggestion, куда идти за журналом;
+- журнал взят — suggestion осмотреть огнетушитель, стоп-кран, климат и связь и отметить результат; при `highlights` ещё четыре highlight на эти объекты;
+- журнал заполнен (все пункты и отметка «принято») и не сдан — suggestion вернуть его на стол;
+- журнал сдан или началась посадка — suggestion встречать пассажиров;
+- реплика запроса `request-drink` / `request-food` не закрыта `afterUs` (в каталоге 30 с) — attention toast на этого пассажира, один раз на каждое такое действие;
+- ложная критическая отметка журнала, неверный допуск, неверный отказ, активация аварийного тормоза без активной угрозы — feedback toast, если включён `immediateFeedback`; текст есть только при `explanations`;
+- нет gameplay-команды `afterUs` (в каталоге 60 с) в фазе pre-departure — suggestion повторяет текст текущей цели. Повтор явный. `at` равен симуляционному времени, когда простой уже наступил, даже если часы перескочили этот момент одним шагом.
+
+Снятие пломбы стоп-крана без активации отдельным hint не сопровождается. Пропущенная реальная неисправность в журнале в текст hint не попадает: игрок её своей отметкой не раскрыл.
 
 ## 7. Типы помощи
 
-Baseline presentation может различать:
-
 ```text
-feedback    — сообщить о уже совершённой ошибке/успехе
+feedback    — сообщить о уже совершённой ошибке
 suggestion  — навести на возможный следующий шаг
-attention   — указать на объект/область без прямого ответа
+attention   — указать на пассажира без готового решения его запроса
 ```
 
-Wire representation может быть сведено к `HintEvent` с presentation type.
+На wire все три типа — это `HintEvent`. `feedback` идёт toast, `suggestion` — message, `attention` — toast. Highlight — отдельное событие без текста, с `target` объекта.
 
 ## 8. Hidden state
 
@@ -166,4 +168,4 @@ Achievement/assessment markers могут повторно вычислятьс�
 
 Replay может показывать их как timeline markers/extensions.
 
-Coaching hints исходной guided попытки могут быть восстановлены, если это полезно для разбора, но persistent result не обязан хранить полный hint stream.
+Persistent result не хранит hint stream. Guided-попытка заново выпускает тот же список, если повторить тот же seed и те же gameplay inputs. Replay-режим hints не выпускает.

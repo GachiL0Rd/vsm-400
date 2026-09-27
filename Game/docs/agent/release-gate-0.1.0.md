@@ -58,7 +58,6 @@ This barrier is intentionally tracked separately because the browser client is d
 
 These do **not** block the current `0.1.0` release scope, but should not be described as implemented features:
 
-- Guided mode does not yet generate coaching/hint presentation events; it currently shares live simulation semantics and only exposes the requested hint policy.
 - Replay is forward-only. Seek/checkpoints, hidden-state/entity inspection and assessment/action-logit reveal are not implemented.
 - `servicePlan.windows` are parsed and validated content, but the current baseline action content does not consume them as automatic runtime effects. They should receive focused script/content tests before being relied on for gameplay behavior.
 - Driver communication is not yet a gameplay interaction.

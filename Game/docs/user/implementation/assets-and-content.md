@@ -47,12 +47,14 @@ content/
     level.json
     scenario.json
     actions.json
+    hints.json
     assessment.json
   vsm-train2-01/
     map-bindings.json
     level.json          # generated from assets/map/train2-long.tmx
     scenario.json
     actions.json
+    hints.json
     assessment.json
 ```
 

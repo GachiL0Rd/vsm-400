@@ -1,6 +1,6 @@
 # Режимы игровой сессии и protocol extensions
 
-**Версия документа:** 0.2.0
+**Версия документа:** 0.3.0
 **Статус:** Draft  
 **Дата редакции:** 2026-09-27
 
@@ -61,7 +61,16 @@ interface HintPolicy {
 
 Конкретные пресеты интерфейса могут быть сформированы Platform Server без появления новых simulation modes.
 
-В release `0.1.0` guided-session использует ту же authoritative simulation/input policy, что live, и передаёт hint policy клиенту, но Game Server ещё не генерирует coaching/hint events. Это ограничение presentation/coaching слоя, а не отдельная simulation semantics.
+Флаги:
+
+- `immediateFeedback` — toast после уже совершённой ошибки: ложная критическая отметка в журнале, допуск пассажира которого надо было не пускать, отказ пассажиру которого надо было пустить, активация аварийного тормоза без активной угрозы;
+- `suggestions` — сообщение о текущем шаге приёмки и повтор этого текста при бездействии;
+- `highlights` — отдельные события `presentation: "highlight"` по объектам осмотра. В public wire то же поле называется `objectHighlights`;
+- `explanations` — добавляет `text` к feedback-toast. Если флаг выключен, toast уходит без текста.
+
+Запрос пассажира, который не обработан дольше порога из каталога, не имеет отдельного флага и выпускается в любой guided-сессии, где каталог содержит этот trigger.
+
+Game Server читает каталог `hints.json` и выпускает hint events только при `kind: "guided"`. Live их не выпускает. Локальный mock по умолчанию стартует как guided со всеми четырьмя флагами.
 
 ## 4. Replay
 
@@ -182,17 +191,17 @@ Hints лучше моделируются не как поле обычного 
 
 ```ts
 interface HintEvent {
-  type: "hint";
+  kind: "hint";
   hintId: string;
   presentation: "message" | "toast" | "highlight";
   text?: string;
-  targetId?: string;
+  target?: { kind: "cell"; cellId: string } | { kind: "entity"; entityId: string } | { kind: "object"; objectId: string };
 }
 ```
 
-В baseline такой event формируется coaching observer согласно текущей `HintPolicy`. В release `0.1.0` генерация hint events ещё не реализована.
+Coaching observer в guided-сессии выпускает эти события по каталогу и `HintPolicy`. У них общий `sequence` с `speech`, `notification` и `achievement-unlocked`. Внутри одного шага порядок: реплики, затем hints, затем phase/termination notice, затем achievements.
 
-Hint не является simulation event и сам по себе не меняет authoritative state.
+Hint не является simulation event, не пишется в `userInputs` и не меняет seed, assessment или achievements. Один trigger выпускается не больше одного раза за попытку, кроме `inactivity` и каждого нового неотвеченного запроса пассажира. Replay-сессия hints не выпускает: режим replay не guided.
 
 ## 10. Achievement events
 

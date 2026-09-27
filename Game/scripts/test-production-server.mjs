@@ -130,7 +130,13 @@ async function verifyWebSocket(port) {
         targetCellId: edge.toCellId,
       }),
     );
-    const messages = await nextJsonMessages(socket, 2);
+    const messages = [];
+    while (messages.length < 8) {
+      messages.push(await nextJson(socket));
+      const result = messages.find((message) => message.type === 'command-result');
+      const delta = messages.find((message) => message.type === 'delta');
+      if (result !== undefined && delta !== undefined) break;
+    }
     const result = messages.find((message) => message.type === 'command-result');
     const delta = messages.find((message) => message.type === 'delta');
     if (result?.status !== 'accepted') throw new Error('Production server rejected movement smoke command');
