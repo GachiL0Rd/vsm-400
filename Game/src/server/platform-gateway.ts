@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { createSilentServerLogger, type ServerLogger } from './logger.ts';
 import {
   type FinishedGameResult,
   type FinishSessionResponse,
@@ -55,19 +56,37 @@ export interface HttpPlatformGatewayOptions {
   readonly serviceToken: string;
   readonly timeoutMs: number;
   readonly fetch?: typeof fetch;
+  readonly logger?: ServerLogger;
 }
 
 /** HTTP is deliberately contained here; simulation receives only server-domain values. */
 export class HttpPlatformGateway implements PlatformGateway {
   private readonly request: typeof fetch;
+  private readonly logger: ServerLogger;
 
   constructor(private readonly options: HttpPlatformGatewayOptions) {
     this.request = options.fetch ?? fetch;
+    this.logger = (options.logger ?? createSilentServerLogger()).child({
+      component: 'platform-gateway',
+    });
   }
 
   async resolveSession(sessionKey: string): Promise<ResolvedPlatformSession> {
-    const response = await this.post('/api/game/sessions/resolve', { key: sessionKey });
+    const response = await this.post(
+      '/api/game/sessions/resolve',
+      { key: sessionKey },
+      'resolve-session',
+    );
     const dto = await parseResponse(resolveResponseSchema, response, 'resolve session');
+    this.logger.info(
+      {
+        event: 'platform-session-resolved',
+        attemptId: dto.attemptId,
+        gameLevelId: dto.gameLevelId,
+        mode: dto.mode.kind,
+      },
+      'Platform session resolved',
+    );
     return { attemptId: dto.attemptId, gameLevelId: dto.gameLevelId, mode: dto.mode };
   }
 
@@ -75,39 +94,103 @@ export class HttpPlatformGateway implements PlatformGateway {
     const response = await this.post(
       `/api/game/sessions/${encodeURIComponent(result.attemptId)}/finish`,
       result,
+      'finish-session',
+      result.attemptId,
     );
     const dto = await parseResponse(finishResponseSchema, response, 'finish session');
+    this.logger.info(
+      { event: 'platform-session-finished', attemptId: result.attemptId, resultId: dto.resultId },
+      'Platform accepted terminal result',
+    );
     return { resultId: dto.resultId, redirectUrl: dto.redirectUrl };
   }
 
-  private async post(path: string, body: unknown): Promise<Response> {
+  private async post(
+    path: string,
+    body: unknown,
+    operation: string,
+    attemptId?: string,
+  ): Promise<Response> {
     const controller = new AbortController();
+    const context = requestLogContext(operation, path, attemptId);
+    const startedAt = performance.now();
+    this.logger.debug({ event: 'platform-request-start', ...context }, 'Sending Platform request');
     const timeout = setTimeout(() => controller.abort(), this.options.timeoutMs);
     try {
-      const response = await this.request(new URL(path, this.options.baseUrl), {
-        method: 'POST',
-        headers: {
-          authorization: `Bearer ${this.options.serviceToken}`,
-          'content-type': 'application/json',
+      const response = await this.performPost(path, body, controller.signal);
+      if (!response.ok) {
+        this.logger.warn(
+          {
+            event: 'platform-request-http-error',
+            ...context,
+            status: response.status,
+            durationMs: elapsedMs(startedAt),
+          },
+          'Platform request returned an error status',
+        );
+        throw platformHttpError(path, response.status);
+      }
+      this.logger.debug(
+        {
+          event: 'platform-request-succeeded',
+          ...context,
+          status: response.status,
+          durationMs: elapsedMs(startedAt),
         },
-        body: JSON.stringify(body),
-        signal: controller.signal,
-      });
-      if (!response.ok) throw platformHttpError(path, response.status);
+        'Platform request succeeded',
+      );
       return response;
     } catch (error) {
-      if (error instanceof PlatformGatewayError) throw error;
-      if (error instanceof Error && error.name === 'AbortError') {
-        throw new PlatformGatewayError(
-          'timeout',
-          `Platform request timed out after ${this.options.timeoutMs}ms`,
-        );
-      }
-      throw new PlatformGatewayError('unavailable', `Platform request failed: ${String(error)}`);
+      const failure = normalizePlatformRequestError(error, this.options.timeoutMs);
+      this.logger.warn(
+        {
+          err: failure,
+          event: 'platform-request-failed',
+          ...context,
+          kind: failure.kind,
+          durationMs: elapsedMs(startedAt),
+        },
+        platformFailureMessage(failure),
+      );
+      throw failure;
     } finally {
       clearTimeout(timeout);
     }
   }
+
+  private performPost(path: string, body: unknown, signal: AbortSignal): Promise<Response> {
+    return this.request(new URL(path, this.options.baseUrl), {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${this.options.serviceToken}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify(body),
+      signal,
+    });
+  }
+}
+
+function requestLogContext(
+  operation: string,
+  path: string,
+  attemptId?: string,
+): Record<string, unknown> {
+  return { operation, path, ...(attemptId === undefined ? {} : { attemptId }) };
+}
+
+function normalizePlatformRequestError(error: unknown, timeoutMs: number): PlatformGatewayError {
+  if (error instanceof PlatformGatewayError) return error;
+  if (error instanceof Error && error.name === 'AbortError') {
+    return new PlatformGatewayError('timeout', `Platform request timed out after ${timeoutMs}ms`);
+  }
+  return new PlatformGatewayError('unavailable', `Platform request failed: ${String(error)}`);
+}
+
+function platformFailureMessage(error: PlatformGatewayError): string {
+  if (error.kind === 'timeout') return 'Platform request timed out';
+  if (error.kind === 'unavailable') return 'Platform request transport failed';
+  return 'Platform request failed';
 }
 
 function platformHttpError(path: string, status: number): PlatformGatewayError {
@@ -147,6 +230,10 @@ function parseResponse<T>(schema: z.ZodType<T>, response: Response, operation: s
         );
       return parsed.data;
     });
+}
+
+function elapsedMs(startedAt: number): number {
+  return Math.round((performance.now() - startedAt) * 100) / 100;
 }
 
 export class MockPlatformGateway implements PlatformGateway {
