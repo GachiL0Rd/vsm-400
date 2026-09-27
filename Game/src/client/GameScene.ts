@@ -187,12 +187,9 @@ export class GameScene extends Phaser.Scene {
       this.dependencies.interactions.queryActions({ kind: 'cell', cellId: cell.id });
       return;
     }
-    const object = state.world.objects.find((candidate) => candidate.cellId === cell.id);
-    if (object !== undefined) {
-      this.logPointer(pointer, 'click-object', { objectId: object.id, revision: state.revision });
-      this.dependencies.interactions.queryActions({ kind: 'object', objectId: object.id });
-      return;
-    }
+    // Objects are picked by their drawn footprint in targetAt above. A server cell
+    // spans many drawn floor tiles, so a floor click inside an object's cell is a
+    // move request, not an object query.
     this.logPointer(pointer, 'click-move', { cellId: cell.id, revision: state.revision });
     this.dependencies.interactions.moveTo(cell.id);
   }

@@ -32,10 +32,12 @@ export function createBrowserSessionBootstrap(
     options.replaceUrl(`${launchUrl.pathname}${launchUrl.search}${launchUrl.hash}`);
   }
 
+  const localDemoSessionKey = isLocalHost(launchUrl.hostname) ? LOCAL_DEMO_SESSION_KEY : null;
   let sessionKey =
     launchSessionKey ??
     credential(options.storage.getItem(SESSION_KEY_STORAGE_KEY)) ??
-    (isLocalHost(launchUrl.hostname) ? LOCAL_DEMO_SESSION_KEY : null);
+    localDemoSessionKey;
+  let lastHelloUsedResumeToken = false;
   const resumeToken = (): string | null =>
     credential(options.storage.getItem(RESUME_TOKEN_STORAGE_KEY));
 
@@ -45,6 +47,7 @@ export function createBrowserSessionBootstrap(
     },
     helloCommand(requestId: string): ClientCommand | null {
       const resume = resumeToken();
+      lastHelloUsedResumeToken = resume !== null;
       if (resume !== null) {
         return {
           protocolVersion: GAME_PROTOCOL_VERSION,
@@ -65,7 +68,10 @@ export function createBrowserSessionBootstrap(
       sessionKey = null;
     },
     invalidateCredentials(): void {
-      sessionKey = null;
+      // A rejected resume token on localhost usually means another tab took over
+      // the shared demo attempt; start again from the local demo key. A rejected
+      // demo key itself must not loop.
+      sessionKey = lastHelloUsedResumeToken ? localDemoSessionKey : null;
       options.storage.removeItem(RESUME_TOKEN_STORAGE_KEY);
       options.storage.removeItem(SESSION_KEY_STORAGE_KEY);
     },
