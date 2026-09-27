@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "setVersion": "baseline-v1",
+  "setVersion": "baseline-v2",
   "startingScore": 100,
   "boarding": {
     "unsafeAdmit": {
@@ -43,6 +43,16 @@
     },
     "sealRemovedWithoutActivation": {
       "safety": -5,
+      "customerSatisfaction": 0
+    }
+  },
+  "journal": {
+    "falseCriticalReport": {
+      "safety": -10,
+      "customerSatisfaction": -40
+    },
+    "missedCriticalProblem": {
+      "safety": -30,
       "customerSatisfaction": 0
     }
   },

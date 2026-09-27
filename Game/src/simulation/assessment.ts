@@ -5,7 +5,7 @@ import {
 } from './assessment-config';
 import type { ServiceClassTrait } from './entity-store';
 import type { PassengerBoardingDecision } from './game-attempt';
-import type { SanitationCheckState } from './item-store';
+import type { JournalSubmissionFacts } from './journal-truth';
 import type { SimTimeUs } from './sim-time';
 
 export interface AssessmentScores {
@@ -51,8 +51,11 @@ export class AssessmentRuntime {
   private readonly boarding = new Map<string, BoardingFact>();
   private readonly service: ServiceFact[] = [];
   private journalSubmitted = false;
-  private journalSanitation: SanitationCheckState | null = null;
-  private journalCriticalProblem = false;
+  private journalSanitation: JournalSubmissionFacts['sanitation'] | null = null;
+  private reportedProblem = false;
+  private realProblem = false;
+  private falseReport = false;
+  private missedProblem = false;
   private fireStartedAt: SimTimeUs | null = null;
   private fireExtinguishedAt: SimTimeUs | null = null;
   private fireCritical = false;
@@ -61,13 +64,13 @@ export class AssessmentRuntime {
   private emergencyActivated = false;
   private emergencyHazardActive = false;
 
-  recordJournalSubmission(input: {
-    sanitation: SanitationCheckState;
-    criticalProblem: boolean;
-  }): void {
+  recordJournalSubmission(input: JournalSubmissionFacts): void {
     this.journalSubmitted = true;
     this.journalSanitation = input.sanitation;
-    this.journalCriticalProblem = input.criticalProblem;
+    this.reportedProblem = input.reportedProblem;
+    this.realProblem = input.realProblem;
+    this.falseReport = input.falseReport;
+    this.missedProblem = input.missedProblem;
   }
 
   recordBoardingDecision(
@@ -126,12 +129,13 @@ export class AssessmentRuntime {
         },
         this.config,
       ),
+      journalDelta(this.falseReport, this.missedProblem, this.config),
     ]);
 
     const adjustedSafety = safePredepartureOverride(
       this.config.startingScore + score.safety,
       termination,
-      this.journalCriticalProblem,
+      this.realProblem,
       this.config,
     );
 
@@ -164,9 +168,13 @@ export class AssessmentRuntime {
       ids.push('all-service-requests-resolved');
     }
     if (
-      this.journalSubmitted &&
-      this.journalSanitation === 'clean' &&
-      !this.journalCriticalProblem
+      grantsCleanPredeparture({
+        submitted: this.journalSubmitted,
+        sanitation: this.journalSanitation,
+        reportedProblem: this.reportedProblem,
+        missedProblem: this.missedProblem,
+        falseReport: this.falseReport,
+      })
     ) {
       ids.push('clean-predeparture');
     }
@@ -226,20 +234,48 @@ function emergencyDelta(
   return { safety: 0, customerSatisfaction: 0 };
 }
 
+function journalDelta(
+  falseReport: boolean,
+  missedProblem: boolean,
+  config: AssessmentConfig,
+): ScoreDelta {
+  const none = { safety: 0, customerSatisfaction: 0 };
+  return addDeltas([
+    falseReport ? config.journal.falseCriticalReport : none,
+    missedProblem ? config.journal.missedCriticalProblem : none,
+  ]);
+}
+
 function safePredepartureOverride(
   safety: number,
   termination: AssessmentTermination,
-  journalCriticalProblem: boolean,
+  realProblem: boolean,
   config: AssessmentConfig,
 ): number {
   if (
     termination.kind === 'terminal-rule' &&
     termination.outcomeId === 'wagon-unserviceable' &&
-    journalCriticalProblem
+    realProblem
   ) {
     return Math.max(safety, config.safePredepartureMinimumSafety);
   }
   return safety;
+}
+
+function grantsCleanPredeparture(input: {
+  readonly submitted: boolean;
+  readonly sanitation: JournalSubmissionFacts['sanitation'] | null;
+  readonly reportedProblem: boolean;
+  readonly missedProblem: boolean;
+  readonly falseReport: boolean;
+}): boolean {
+  return (
+    input.submitted &&
+    input.sanitation === 'clean' &&
+    !input.reportedProblem &&
+    !input.missedProblem &&
+    !input.falseReport
+  );
 }
 
 function allBoardingDecisionsCorrect(boarding: ReadonlyMap<string, BoardingFact>): boolean {

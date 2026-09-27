@@ -36,6 +36,10 @@ export const assessmentConfigSchema = z.object({
     falseActivation: scoreDeltaSchema,
     sealRemovedWithoutActivation: scoreDeltaSchema,
   }),
+  journal: z.object({
+    falseCriticalReport: scoreDeltaSchema,
+    missedCriticalProblem: scoreDeltaSchema,
+  }),
   safePredepartureMinimumSafety: z.number().min(0).max(100),
   fastFireResponseUs: z.number().int().positive(),
 });
@@ -44,7 +48,7 @@ export type AssessmentConfig = z.infer<typeof assessmentConfigSchema>;
 
 export const BASELINE_ASSESSMENT_CONFIG: AssessmentConfig = assessmentConfigSchema.parse({
   schemaVersion: 1,
-  setVersion: 'baseline-v1',
+  setVersion: 'baseline-v2',
   startingScore: 100,
   boarding: {
     unsafeAdmit: { safety: -15, customerSatisfaction: 0 },
@@ -67,6 +71,10 @@ export const BASELINE_ASSESSMENT_CONFIG: AssessmentConfig = assessmentConfigSche
   emergency: {
     falseActivation: { safety: -20, customerSatisfaction: -20 },
     sealRemovedWithoutActivation: { safety: -5, customerSatisfaction: 0 },
+  },
+  journal: {
+    falseCriticalReport: { safety: -10, customerSatisfaction: -40 },
+    missedCriticalProblem: { safety: -30, customerSatisfaction: 0 },
   },
   safePredepartureMinimumSafety: 95,
   fastFireResponseUs: 120_000_000,
