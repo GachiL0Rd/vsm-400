@@ -4,6 +4,18 @@
   gap: 18px;
 }
 
+.profile__logout {
+  align-self: stretch;
+  /* Нижняя панель перекрывает край вьюпорта; кнопка должна остаться над ней. */
+  scroll-margin-bottom: calc(96px + env(safe-area-inset-bottom));
+}
+
+@media (min-width: 900px) {
+  .profile__logout {
+    display: none;
+  }
+}
+
 .progress {
   display: grid;
   gap: 32px;

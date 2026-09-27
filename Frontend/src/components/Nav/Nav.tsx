@@ -1,6 +1,8 @@
 import { Link, useLocation } from 'react-router';
+import { useLogout } from '../../api/auth';
 import { paths, runId } from '../../paths';
 import { Avatar } from '../Avatar/Avatar';
+import { Brand } from '../Brand/Brand';
 import { Icon, type IconName } from '../Icon/Icon';
 import './Nav.css';
 
@@ -28,23 +30,18 @@ function tabState(
 interface NavProps {
   unread: number;
   callsign: string;
-  level: number;
+  level: number | null;
 }
 
 export function Nav({ unread, callsign, level }: NavProps) {
   const { pathname } = useLocation();
   const onRun = runId(pathname) !== null;
+  const logout = useLogout();
 
   return (
     <nav className="nav" aria-label="Разделы">
       <Link className="nav__brand" to={paths.shift}>
-        <span className="nav__word">Перегон</span>
-        {/* Ступенька из трёх квадратов — только в марке. */}
-        <svg className="nav__stairs" viewBox="0 0 20 20" aria-hidden="true" focusable="false">
-          <rect x="0" y="14" width="6" height="6" />
-          <rect x="7" y="7" width="6" height="6" />
-          <rect x="14" y="0" width="6" height="6" />
-        </svg>
+        <Brand />
       </Link>
       <ul className="nav__list">
         {tabs.map((tab) => {
@@ -71,17 +68,22 @@ export function Nav({ unread, callsign, level }: NavProps) {
           );
         })}
       </ul>
-      <Link
-        className="nav__me"
-        to={paths.profile}
-        aria-current={pathname === paths.profile ? 'page' : undefined}
-      >
-        <Avatar callsign={callsign} />
-        <span>
-          <b>#{callsign}</b>
-          <span className="nav__level">Уровень {level}</span>
-        </span>
-      </Link>
+      <div className="nav__me">
+        <Link
+          className="nav__profile"
+          to={paths.profile}
+          aria-current={pathname === paths.profile ? 'page' : undefined}
+        >
+          <Avatar callsign={callsign || '—'} />
+          <span>
+            <b>{callsign ? `#${callsign}` : '…'}</b>
+            {level !== null && <span className="nav__level">Уровень {level}</span>}
+          </span>
+        </Link>
+        <button type="button" className="nav__logout" onClick={() => logout.mutate()}>
+          Выйти
+        </button>
+      </div>
     </nav>
   );
 }

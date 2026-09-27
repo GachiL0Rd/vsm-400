@@ -1,9 +1,10 @@
 import { useState } from 'react';
+import { useBrigadePlace, useLeaderboard, useMe } from '../../api/cabinet';
 import { Avatar } from '../../components/Avatar/Avatar';
-import { brigadeInDepot, leaderboards, profile } from '../../demo';
+import { QueryState } from '../../components/QueryState/QueryState';
 import { formatIn, formatNumber } from '../../format';
 import { usePageTitle } from '../../hooks/usePageTitle';
-import type { LeaderRow, Scope } from '../../model';
+import type { Leaderboard, LeaderRow, Scope } from '../../model';
 import './RatingScreen.css';
 
 const SCOPES: { id: Scope; title: string }[] = [
@@ -15,8 +16,8 @@ const SCOPES: { id: Scope; title: string }[] = [
 export function RatingScreen() {
   usePageTitle('Рейтинг');
   const [scope, setScope] = useState<Scope>('brigade');
-  const board = leaderboards[scope];
-  const me = board.rows.find((r) => r.me);
+  const board = useLeaderboard(scope);
+  const data = board.data;
 
   return (
     <div className="screen">
@@ -24,51 +25,82 @@ export function RatingScreen() {
         <h1 className="screen__title" tabIndex={-1}>
           Рейтинг
         </h1>
-        <p className="screen__sub">
-          {board.season} закончится {formatIn(board.endsAt)}. В зачёт идут баллы за неделю.
-        </p>
+        {data && (
+          <p className="screen__sub">
+            {data.season} закончится {formatIn(data.endsAt)}. В зачёт идут баллы за неделю.
+          </p>
+        )}
       </header>
 
       <fieldset className="segmented">
         <legend className="visually-hidden">Кого сравнивать</legend>
-        {SCOPES.map((s) => (
+        {SCOPES.map((item) => (
           <button
-            key={s.id}
+            key={item.id}
             type="button"
-            className={`segmented__item${s.id === scope ? ' segmented__item--on' : ''}`}
-            aria-pressed={s.id === scope}
-            onClick={() => setScope(s.id)}
+            className={`segmented__item${item.id === scope ? ' segmented__item--on' : ''}`}
+            aria-pressed={item.id === scope}
+            onClick={() => setScope(item.id)}
           >
-            {s.title}
+            {item.title}
           </button>
         ))}
       </fieldset>
 
+      <QueryState query={board}>
+        {data && data.rows.length === 0 && scope === 'brigade' && (
+          <p className="rating__empty">Вы пока не в бригаде.</p>
+        )}
+        {data && (data.rows.length > 0 || scope !== 'brigade') && <Board board={data} />}
+      </QueryState>
+
+      {scope === 'brigade' && board.isSuccess && <BrigadeLedger />}
+    </div>
+  );
+}
+
+function Board({ board }: { board: Leaderboard }) {
+  const me = board.rows.find((row) => row.me);
+
+  return (
+    <>
       {me && (
         <p className="rating__me">
           Вы <b className="num">{me.rank}-й</b> из {formatNumber(board.total)}
         </p>
       )}
-
       <ol className="board">
-        {board.rows.map((row, i) => {
-          const previous = board.rows[i - 1];
+        {board.rows.map((row, index) => {
+          const previous = board.rows[index - 1];
           const gap = previous !== undefined && row.rank - previous.rank > 1;
           return <BoardRow key={row.callsign} row={row} gapBefore={gap} />;
         })}
       </ol>
+    </>
+  );
+}
 
-      {scope === 'brigade' && (
+function BrigadeLedger() {
+  const me = useMe();
+  const place = useBrigadePlace();
+  if (place.isSuccess && place.data.rank === null) return null;
+  if (!place.isSuccess) return <QueryState query={place}>{null}</QueryState>;
+  if (place.data.rank === null) return null;
+  const rank = place.data.rank;
+
+  return (
+    <QueryState query={me}>
+      {me.data && (
         <dl className="ledger rating__brigade">
           <div className="ledger__row">
-            <dt>Бригада {profile.brigade} среди бригад депо</dt>
+            <dt>Бригада {me.data.brigade} среди бригад депо</dt>
             <dd>
-              {brigadeInDepot.rank}-е место из {brigadeInDepot.total}
+              {rank}-е место из {place.data.total}
             </dd>
           </div>
         </dl>
       )}
-    </div>
+    </QueryState>
   );
 }
 
@@ -99,8 +131,10 @@ const CUPS = ['gold', 'silver', 'bronze'] as const;
 
 // Первые три места — кубок вместо номера. Номер остаётся для чтения с экрана.
 function Cup({ rank }: { rank: number }) {
+  const tone = CUPS[rank - 1];
+  if (!tone) return rank;
   return (
-    <span className={`cup cup--${CUPS[rank - 1]}`}>
+    <span className={`cup cup--${tone}`}>
       <svg viewBox="0 0 24 24" width="32" height="32" aria-hidden="true" focusable="false">
         <path
           className="cup__handles"

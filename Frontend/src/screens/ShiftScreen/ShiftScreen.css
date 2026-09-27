@@ -96,7 +96,10 @@
 .line__stop {
   position: relative;
   flex: 1;
+  /* min-width: auto не даёт пункту сжаться уже названия станции — строка вылезает за 320px. */
+  min-width: 0;
   padding-top: 26px;
+  overflow-wrap: anywhere;
   color: var(--iron);
   font-size: 13px;
   text-align: center;
@@ -289,4 +292,9 @@
   .journal__points .visually-hidden {
     display: none;
   }
+}
+
+.journal-more {
+  align-self: flex-start;
+  max-width: 100%;
 }

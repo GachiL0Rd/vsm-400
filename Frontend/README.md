@@ -4,8 +4,9 @@
 достижения, рейтинг и лента уведомлений. React 19, TypeScript, Vite, шрифт
 Moscow Sans.
 
-Пока сервера нет, экраны работают на синтетических данных из `src/demo.ts`:
-позывные вместо ФИО, реальных персональных данных нет.
+Вход, сессия и экраны кабинета идут в Backend (`POST /api/v1/auth/login`,
+cookie `vsm_access` / `vsm_refresh`, TanStack Query в `src/api/`). В кабинете
+позывной, не ФИО.
 
 ## Требования
 
@@ -14,17 +15,37 @@ Moscow Sans.
 
 ## Запуск
 
-Из каталога `Frontend/`:
+Локально против Backend:
+
+1. Поднять API по [`Backend/README.md`](../Backend/README.md) на
+   `http://127.0.0.1:3000`.
+2. Из каталога `Frontend/`:
 
 ```powershell
 npm ci --include=dev
 npm run dev
 ```
 
+3. Войти `demo` / `demo` — учётка из сида Backend.
+
+Без живого Backend форма входа ответит «Нет связи с сервером».
+
 Кнопка «Начать смену» ведёт на адрес игры из `VITE_GAME_URL`
 (см. `.env.example`). Пустое или отсутствующее значение — на кнопке
 текст «Игра недоступна», это не ссылка. Адрес подставляется при запуске
 и сборке Vite; смена переменной у уже собранного `dist/` ничего не меняет.
+
+В `npm run dev` и `vite preview` запросы `/api` проксируются на
+`VITE_API_PROXY` (по умолчанию `http://127.0.0.1:3000`), `changeOrigin` выключен:
+браузер ходит на тот же origin, cookie остаются first-party. Для выкладки, где
+API на другом хосте, задайте `VITE_API_URL`; пустое значение — тот же origin.
+`import.meta.env.BASE_URL` только для роутера, пути API всегда начинаются с `/api`.
+
+Типы OpenAPI лежат в `src/api/schema.d.ts`. Пересобрать при живом Backend:
+
+```powershell
+npm run api:types
+```
 
 ## History API
 

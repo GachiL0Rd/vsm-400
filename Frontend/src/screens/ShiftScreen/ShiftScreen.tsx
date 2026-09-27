@@ -1,22 +1,31 @@
 import { Link } from 'react-router';
+import type { RunPage } from '../../api/cabinet';
+import { useNextShift, useRuns } from '../../api/cabinet';
 import { OutcomeTag } from '../../components/OutcomeTag/OutcomeTag';
+import { QueryState } from '../../components/QueryState/QueryState';
 import { Section } from '../../components/Section/Section';
-import { nextShift, runs, stats } from '../../demo';
 import { formatDate } from '../../format';
 import { usePageTitle } from '../../hooks/usePageTitle';
-import { COMPETENCIES, FAIL_SCORE, type Run } from '../../model';
+import { COMPETENCIES, FAIL_SCORE, type NextShift, type RunSummary } from '../../model';
 import { paths } from '../../paths';
 import './ShiftScreen.css';
 
 const gameUrl = import.meta.env.VITE_GAME_URL;
 
+function focusLine(ids: NextShift['focus']): string {
+  const titles = ids.map((id) => COMPETENCIES.find((row) => row.id === id)?.title ?? id);
+  const first = titles[0];
+  if (!first) return '';
+  return [first, ...titles.slice(1).map((title) => title.toLowerCase())].join(', ');
+}
+
 export function ShiftScreen() {
   usePageTitle('Смена');
-  const stations = [nextShift.from, ...nextShift.stops, nextShift.to];
-  const [first, ...rest] = nextShift.focus.map(
-    (id) => COMPETENCIES.find((c) => c.id === id)?.title ?? id,
-  );
-  const focus = [first, ...rest.map((title) => title.toLowerCase())].join(', ');
+  const shift = useNextShift();
+  const runs = useRuns();
+  const pages = runs.data?.pages ?? [];
+  const total = pages[0]?.total ?? 0;
+  const loaded = pages.reduce((sum, page) => sum + page.runs.length, 0);
 
   return (
     <div className="screen">
@@ -24,92 +33,144 @@ export function ShiftScreen() {
         Смена
       </h1>
 
-      <section className="departure" aria-labelledby="next-title">
-        <p className="departure__label">Следующий рейс</p>
-        <div className="departure__main">
-          <span className="departure__time num">{nextShift.departure}</span>
-          <div>
-            <h2 className="departure__to" id="next-title">
-              {nextShift.to}
-            </h2>
-            <p className="departure__from">
-              из {nextShift.fromGenitive}, поезд {nextShift.train}
-            </p>
-          </div>
-        </div>
-
-        <ol className="line" aria-label="Остановки">
-          {stations.map((station) => (
-            <li className="line__stop" key={station}>
-              {station}
-            </li>
-          ))}
-        </ol>
-
-        <dl className="facts departure__facts">
-          <div>
-            <dt>Вагон</dt>
-            <dd>{nextShift.car}</dd>
-          </div>
-          <div>
-            <dt>Класс</dt>
-            <dd>{nextShift.carClass}</dd>
-          </div>
-          <div className="departure__focus">
-            <dt>Отработка</dt>
-            <dd>{focus}</dd>
-          </div>
-        </dl>
-
-        {gameUrl ? (
-          <a className="btn departure__start" href={gameUrl}>
-            Начать смену
-          </a>
-        ) : (
-          <span className="btn departure__start" aria-disabled="true">
-            Игра недоступна
-          </span>
-        )}
-      </section>
+      <QueryState query={shift}>{shift.data && <Departure next={shift.data} />}</QueryState>
 
       <Section
         id="runs-title"
         title="Журнал рейсов"
         aside={
-          <span className="label">
-            {runs.length} из {stats.runs}
-          </span>
+          runs.isSuccess ? (
+            <span className="label">
+              {loaded} из {total}
+            </span>
+          ) : undefined
         }
       >
-        <table className="journal" aria-labelledby="runs-title">
-          <thead>
-            <tr>
-              <th scope="col">Дата</th>
-              <th scope="col">Рейс</th>
-              <th scope="col">Итог</th>
-              <th scope="col" className="journal__num">
-                Безопасность
-              </th>
-              <th scope="col" className="journal__num">
-                Лояльность
-              </th>
-              <th scope="col" className="journal__num">
-                Баллы
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {runs.map((run) => (
-              <JournalRow run={run} key={run.id} />
-            ))}
-          </tbody>
-        </table>
+        <QueryState query={runs}>
+          {runs.data && (
+            <Journal
+              pages={runs.data.pages}
+              hasNext={runs.hasNextPage}
+              loadingNext={runs.isFetchingNextPage}
+              onNext={() => runs.fetchNextPage()}
+            />
+          )}
+        </QueryState>
       </Section>
     </div>
   );
 }
 
-function JournalRow({ run }: { run: Run }) {
+function Departure({ next }: { next: NextShift }) {
+  const stations = [next.from, ...next.stops, next.to];
+
+  return (
+    <section className="departure" aria-labelledby="next-title">
+      <p className="departure__label">Следующий рейс</p>
+      <div className="departure__main">
+        <time className="departure__time num" dateTime={next.departureAt}>
+          {next.departure}
+        </time>
+        <div>
+          <h2 className="departure__to" id="next-title">
+            {next.to}
+          </h2>
+          <p className="departure__from">
+            из {next.fromGenitive}, поезд {next.train}
+          </p>
+        </div>
+      </div>
+
+      <ol className="line" aria-label="Остановки">
+        {stations.map((station) => (
+          <li className="line__stop" key={station}>
+            {station}
+          </li>
+        ))}
+      </ol>
+
+      <dl className="facts departure__facts">
+        <div>
+          <dt>Вагон</dt>
+          <dd>{next.car}</dd>
+        </div>
+        <div>
+          <dt>Класс</dt>
+          <dd>{next.carClass}</dd>
+        </div>
+        <div className="departure__focus">
+          <dt>Отработка</dt>
+          <dd>{focusLine(next.focus)}</dd>
+        </div>
+      </dl>
+
+      {gameUrl ? (
+        <a className="btn departure__start" href={gameUrl}>
+          Начать смену
+        </a>
+      ) : (
+        <span className="btn departure__start" aria-disabled="true">
+          Игра недоступна
+        </span>
+      )}
+    </section>
+  );
+}
+
+function Journal({
+  pages,
+  hasNext,
+  loadingNext,
+  onNext,
+}: {
+  pages: RunPage[];
+  hasNext: boolean;
+  loadingNext: boolean;
+  onNext: () => void;
+}) {
+  const runs = pages.flatMap((page) => page.runs);
+  if (runs.length === 0) return <p className="query-state">Рейсов пока нет.</p>;
+
+  return (
+    <>
+      <table className="journal" aria-labelledby="runs-title">
+        <thead>
+          <tr>
+            <th scope="col">Дата</th>
+            <th scope="col">Рейс</th>
+            <th scope="col">Итог</th>
+            <th scope="col" className="journal__num">
+              Безопасность
+            </th>
+            <th scope="col" className="journal__num">
+              Лояльность
+            </th>
+            <th scope="col" className="journal__num">
+              Баллы
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {runs.map((run) => (
+            <JournalRow run={run} key={run.id} />
+          ))}
+        </tbody>
+      </table>
+      {hasNext && (
+        <button
+          className="btn btn--ghost journal-more"
+          type="button"
+          onClick={onNext}
+          disabled={loadingNext}
+        >
+          Показать ещё
+        </button>
+      )}
+    </>
+  );
+}
+
+function JournalRow({ run }: { run: RunSummary }) {
   return (
     <tr className="journal__row">
       <td className="journal__date num">{formatDate(run.finishedAt)}</td>

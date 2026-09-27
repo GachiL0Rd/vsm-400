@@ -1,35 +1,56 @@
+import { useLogout } from '../../api/auth';
+import { useAchievements, useMe, useStats } from '../../api/cabinet';
 import { AchievementBadge } from '../../components/AchievementBadge/AchievementBadge';
 import { Avatar } from '../../components/Avatar/Avatar';
 import { Meter } from '../../components/Meter/Meter';
+import { QueryState } from '../../components/QueryState/QueryState';
 import { Radar } from '../../components/Radar/Radar';
 import { Section } from '../../components/Section/Section';
-import { achievements, profile, stats } from '../../demo';
 import { formatDate, formatDelta, formatNumber, plural } from '../../format';
 import { usePageTitle } from '../../hooks/usePageTitle';
-import { COMPETENCIES, WEAK_SCORE } from '../../model';
+import { type Achievement, COMPETENCIES, type Profile, type Stats, WEAK_SCORE } from '../../model';
 import './ProfileScreen.css';
 
 const WEEK = [6, 5, 4, 3, 2, 1, 0];
 
 export function ProfileScreen() {
   usePageTitle('Профиль');
+  const logout = useLogout();
+  const me = useMe();
+  const stats = useStats();
+  const achievements = useAchievements();
 
   return (
     <div className="screen">
-      <ProfileHeader />
-      <ProfileFacts />
-      <div className="progress">
-        <LevelBlock />
-        <StreakBlock />
-      </div>
-      <StatsBlock />
-      <SkillsBlock />
-      <InsigniaBlock />
+      <QueryState query={me}>
+        {me.data && (
+          <>
+            <ProfileHeader profile={me.data} />
+            <ProfileFacts profile={me.data} />
+            <div className="progress">
+              <LevelBlock profile={me.data} />
+              <StreakBlock profile={me.data} />
+            </div>
+            <SkillsBlock profile={me.data} />
+          </>
+        )}
+      </QueryState>
+      <QueryState query={stats}>{stats.data && <StatsBlock stats={stats.data} />}</QueryState>
+      <QueryState query={achievements}>
+        {achievements.data && <InsigniaBlock achievements={achievements.data} />}
+      </QueryState>
+      <button
+        type="button"
+        className="btn btn--ghost profile__logout"
+        onClick={() => logout.mutate()}
+      >
+        Выйти
+      </button>
     </div>
   );
 }
 
-function ProfileHeader() {
+function ProfileHeader({ profile }: { profile: Profile }) {
   return (
     <header className="me">
       <Avatar callsign={profile.callsign} size="lg" />
@@ -43,7 +64,7 @@ function ProfileHeader() {
   );
 }
 
-function ProfileFacts() {
+function ProfileFacts({ profile }: { profile: Profile }) {
   return (
     <dl className="facts">
       <div>
@@ -66,18 +87,29 @@ function ProfileFacts() {
   );
 }
 
-function LevelBlock() {
-  const levelShare = (profile.points - profile.levelFrom) / (profile.levelTo - profile.levelFrom);
+// points может опуститься ниже levelFrom после сгорания. Долю из сырых баллов не берём.
+function levelFill(profile: Profile): number {
+  const span = profile.levelTo - profile.levelFrom;
+  if (span <= 0) return 0;
+  const raw = (profile.points - profile.levelFrom) / span;
+  if (raw <= 0) return 0;
+  if (raw >= 1) return 1;
+  return raw;
+}
 
+function pointsLeft(profile: Profile): number {
+  const left = profile.levelTo - profile.points;
+  return left > 0 ? left : 0;
+}
+
+function LevelBlock({ profile }: { profile: Profile }) {
   return (
     <Section
       id="level-title"
       title={<>До {profile.level + 1}-го уровня</>}
-      aside={
-        <span className="label num">{formatNumber(profile.levelTo - profile.points)} баллов</span>
-      }
+      aside={<span className="label num">{formatNumber(pointsLeft(profile))} баллов</span>}
     >
-      <Meter percent={levelShare * 100} />
+      <Meter percent={levelFill(profile) * 100} />
       {profile.expiring && (
         <p className="label">
           {formatDate(profile.expiring.at)} спишутся {profile.expiring.points} баллов, если до этой
@@ -88,7 +120,7 @@ function LevelBlock() {
   );
 }
 
-function StreakBlock() {
+function StreakBlock({ profile }: { profile: Profile }) {
   const days = (n: number) => `${n} ${plural(n, ['день', 'дня', 'дней'])}`;
 
   return (
@@ -120,9 +152,12 @@ function StreakBlock() {
   );
 }
 
-function StatsBlock() {
-  const escalationShare = Math.round((stats.escalationsCorrect / stats.escalationsTotal) * 100);
+function escalationPercent(stats: Stats): number {
+  if (stats.escalationsTotal === 0) return 0;
+  return Math.round((stats.escalationsCorrect / stats.escalationsTotal) * 100);
+}
 
+function StatsBlock({ stats }: { stats: Stats }) {
   return (
     <Section id="stats-title" title="Статистика">
       <dl className="ledger stats">
@@ -152,7 +187,7 @@ function StatsBlock() {
               {stats.escalationsCorrect} из {stats.escalationsTotal}
             </span>
           </dt>
-          <dd>{escalationShare}%</dd>
+          <dd>{escalationPercent(stats)}%</dd>
         </div>
         <div className="ledger__row">
           <dt>
@@ -168,7 +203,7 @@ function StatsBlock() {
   );
 }
 
-function SkillsBlock() {
+function SkillsBlock({ profile }: { profile: Profile }) {
   return (
     <Section
       id="skills-title"
@@ -178,15 +213,15 @@ function SkillsBlock() {
       <div className="skills">
         <Radar values={profile.competencies} />
         <ul className="skills__list">
-          {COMPETENCIES.map((c) => {
-            const value = profile.competencies[c.id];
-            const trend = profile.trend[c.id];
+          {COMPETENCIES.map((item) => {
+            const value = profile.competencies[item.id];
+            const trend = profile.trend[item.id];
             const weak = value < WEAK_SCORE;
-            const note = profile.weakNote[c.id];
+            const note = profile.weakNote[item.id];
             return (
-              <li className={`skill${weak ? ' skill--weak' : ''}`} key={c.id}>
+              <li className={`skill${weak ? ' skill--weak' : ''}`} key={item.id}>
                 <div className="row">
-                  <span className="skill__title">{c.title}</span>
+                  <span className="skill__title">{item.title}</span>
                   <span className="skill__numbers num">
                     <span className={trend > 0 ? 'up' : trend < 0 ? 'down' : 'label'}>
                       {formatDelta(trend)}
@@ -205,9 +240,9 @@ function SkillsBlock() {
   );
 }
 
-function InsigniaBlock() {
-  const earned = achievements.filter((a) => a.earnedAt !== null);
-  const locked = achievements.filter((a) => a.earnedAt === null);
+function InsigniaBlock({ achievements }: { achievements: Achievement[] }) {
+  const earned = achievements.filter((item) => item.earnedAt !== null);
+  const locked = achievements.filter((item) => item.earnedAt === null);
 
   return (
     <Section
@@ -220,25 +255,25 @@ function InsigniaBlock() {
       }
     >
       <ul className="insignia">
-        {[...earned, ...locked].map((a) => (
+        {[...earned, ...locked].map((item) => (
           <li
-            className={`insignia__item${a.earnedAt ? '' : ' insignia__item--locked'}`}
-            key={a.code}
+            className={`insignia__item${item.earnedAt ? '' : ' insignia__item--locked'}`}
+            key={item.code}
           >
-            <AchievementBadge code={a.code} earned={a.earnedAt !== null} />
+            <AchievementBadge code={item.code} earned={item.earnedAt !== null} />
             <div className="insignia__body">
-              <b className="insignia__title">{a.title}</b>
-              <span className="insignia__text">{a.description}</span>
-              {a.earnedAt && <span className="label">Получен {formatDate(a.earnedAt)}</span>}
-              {!a.earnedAt && <span className="visually-hidden">Не получен.</span>}
-              {!a.earnedAt && a.progress && (
+              <b className="insignia__title">{item.title}</b>
+              <span className="insignia__text">{item.description}</span>
+              {item.earnedAt && <span className="label">Получен {formatDate(item.earnedAt)}</span>}
+              {!item.earnedAt && <span className="visually-hidden">Не получен.</span>}
+              {!item.earnedAt && item.progress && item.progress.total > 0 && (
                 <div className="insignia__progress">
                   <Meter
-                    percent={(a.progress.value / a.progress.total) * 100}
+                    percent={(item.progress.value / item.progress.total) * 100}
                     className="track--grow"
                   />
                   <span className="label num">
-                    {a.progress.value} из {a.progress.total}
+                    {item.progress.value} из {item.progress.total}
                   </span>
                 </div>
               )}
