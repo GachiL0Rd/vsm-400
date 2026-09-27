@@ -1,7 +1,7 @@
 # Replay, seek и checkpoints
 
-**Версия документа:** 0.1.0  
-**Статус:** Draft  
+**Версия документа:** 0.1.0
+**Статус:** Baseline forward replay implemented; seek/checkpoints planned
 **Дата редакции:** 2026-09-27
 
 ## 1. Цель
@@ -26,6 +26,10 @@ authoritative user input log
 4. детерминированно продвигать simulation вперёд.
 
 Это baseline и должно работать без checkpoints.
+
+Текущая серверная реализация `0.1.0` выполняет именно этот forward replay: входной log валидируется, версии content/simulation должны совпадать, а команды повторно применяются в сохранённые `SimTimeUs`. Доступные скорости playback — `1x`, `2x`, `4x`. После достижения terminal state replay останавливается локально и не вызывает Platform `finishSession`.
+
+`seek`, checkpoints, replay inspection и раскрытие hidden state в `0.1.0` пока не реализованы и не рекламируются через public replay capabilities.
 
 ## 3. Почему event rollback не требуется baseline
 

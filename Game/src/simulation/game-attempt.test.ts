@@ -57,6 +57,23 @@ function prepareForBaselineFire(attempt: GameAttempt): void {
 }
 
 describe('GameAttempt', () => {
+  it('reproduces the same baseline run from the same seed and authoritative inputs', () => {
+    const run = () => {
+      const attempt = new GameAttempt({ rootSeed: 17 });
+      prepareForBaselineFire(attempt);
+      attempt.advanceTo(secondsToSimTimeUs(45 * 60));
+      attempt.useExtinguisher('fire:carriage.cabin');
+      attempt.advanceTo(attempt.scenario.normalEndTimeUs);
+      return {
+        snapshot: attempt.snapshot(),
+        termination: attempt.termination,
+        assessment: attempt.assessmentResult(),
+      };
+    };
+
+    expect(run()).toEqual(run());
+  });
+
   it('runs the baseline scenario from pre-departure through the normal route end', () => {
     const attempt = new GameAttempt({ rootSeed: 17 });
 

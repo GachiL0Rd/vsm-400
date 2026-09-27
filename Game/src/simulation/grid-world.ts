@@ -92,47 +92,85 @@ class StaticGrid implements GridWorld {
     const edgeOccupancy = knownCounts(constraints?.edgeOccupancy, this.edgeById, 'Edge');
     if (!canEnter(to, this.cellById, blockedCells, cellOccupancy)) return null;
 
-    const graph = new DirectedGraph();
-    for (const cell of this.cells) {
-      const enterable =
-        cell.id === from || canEnter(cell.id, this.cellById, blockedCells, cellOccupancy);
-      if (enterable) graph.addNode(cell.id);
-    }
-
-    const usable = new Map<string, EdgeDefinition>();
-    for (const edge of this.edges) {
-      if (!graph.hasNode(edge.from) || !graph.hasNode(edge.to)) continue;
-      if (!edge.traversable || blockedEdges.has(edge.id)) continue;
-      if (countOf(edgeOccupancy, edge.id) >= edge.transitionCapacity) continue;
-      graph.addDirectedEdgeWithKey(edge.id, edge.from, edge.to, {
-        weight: movementWeight(edge, this.cellById),
-      });
-      usable.set(pairKey(edge.from, edge.to), edge);
-    }
-
+    const { graph, usable } = buildRoutingGraph(
+      this.cells,
+      this.edges,
+      this.cellById,
+      from,
+      blockedCells,
+      blockedEdges,
+      cellOccupancy,
+      edgeOccupancy,
+    );
     const found: unknown = dijkstra.bidirectional(graph, from, to, 'weight');
-    if (!Array.isArray(found)) return null;
-
-    const cells: string[] = [];
-    for (const node of found) {
-      if (typeof node !== 'string') throw new RangeError('Route path is incomplete');
-      cells.push(node);
-    }
-    const edgeIds: string[] = [];
-    let cost = 0;
-    for (let index = 1; index < cells.length; index += 1) {
-      const source = cells[index - 1];
-      const target = cells[index];
-      if (source === undefined || target === undefined) {
-        throw new RangeError('Route path is incomplete');
-      }
-      const edge = usable.get(pairKey(source, target));
-      if (edge === undefined) throw new RangeError('Route edge is missing');
-      edgeIds.push(edge.id);
-      cost += movementWeight(edge, this.cellById);
-    }
-    return { cells, edgeIds, cost };
+    return materializeRoute(found, usable, this.cellById);
   }
+}
+
+function buildRoutingGraph(
+  cells: readonly CellDefinition[],
+  edges: readonly EdgeDefinition[],
+  cellById: ReadonlyMap<string, CellDefinition>,
+  from: string,
+  blockedCells: ReadonlySet<string>,
+  blockedEdges: ReadonlySet<string>,
+  cellOccupancy: ReadonlyMap<string, number>,
+  edgeOccupancy: ReadonlyMap<string, number>,
+): { readonly graph: DirectedGraph; readonly usable: ReadonlyMap<string, EdgeDefinition> } {
+  const graph = new DirectedGraph();
+  for (const cell of cells) {
+    const enterable = cell.id === from || canEnter(cell.id, cellById, blockedCells, cellOccupancy);
+    if (enterable) graph.addNode(cell.id);
+  }
+  const usable = new Map<string, EdgeDefinition>();
+  for (const edge of edges) {
+    if (!isUsableEdge(edge, graph, blockedEdges, edgeOccupancy)) continue;
+    graph.addDirectedEdgeWithKey(edge.id, edge.from, edge.to, {
+      weight: movementWeight(edge, cellById),
+    });
+    usable.set(pairKey(edge.from, edge.to), edge);
+  }
+  return { graph, usable };
+}
+
+function isUsableEdge(
+  edge: EdgeDefinition,
+  graph: DirectedGraph,
+  blockedEdges: ReadonlySet<string>,
+  edgeOccupancy: ReadonlyMap<string, number>,
+): boolean {
+  return (
+    graph.hasNode(edge.from) &&
+    graph.hasNode(edge.to) &&
+    edge.traversable &&
+    !blockedEdges.has(edge.id) &&
+    countOf(edgeOccupancy, edge.id) < edge.transitionCapacity
+  );
+}
+
+function materializeRoute(
+  found: unknown,
+  usable: ReadonlyMap<string, EdgeDefinition>,
+  cellById: ReadonlyMap<string, CellDefinition>,
+): GridRoute | null {
+  if (!Array.isArray(found)) return null;
+  const cells = found.map((node) => {
+    if (typeof node !== 'string') throw new RangeError('Route path is incomplete');
+    return node;
+  });
+  const edgeIds: string[] = [];
+  let cost = 0;
+  for (let index = 1; index < cells.length; index += 1) {
+    const source = cells[index - 1];
+    const target = cells[index];
+    if (source === undefined || target === undefined)
+      throw new RangeError('Route path is incomplete');
+    const edge = usable.get(pairKey(source, target));
+    if (edge === undefined) throw new RangeError('Route edge is missing');
+    edgeIds.push(edge.id);
+    cost += movementWeight(edge, cellById);
+  }
+  return { cells, edgeIds, cost };
 }
 
 function validateCell(cell: CellDefinition, cells: ReadonlyMap<string, CellDefinition>): string {

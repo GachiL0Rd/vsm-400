@@ -14,6 +14,7 @@ import type { AssessmentResult } from '../simulation/assessment.ts';
 import type { GameAttemptSnapshot } from '../simulation/game-attempt.ts';
 import { SimulationClock } from '../simulation/simulation-clock.ts';
 import type { ResolvedGameContent } from './content-registry.ts';
+import { parseReplayInputs, type RecordedReplayInput } from './replay-input.ts';
 import type { ResumeTokenRegistry } from './resume-token-registry.ts';
 import type {
   FinishedGameResult,
@@ -106,6 +107,9 @@ export class GameSessionWorker {
   private finishReceipt: FinishSessionResponse | null = null;
   private readonly publications = new Set<PublicationListener>();
   private nextInputSequence = 0;
+  private readonly replayInputs: readonly RecordedReplayInput[];
+  private replayInputIndex = 0;
+  private replayEnded = false;
   private readonly userInputs: Array<{
     readonly at: number;
     readonly sequence: number;
@@ -131,6 +135,8 @@ export class GameSessionWorker {
     }
     const initial = options.attempt.snapshot();
     this.simulationClock = new SimulationClock(this.nowWallUs(), initial.time);
+    this.replayInputs =
+      options.mode.kind === 'replay' ? parseReplayInputs(options.mode.source.userInputs) : [];
   }
 
   get attemptId(): string {
@@ -156,7 +162,7 @@ export class GameSessionWorker {
   publicClock(): PublicClockView {
     return {
       timeScale: this.simulationClock.timeScale,
-      paused: this.simulationClock.paused || this.lifecycleState === 'paused',
+      paused: this.simulationClock.paused || this.lifecycleState === 'paused' || this.replayEnded,
     };
   }
 
@@ -307,11 +313,47 @@ export class GameSessionWorker {
       this.simulationClock.advanceProcessedTo(current);
     }
     target = Math.max(target, current);
+    if (this.options.mode.kind === 'replay') {
+      this.advanceReplayTo(target);
+      return;
+    }
     const delta = this.options.projection.advanceTo(target, this.publicClock());
     const applied = this.options.attempt.snapshot().time;
     this.simulationClock.advanceProcessedTo(applied);
     this.publishDelta(delta);
     this.finishIfTerminated();
+  }
+
+  private advanceReplayTo(target: number): void {
+    while (this.replayInputIndex < this.replayInputs.length) {
+      const input = this.replayInputs[this.replayInputIndex];
+      if (input === undefined || input.at > target || this.options.attempt.termination !== null)
+        break;
+
+      const advanceDelta = this.options.projection.advanceTo(input.at, this.publicClock());
+      this.publishDelta(advanceDelta);
+      this.simulationClock.advanceProcessedTo(this.options.attempt.snapshot().time);
+
+      if (this.options.attempt.termination !== null) break;
+      const commandDelta = this.options.projection.applyReplayCommand(
+        input.command,
+        this.publicClock(),
+      );
+      this.publishDelta(commandDelta);
+      this.replayInputIndex += 1;
+      this.simulationClock.advanceProcessedTo(this.options.attempt.snapshot().time);
+    }
+
+    if (this.options.attempt.termination === null) {
+      const finalDelta = this.options.projection.advanceTo(target, this.publicClock());
+      this.publishDelta(finalDelta);
+      this.simulationClock.advanceProcessedTo(this.options.attempt.snapshot().time);
+    }
+    if (this.options.attempt.termination !== null && !this.replayEnded) {
+      this.replayEnded = true;
+      this.cancelTick();
+      this.publishDelta(this.options.projection.refresh(this.publicClock()));
+    }
   }
 
   private finishIfTerminated(): void {
@@ -347,7 +389,7 @@ export class GameSessionWorker {
   }
 
   private ensureTickScheduled(): void {
-    if (this.tickTimer !== null || this.lifecycleState !== 'active') return;
+    if (this.tickTimer !== null || this.lifecycleState !== 'active' || this.replayEnded) return;
     this.tickTimer = this.scheduler.after(this.simulationStepMs, () => this.tick());
   }
 

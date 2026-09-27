@@ -200,40 +200,41 @@ export class EventQueue<T> {
   }
 
   private siftDown(index: number): void {
-    const heap = this.heap;
-    const event = heap[index];
+    const event = this.heap[index];
     if (event === undefined) return;
-    const length = heap.length;
     let cursor = index;
     while (true) {
-      const leftIndex = cursor * 2 + 1;
-      const rightIndex = leftIndex + 1;
-      let smallest = event;
-      let smallestIndex = cursor;
-
-      if (leftIndex < length) {
-        const left = heap[leftIndex];
-        if (left !== undefined && comesBefore(left, smallest)) {
-          smallest = left;
-          smallestIndex = leftIndex;
-        }
-      }
-      if (rightIndex < length) {
-        const right = heap[rightIndex];
-        if (right !== undefined && comesBefore(right, smallest)) {
-          smallest = right;
-          smallestIndex = rightIndex;
-        }
-      }
-      if (smallestIndex === cursor) break;
-      heap[cursor] = smallest;
-      cursor = smallestIndex;
+      const childIndex = earlierChildIndex(this.heap, cursor, event);
+      if (childIndex === cursor) break;
+      const child = this.heap[childIndex];
+      if (child === undefined) break;
+      this.heap[cursor] = child;
+      cursor = childIndex;
     }
-    heap[cursor] = event;
+    this.heap[cursor] = event;
   }
 }
 
 function comesBefore<T>(left: ScheduledEvent<T>, right: ScheduledEvent<T>): boolean {
   if (left.at !== right.at) return left.at < right.at;
   return left.order < right.order;
+}
+
+function earlierChildIndex<T>(
+  heap: readonly ScheduledEvent<T>[],
+  cursor: number,
+  event: ScheduledEvent<T>,
+): number {
+  const leftIndex = cursor * 2 + 1;
+  const rightIndex = leftIndex + 1;
+  let selectedIndex = cursor;
+  let selected = event;
+  const left = heap[leftIndex];
+  if (left !== undefined && comesBefore(left, selected)) {
+    selected = left;
+    selectedIndex = leftIndex;
+  }
+  const right = heap[rightIndex];
+  if (right !== undefined && comesBefore(right, selected)) selectedIndex = rightIndex;
+  return selectedIndex;
 }
