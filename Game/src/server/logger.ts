@@ -1,13 +1,41 @@
-import pino, { type DestinationStream, type Logger } from 'pino';
+import pino, { type DestinationStream, type Logger, type LoggerOptions } from 'pino';
 
 const serviceName = 'vsm-game-server';
+const redactedPaths = [
+  'sessionKey',
+  'resumeToken',
+  'serviceToken',
+  'authorization',
+  '*.sessionKey',
+  '*.resumeToken',
+  '*.serviceToken',
+  '*.authorization',
+  'headers.authorization',
+  'req.headers.authorization',
+] as const;
 
-export function createServerLogger(destination?: DestinationStream): Logger {
-  return pino(
-    {
-      base: { service: serviceName },
-      level: 'info',
+export type ServerLogger = Logger;
+
+export interface ServerLoggerOptions {
+  readonly level?: string;
+  readonly destination?: DestinationStream;
+  readonly enabled?: boolean;
+}
+
+export function createServerLogger(options: ServerLoggerOptions | DestinationStream = {}): Logger {
+  const normalized: ServerLoggerOptions = 'write' in options ? { destination: options } : options;
+  const configuration: LoggerOptions = {
+    base: { service: serviceName },
+    level: normalized.level ?? 'info',
+    enabled: normalized.enabled ?? true,
+    redact: {
+      paths: [...redactedPaths],
+      censor: '[REDACTED]',
     },
-    destination,
-  );
+  };
+  return pino(configuration, normalized.destination);
+}
+
+export function createSilentServerLogger(): Logger {
+  return createServerLogger({ enabled: false });
 }

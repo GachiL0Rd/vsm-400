@@ -5,6 +5,7 @@ import { extname, resolve, sep } from 'node:path';
 import { type RawData, WebSocket, WebSocketServer } from 'ws';
 import { GAME_WEBSOCKET_PATH } from '../common/game-wire.ts';
 import type { ServerConfig } from './config.ts';
+import { createSilentServerLogger, type ServerLogger } from './logger.ts';
 import type { GameProtocolAdapter, GameProtocolConnection } from './protocol-adapter.ts';
 
 export interface GameHttpServer {
@@ -16,31 +17,70 @@ export interface GameHttpServer {
 export function createGameHttpServer(
   config: ServerConfig,
   protocol: GameProtocolAdapter,
+  logger: ServerLogger = createSilentServerLogger(),
 ): GameHttpServer {
+  const transportLogger = logger.child({ component: 'http-server' });
   let accepting = false;
   const webSocketServer = new WebSocketServer({
     noServer: true,
     maxPayload: config.webSocketMaxPayloadBytes,
   });
   const server = createServer((request, response) => {
-    void handleHttp(request, response, config.staticClientDirectory, () => accepting).catch(() => {
-      response.writeHead(500).end('Internal server error');
+    const startedAt = performance.now();
+    response.once('finish', () => {
+      transportLogger.debug(
+        {
+          event: 'http-request',
+          method: request.method,
+          pathname: safePathname(request.url),
+          status: response.statusCode,
+          durationMs: elapsedMs(startedAt),
+        },
+        'HTTP request completed',
+      );
     });
+    void handleHttp(request, response, config.staticClientDirectory, () => accepting).catch(
+      (error) => {
+        transportLogger.error(
+          {
+            err: error,
+            event: 'http-request-failed',
+            method: request.method,
+            pathname: safePathname(request.url),
+          },
+          'HTTP request failed',
+        );
+        response.writeHead(500).end('Internal server error');
+      },
+    );
   });
   server.on('upgrade', (request, socket, head) => {
     if (!accepting) {
+      transportLogger.warn(
+        {
+          event: 'ws-upgrade-rejected',
+          reason: 'server-not-ready',
+          pathname: safePathname(request.url),
+        },
+        'Rejected WebSocket upgrade',
+      );
       socket.write('HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\n\r\n');
       socket.destroy();
       return;
     }
     const pathname = new URL(request.url ?? '/', 'http://localhost').pathname;
     if (pathname !== GAME_WEBSOCKET_PATH) {
+      transportLogger.warn(
+        { event: 'ws-upgrade-rejected', reason: 'wrong-path', pathname },
+        'Rejected WebSocket upgrade',
+      );
       socket.write('HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n');
       socket.destroy();
       return;
     }
+    transportLogger.info({ event: 'ws-upgrade-accepted', pathname }, 'Accepted WebSocket upgrade');
     webSocketServer.handleUpgrade(request, socket, head, (webSocket) =>
-      protocol.open(new WsConnection(webSocket, config.webSocketMaxBufferedBytes)),
+      protocol.open(new WsConnection(webSocket, config.webSocketMaxBufferedBytes, transportLogger)),
     );
   });
 
@@ -50,13 +90,30 @@ export function createGameHttpServer(
       await validateStaticDirectory(config.staticClientDirectory);
       await listen(server, port, host);
       accepting = true;
+      transportLogger.info(
+        {
+          event: 'http-listening',
+          host,
+          port,
+          staticClient: config.staticClientDirectory !== null,
+        },
+        'HTTP server is accepting requests',
+      );
     },
     close: async () => {
       if (!accepting && !server.listening) return;
       accepting = false;
+      transportLogger.info(
+        { event: 'http-draining', clientCount: webSocketServer.clients.size },
+        'HTTP server is draining',
+      );
       protocol.shutdown();
       for (const client of webSocketServer.clients) client.close(1001, 'server shutting down');
       const forceClose = setTimeout(() => {
+        transportLogger.warn(
+          { event: 'shutdown-force-close', clientCount: webSocketServer.clients.size },
+          'Shutdown grace expired; forcing connections closed',
+        );
         for (const client of webSocketServer.clients) client.terminate();
         server.closeAllConnections();
       }, config.shutdownGraceMs);
@@ -65,6 +122,7 @@ export function createGameHttpServer(
         await Promise.all([closeHttpServer(server), closeWebSocketServer(webSocketServer)]);
       } finally {
         clearTimeout(forceClose);
+        transportLogger.info({ event: 'http-closed' }, 'HTTP server closed');
       }
     },
   };
@@ -211,11 +269,17 @@ class WsConnection implements GameProtocolConnection {
   constructor(
     private readonly socket: WebSocket,
     private readonly maxBufferedBytes: number,
+    private readonly logger: ServerLogger,
   ) {
     // ws reports protocol/size failures through the socket error event before close.
     // The close code remains the protocol-visible outcome; do not let transport errors
     // escape as uncaught process exceptions.
-    this.socket.on('error', () => undefined);
+    this.socket.on('error', (error) => {
+      this.logger.warn(
+        { err: error, event: 'ws-transport-error', connectionId: this.id },
+        'WebSocket transport error',
+      );
+    });
   }
 
   onMessage(listener: (data: string | Uint8Array) => void): void {
@@ -232,6 +296,16 @@ class WsConnection implements GameProtocolConnection {
     if (this.socket.readyState !== WebSocket.OPEN) return;
     const bytes = typeof data === 'string' ? Buffer.byteLength(data) : data.byteLength;
     if (this.socket.bufferedAmount + bytes > this.maxBufferedBytes) {
+      this.logger.warn(
+        {
+          event: 'ws-backpressure-close',
+          connectionId: this.id,
+          bufferedBytes: this.socket.bufferedAmount,
+          outgoingBytes: bytes,
+          maxBufferedBytes: this.maxBufferedBytes,
+        },
+        'Closing slow WebSocket client',
+      );
       this.socket.close(1013, 'client is too slow');
       return;
     }
@@ -242,6 +316,18 @@ class WsConnection implements GameProtocolConnection {
     if (this.socket.readyState === WebSocket.CLOSED) return;
     this.socket.close(code, reason);
   }
+}
+
+function safePathname(url: string | undefined): string {
+  try {
+    return new URL(url ?? '/', 'http://localhost').pathname;
+  } catch {
+    return '<invalid-url>';
+  }
+}
+
+function elapsedMs(startedAt: number): number {
+  return Math.round((performance.now() - startedAt) * 100) / 100;
 }
 
 function bytesOf(data: RawData): Uint8Array {
