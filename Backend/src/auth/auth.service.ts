@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Inject,
   Injectable,
@@ -77,6 +78,12 @@ export class AuthService {
       throw invalidRefresh();
     }
     const outcome = await this.prisma.$transaction((tx) => rotateRefresh(tx, raw, meta, at));
+    if (outcome.kind === 'race') {
+      throw new ConflictException({
+        message: 'Refresh уже обновлён другим запросом',
+        code: 'REFRESH_RACE',
+      });
+    }
     if (outcome.kind === 'reuse') {
       await this.audit.log({
         actorType: ActorType.USER,

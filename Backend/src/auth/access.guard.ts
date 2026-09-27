@@ -30,6 +30,8 @@ type AccessRequest = {
   headers?: Record<string, string | string[] | undefined>;
   cookies?: Record<string, string | undefined>;
   user?: AuthUser;
+  /** sid access-JWT. SSE читает его на heartbeat, AuthUser для этого не расширяем. */
+  authSessionId?: string;
 };
 
 @Injectable()
@@ -56,6 +58,7 @@ export class AccessGuard implements CanActivate {
       brigadeId: row.brigadeId,
       depotId: row.brigade?.depotId ?? null,
     };
+    request.authSessionId = claims.sid;
     if (row.mustChangePassword && !passwordChangeAllows(request.method ?? '', url)) {
       throw new ForbiddenException({
         message: 'Сначала смените пароль',

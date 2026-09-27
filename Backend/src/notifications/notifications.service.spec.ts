@@ -163,8 +163,16 @@ function memory(clock: Clock = new FixedClock(new Date('2026-09-26T12:00:00.000Z
         notes.filter((row) => match(row, where)).length,
     },
   };
+  const session = {
+    userId: 'user-1',
+    revokedAt: null as Date | null,
+    user: { disabledAt: null as Date | null },
+  };
   const prisma = {
     ...api,
+    authSession: {
+      findUnique: async () => session,
+    },
     $transaction: async (fn: (tx: typeof api) => Promise<unknown>) => fn(api),
   };
   const redis = {
@@ -178,14 +186,14 @@ function memory(clock: Clock = new FixedClock(new Date('2026-09-26T12:00:00.000Z
     redis as unknown as RedisService,
     clock,
   );
-  return { notes, published, service };
+  return { notes, published, service, session };
 }
 
 describe('NotificationsService', () => {
   it('SSE отдаёт new-notification и не дублирует своё redis-эхо', async () => {
     const { service, published } = memory();
     const events: { type?: string; data?: unknown }[] = [];
-    const subscription = service.stream('user-1').subscribe((event) => {
+    const subscription = service.stream('user-1', 'sid-1').subscribe((event) => {
       events.push(event);
     });
     const notice = await service.create('user-1', {
@@ -211,15 +219,42 @@ describe('NotificationsService', () => {
     subscription.unsubscribe();
   });
 
-  it('heartbeat раз в 25 секунд', () => {
+  it('heartbeat раз в 25 секунд, отзыв сессии закрывает поток', async () => {
     vi.useFakeTimers();
-    const { service } = memory();
+    const { service, session } = memory();
     const events: { type?: string }[] = [];
-    const subscription = service.stream('user-1').subscribe((event) => {
-      events.push(event);
+    let closed = false;
+    const subscription = service.stream('user-1', 'sid-1').subscribe({
+      next: (event) => {
+        events.push(event);
+      },
+      complete: () => {
+        closed = true;
+      },
     });
-    vi.advanceTimersByTime(HEARTBEAT_MS);
+    await vi.advanceTimersByTimeAsync(HEARTBEAT_MS);
     expect(events.some((event) => event.type === 'heartbeat')).toBe(true);
+    session.revokedAt = new Date('2026-09-27T12:00:00.000Z');
+    const before = events.length;
+    await vi.advanceTimersByTimeAsync(HEARTBEAT_MS);
+    expect(events).toHaveLength(before);
+    expect(closed).toBe(true);
+    subscription.unsubscribe();
+    vi.useRealTimers();
+  });
+
+  it('heartbeat закрывает поток отключённого пользователя', async () => {
+    vi.useFakeTimers();
+    const { service, session } = memory();
+    session.user.disabledAt = new Date('2026-09-27T12:00:00.000Z');
+    let closed = false;
+    const subscription = service.stream('user-1', 'sid-1').subscribe({
+      complete: () => {
+        closed = true;
+      },
+    });
+    await vi.advanceTimersByTimeAsync(HEARTBEAT_MS);
+    expect(closed).toBe(true);
     subscription.unsubscribe();
     vi.useRealTimers();
   });

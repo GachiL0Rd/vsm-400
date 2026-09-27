@@ -122,6 +122,7 @@ describe('AccessGuard', () => {
       brigadeId: 'brigade-1',
       depotId: 'depot-1',
     });
+    expect(request.authSessionId).toBe(sessionId);
   });
 
   it('гасит access отозванной или заменённой сессии и токен без sid', async () => {

@@ -1,18 +1,10 @@
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
-import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
+import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 import { AppModule } from './app.module';
-import { APP_CONFIG, type AppConfig, fastifyTrustProxy, loadConfig } from './config/env';
+import { APP_CONFIG, type AppConfig, loadConfig } from './config/env';
 import { configureApp } from './configure-app';
-
-export const BODY_LIMIT_BYTES = 1_048_576;
-
-export function createFastifyAdapter(trustProxy = 0): FastifyAdapter {
-  return new FastifyAdapter({
-    bodyLimit: BODY_LIMIT_BYTES,
-    trustProxy: fastifyTrustProxy(trustProxy),
-  });
-}
+import { createFastifyAdapter } from './http-adapter';
 
 async function bootstrap(): Promise<void> {
   const bootConfig = loadConfig();

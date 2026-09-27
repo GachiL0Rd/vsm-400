@@ -7,11 +7,11 @@ import type { PrismaService } from '../prisma/prisma.service';
 import { WebhookDispatchService } from './webhook-dispatch.service';
 import type { WebhookPost, WebhookPostInput } from './webhook-post';
 import { VSM_SIGNATURE, VSM_TIMESTAMP, verifyWebhook } from './webhook-signature';
-import type { WebhookResolve } from './webhook-url';
+import { TEST_WEBHOOK_IP, type WebhookResolve } from './webhook-url';
 
 const secret = 'hook-secret';
 const id = randomUUID();
-const publicAddress = { address: '203.0.113.10', family: 4 as const };
+const publicAddress = { address: TEST_WEBHOOK_IP, family: 4 as const };
 
 function row(attempts: number, active = true, url = 'https://lms.example/hook') {
   return {
@@ -158,6 +158,29 @@ describe('доставка вебхука', () => {
     expect(loopback.update).toHaveBeenCalledWith({
       where: { id },
       data: expect.objectContaining({ lastError: 'ssrf' }),
+    });
+  });
+
+  it('сбой DNS откладывает доставку, https закрывает сразу', async () => {
+    const now = new Date('2026-09-26T12:00:00.000Z');
+    const post = vi.fn(async () => ({ status: 200 }));
+    const dns = serviceFor(
+      row(0),
+      async () => {
+        throw new Error('eai_again');
+      },
+      post,
+    );
+    await dns.service.dispatch(now);
+    expect(post).not.toHaveBeenCalled();
+    expect(dns.update).toHaveBeenCalledWith({
+      where: { id },
+      data: {
+        status: WebhookDeliveryStatus.PENDING,
+        attempts: 1,
+        nextAttemptAt: new Date(now.getTime() + 30_000),
+        lastError: 'dns',
+      },
     });
   });
 });

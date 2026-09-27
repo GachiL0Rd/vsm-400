@@ -4,12 +4,12 @@ import { AuditService } from '../audit/audit.service';
 import { PasswordService } from '../auth/password.service';
 import { isUuid } from '../auth/uuid';
 import { Clock } from '../common/clock';
-import { ActorType, type Grade, type Prisma, type Role } from '../generated/prisma/client';
+import { ActorType, type Grade, Prisma, type Role } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { allocateCallsign } from './callsign';
 import { isUniqueViolation, uniqueFields } from './unique-violation';
 
-export type UserActor = { id: string; ip?: string | null };
+export type UserActor = { id: string; ip?: string | null; type?: ActorType };
 
 export type UserProfile = {
   id: string;
@@ -119,23 +119,47 @@ export class UsersService {
     input: { role?: Role; brigadeId?: string | null; disabled?: boolean },
     actor: UserActor,
   ): Promise<UserProfile> {
-    const current = await this.findActiveRecord(id);
+    if (!isUuid(id)) {
+      throw new NotFoundException({ message: 'Пользователь не найден', code: 'NOT_FOUND' });
+    }
     await this.assertBrigade(input.brigadeId);
     const now = this.clock.now();
-    const data = patchData(current.brigadeId, input, now);
-    const updated = await this.prisma.user.update({
-      where: { id },
-      data,
-      select: profileSelect,
-    });
-    if (input.disabled === true) {
-      await this.prisma.authSession.updateMany({
-        where: { userId: id, revokedAt: null },
-        data: { revokedAt: now },
+    const touchesAccess = input.role !== undefined || input.disabled !== undefined;
+    const updated = await this.prisma.$transaction(async (tx) => {
+      if (touchesAccess) {
+        await lockActiveAdmins(tx);
+      }
+      const current = await tx.user.findUnique({
+        where: { id },
+        select: { id: true, role: true, brigadeId: true, disabledAt: true },
       });
-    }
+      if (!current) {
+        throw new NotFoundException({ message: 'Пользователь не найден', code: 'NOT_FOUND' });
+      }
+      if (touchesAccess && actor.id === id) {
+        throw new ConflictException({
+          message: 'Нельзя менять свою роль или блокировку',
+          code: 'SELF_LOCKOUT',
+        });
+      }
+      if (touchesAccess) {
+        assertAdminRemains(current, input, await countOtherAdmins(tx, id));
+      }
+      const row = await tx.user.update({
+        where: { id },
+        data: patchData(current.brigadeId, input, now),
+        select: profileSelect,
+      });
+      if (input.disabled === true) {
+        await tx.authSession.updateMany({
+          where: { userId: id, revokedAt: null },
+          data: { revokedAt: now },
+        });
+      }
+      return row;
+    });
     await this.audit.log({
-      actorType: ActorType.USER,
+      actorType: actor.type ?? ActorType.USER,
       actorId: actor.id,
       action: 'user.updated',
       target: id,
@@ -259,6 +283,37 @@ function toProfile(row: ProfileRow): UserProfile {
     disabledAt: row.disabledAt ? row.disabledAt.toISOString() : null,
     createdAt: row.createdAt.toISOString(),
   };
+}
+
+/** Все активные ADMIN. Иначе два патча успевают снять друг друга. */
+async function lockActiveAdmins(tx: Prisma.TransactionClient): Promise<void> {
+  await tx.$queryRaw(
+    Prisma.sql`SELECT id FROM "user" WHERE role = CAST('ADMIN' AS "role") AND "disabledAt" IS NULL FOR UPDATE`,
+  );
+}
+
+async function countOtherAdmins(tx: Prisma.TransactionClient, id: string): Promise<number> {
+  return tx.user.count({
+    where: { role: 'ADMIN', disabledAt: null, NOT: { id } },
+  });
+}
+
+function assertAdminRemains(
+  current: { role: Role; disabledAt: Date | null },
+  input: { role?: Role; disabled?: boolean },
+  otherActiveAdmins: number,
+): void {
+  const activeNow = current.role === 'ADMIN' && current.disabledAt === null;
+  const nextRole = input.role ?? current.role;
+  const disabled =
+    input.disabled === true || (input.disabled !== false && current.disabledAt !== null);
+  const activeNext = nextRole === 'ADMIN' && !disabled;
+  if (activeNow && !activeNext && otherActiveAdmins < 1) {
+    throw new ConflictException({
+      message: 'Нельзя оставить систему без активного администратора',
+      code: 'LAST_ADMIN',
+    });
+  }
 }
 
 function patchData(

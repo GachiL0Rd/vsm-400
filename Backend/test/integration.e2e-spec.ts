@@ -10,11 +10,12 @@ import { AccessGuard } from '../src/auth/access.guard';
 import type { AuthUser } from '../src/auth/auth-user';
 import { IS_PUBLIC_KEY } from '../src/auth/public.decorator';
 import { configureApp } from '../src/configure-app';
+import { parseApiKey } from '../src/integration/api-key';
 import { extHashOf, loginFromExtHash } from '../src/integration/ext-hash';
 import { WebhookDispatchService } from '../src/integration/webhook-dispatch.service';
 import type { WebhookPostInput } from '../src/integration/webhook-post';
 import { VSM_SIGNATURE, VSM_TIMESTAMP, verifyWebhook } from '../src/integration/webhook-signature';
-import { WEBHOOK_POST } from '../src/integration/webhook-url';
+import { TEST_WEBHOOK_IP, WEBHOOK_POST } from '../src/integration/webhook-url';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { RedisService } from '../src/redis/redis.service';
 import { ScenariosService } from '../src/scenarios/scenarios.service';
@@ -78,14 +79,61 @@ async function call(
   return response as Injected;
 }
 
+type LedgerRow = {
+  userId: string;
+  amount: number;
+  reason: 'RUN' | 'ACHIEVEMENT' | 'CHALLENGE' | 'EXPIRE' | 'ADJUST';
+  expiresAt: Date | null;
+  expiredAt: Date | null;
+};
+
 describe('API интеграции HR', { concurrent: false }, () => {
   const memory = new MemoryPrisma();
   const webhookCalls: WebhookPostInput[] = [];
+  const ledger: LedgerRow[] = [];
+  const revokedUserIds: string[] = [];
+  const audits: { actorType?: string; actorId?: string | null; action?: string }[] = [];
   let app: NestFastifyApplication;
   let key = '';
 
   beforeAll(async () => {
     memory.seedOrg();
+    const originalUpdate = memory.user.update.bind(memory.user);
+    memory.user.update = (args) => {
+      const data = args.data ?? {};
+      if ('disabledAt' in data) {
+        const row = memory.users.find((user) => user.id === args.where?.id);
+        if (row) {
+          row.disabledAt = data.disabledAt instanceof Date ? data.disabledAt : null;
+        }
+      }
+      return originalUpdate(args);
+    };
+    memory.auditLog.create = (async (args?: { data?: (typeof audits)[number] }) => {
+      if (args?.data) {
+        audits.push(args.data);
+      }
+      return { id: 1n };
+    }) as MemoryPrisma['auditLog']['create'];
+    Object.assign(memory, {
+      $queryRaw: async () => [],
+      authSession: {
+        updateMany: async (args: { where?: { userId?: string } }) => {
+          const userId = args.where?.userId;
+          if (typeof userId === 'string') {
+            revokedUserIds.push(userId);
+          }
+          return { count: 1 };
+        },
+      },
+    });
+    Object.assign(memory.user, {
+      count: async () => 1,
+    });
+    Object.assign(memory.pointLedger, {
+      findMany: async (args: { where?: { userId?: string } }) =>
+        ledger.filter((row) => !args.where?.userId || row.userId === args.where.userId),
+    });
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
       .overrideProvider(PrismaService)
       .useValue(memory)
@@ -314,6 +362,130 @@ describe('API интеграции HR', { concurrent: false }, () => {
     expect(unknown.json()).toMatchObject({ status: 404, code: 'EMPLOYEE_NOT_FOUND' });
   });
 
+  it('уровень — пожизненные очки, баллы — ещё живые', async () => {
+    const hired = await call(
+      app,
+      'PUT',
+      '/api/integration/v1/employees/tab-level-1',
+      {
+        role: 'CONDUCTOR',
+        brigadeCode: '12',
+        depotCode: 'MSK',
+        position: 'Проводник',
+        grade: 'TRAINEE',
+      },
+      key,
+    );
+    const userId = (hired.json() as { userId: string }).userId;
+    const past = new Date('2020-01-01T00:00:00.000Z');
+    const future = new Date('2099-01-01T00:00:00.000Z');
+    ledger.push(
+      { userId, amount: 5000, reason: 'RUN', expiresAt: past, expiredAt: past },
+      { userId, amount: 10, reason: 'RUN', expiresAt: future, expiredAt: null },
+      { userId, amount: 100, reason: 'ADJUST', expiresAt: null, expiredAt: null },
+      { userId, amount: -5000, reason: 'EXPIRE', expiresAt: null, expiredAt: past },
+    );
+    const progress = await call(
+      app,
+      'GET',
+      '/api/integration/v1/employees/tab-level-1/progress',
+      undefined,
+      key,
+    );
+    expect(progress.statusCode).toBe(200);
+    expect(progress.json()).toMatchObject({ points: 10, level: 9 });
+  });
+
+  it('DELETE отключает сотрудника, повтор 204, чужая роль 403, PUT не включает', async () => {
+    const ext = 'tab-fired-1';
+    const hired = await call(
+      app,
+      'PUT',
+      `/api/integration/v1/employees/${ext}`,
+      {
+        role: 'CHIEF',
+        brigadeCode: '12',
+        depotCode: 'MSK',
+        position: 'Начальник поезда',
+        grade: 'CONDUCTOR',
+      },
+      key,
+    );
+    expect(hired.statusCode).toBe(200);
+    const userId = (hired.json() as { userId: string }).userId;
+    const actorId = parseApiKey(key)?.id;
+    const gone = await call(app, 'DELETE', `/api/integration/v1/employees/${ext}`, undefined, key);
+    expect(gone.statusCode).toBe(204);
+    expect(gone.body).toBe('');
+    expect(memory.users.find((user) => user.id === userId)?.disabledAt).toBeInstanceOf(Date);
+    expect(revokedUserIds).toContain(userId);
+    expect(audits).toContainEqual(
+      expect.objectContaining({
+        action: 'user.updated',
+        actorType: 'API_CLIENT',
+        actorId,
+        target: userId,
+      }),
+    );
+    const again = await call(app, 'DELETE', `/api/integration/v1/employees/${ext}`, undefined, key);
+    expect(again.statusCode).toBe(204);
+    expect(revokedUserIds.filter((id) => id === userId)).toHaveLength(1);
+    const missing = await call(
+      app,
+      'DELETE',
+      '/api/integration/v1/employees/tab-no-such',
+      undefined,
+      key,
+    );
+    expect(missing.json()).toMatchObject({ status: 404, code: 'EMPLOYEE_NOT_FOUND' });
+    const revived = await call(
+      app,
+      'PUT',
+      `/api/integration/v1/employees/${ext}`,
+      {
+        role: 'CONDUCTOR',
+        brigadeCode: '12',
+        depotCode: 'MSK',
+        position: 'Проводник',
+        grade: 'TRAINEE',
+      },
+      key,
+    );
+    expect(revived.statusCode).toBe(409);
+    expect(revived.json()).toMatchObject({ code: 'EMPLOYEE_DISABLED' });
+    expect(memory.users.find((user) => user.id === userId)?.role).toBe('CHIEF');
+    expect(memory.users.find((user) => user.id === userId)?.disabledAt).toBeInstanceOf(Date);
+
+    const adminExt = 'tab-admin-kept';
+    const adminHash = extHashOf(adminExt, pepper);
+    memory.users.push({
+      id: randomUUID(),
+      login: loginFromExtHash(adminHash),
+      passwordHash: 'hash',
+      role: 'ADMIN',
+      callsign: 'ADMN',
+      extHash: adminHash,
+      position: 'Администратор',
+      grade: 'INSTRUCTOR',
+      brigadeId: null,
+      mustChangePassword: false,
+      disabledAt: null,
+      createdAt: new Date(),
+      lastRunAt: null,
+      streakDays: 0,
+    });
+    const protectedAdmin = await call(
+      app,
+      'DELETE',
+      `/api/integration/v1/employees/${adminExt}`,
+      undefined,
+      key,
+    );
+    expect(protectedAdmin.statusCode).toBe(403);
+    expect(protectedAdmin.json()).toMatchObject({ code: 'ROLE_ESCALATION' });
+    expect(memory.users.find((user) => user.extHash === adminHash)?.disabledAt).toBeNull();
+  });
+
   it('не создаёт ADMIN/METHODIST и не повышает проводника', async () => {
     const adminRole = await call(
       app,
@@ -464,7 +636,7 @@ describe('API интеграции HR', { concurrent: false }, () => {
         sent?.headers[VSM_SIGNATURE] ?? '',
       ),
     ).toBe(true);
-    expect(sent?.addresses[0]?.address).toBe('203.0.113.10');
+    expect(sent?.addresses[0]?.address).toBe(TEST_WEBHOOK_IP);
     expect(JSON.parse(sent?.body ?? '{}')).toMatchObject({
       event: 'run.recorded',
       data: { userId, callsign: memory.users[0]?.callsign, points: 12 },

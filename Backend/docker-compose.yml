@@ -49,11 +49,11 @@ services:
       PORT: "3000"
       DATABASE_URL: postgresql://vsm:vsm@postgres:5432/vsm
       REDIS_URL: redis://valkey:6379/0
-      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-local-dev-jwt-access-secret-32chars}
-      GAME_TICKET_SECRET: ${GAME_TICKET_SECRET:-local-dev-game-ticket-secret-32ch}
-      GAME_SERVER_TOKEN: ${GAME_SERVER_TOKEN:-local-dev-game-server-token}
-      SEED_ENC_KEY: ${SEED_ENC_KEY:-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef}
-      EXT_ID_PEPPER: ${EXT_ID_PEPPER:-local-dev-ext-id-pepper}
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?задайте JWT_ACCESS_SECRET}
+      GAME_TICKET_SECRET: ${GAME_TICKET_SECRET:?задайте GAME_TICKET_SECRET}
+      GAME_SERVER_TOKEN: ${GAME_SERVER_TOKEN:?задайте GAME_SERVER_TOKEN}
+      SEED_ENC_KEY: ${SEED_ENC_KEY:?задайте SEED_ENC_KEY}
+      EXT_ID_PEPPER: ${EXT_ID_PEPPER:?задайте EXT_ID_PEPPER}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://127.0.0.1:5173}
       PUBLIC_GAME_WS_URL: ${PUBLIC_GAME_WS_URL:-ws://127.0.0.1:3001/game}
       # Образ всегда NODE_ENV=production: false из .env хоста роняет старт.

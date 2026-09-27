@@ -201,7 +201,7 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
   }
 
   /** Локальные подписчики плюс heartbeat. Чужие инстансы приходят через deliverRemote. */
-  stream(userId: string): Observable<MessageEvent> {
+  stream(userId: string, sessionId: string): Observable<MessageEvent> {
     return new Observable((observer) => {
       let subject = this.subjects.get(userId);
       if (!subject) {
@@ -209,14 +209,27 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
         this.subjects.set(userId, subject);
       }
       const live = subject;
+      let stopped = false;
       const subscription = live.subscribe((notice) => {
         observer.next({ type: 'new-notification', data: notice });
       });
       const heartbeat = setInterval(() => {
-        observer.next({ type: 'heartbeat', data: {} });
+        void this.sessionOpen(userId, sessionId)
+          .then((open) => {
+            if (stopped) {
+              return;
+            }
+            if (!open) {
+              observer.complete();
+              return;
+            }
+            observer.next({ type: 'heartbeat', data: {} });
+          })
+          .catch(() => undefined);
       }, HEARTBEAT_MS);
       heartbeat.unref?.();
       return () => {
+        stopped = true;
         clearInterval(heartbeat);
         subscription.unsubscribe();
         if (!live.observed) {
@@ -224,6 +237,20 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
         }
       };
     });
+  }
+
+  /** Access выдан на эту authSession. Отзыв и disabledAt рвут поток, не дожидаясь обрыва TCP. */
+  private async sessionOpen(userId: string, sessionId: string): Promise<boolean> {
+    if (sessionId.length === 0) {
+      return false;
+    }
+    const session = await this.prisma.authSession.findUnique({
+      where: { id: sessionId },
+      select: { userId: true, revokedAt: true, user: { select: { disabledAt: true } } },
+    });
+    return Boolean(
+      session && session.userId === userId && !session.revokedAt && !session.user.disabledAt,
+    );
   }
 
   /** Сообщение Redis pub/sub. Своя публикация уже ушла в Subject — id в seen. */

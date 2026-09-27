@@ -1,8 +1,15 @@
 import { ConflictException, Inject, Injectable } from '@nestjs/common';
+import { activePoints, type LedgerRow, lifetimeLevelPoints } from '../cabinet/points';
 import { Clock } from '../common/clock';
 import { APP_CONFIG, type AppConfig } from '../config/env';
 import type { Prisma } from '../generated/prisma/client';
-import { Competency, type Grade, type Role, RunOutcome } from '../generated/prisma/client';
+import {
+  ActorType,
+  Competency,
+  type Grade,
+  type Role,
+  RunOutcome,
+} from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { RulesService } from '../rules/rules.service';
 import { isUniqueViolation, uniqueFields } from '../users/unique-violation';
@@ -72,8 +79,8 @@ export class EmployeesService {
     if (!user) {
       throw httpError(404, 'Сотрудник не найден', 'EMPLOYEE_NOT_FOUND');
     }
-    const [points, runs, competencies, achievements, promotion] = await Promise.all([
-      this.pointsOf(user.id),
+    const [score, runs, competencies, achievements, promotion] = await Promise.all([
+      this.scoreOf(user.id),
       this.runsOf(user.id),
       this.competenciesOf(user.id),
       this.achievementsOf(user.id),
@@ -82,8 +89,8 @@ export class EmployeesService {
     return {
       callsign: user.callsign,
       grade: user.grade,
-      level: this.rules.levelFor(points).level,
-      points,
+      level: this.rules.levelFor(score.levelPoints).level,
+      points: score.points,
       competencies,
       runs,
       achievements,
@@ -160,18 +167,41 @@ export class EmployeesService {
     return updateEmployee(this.prisma, existing.id, brigadeId, input);
   }
 
-  private async pointsOf(userId: string): Promise<number> {
-    const now = this.clock.now();
-    // Живые очки: строка не погашена и срок ещё не вышел. Иначе cron опоздает и баллы зависнут.
-    const sum = await this.prisma.pointLedger.aggregate({
-      where: {
-        userId,
-        expiredAt: null,
-        OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
-      },
-      _sum: { amount: true },
+  async disable(extId: string, actorId: string): Promise<void> {
+    const hash = extHashOf(extId, this.config.extIdPepper);
+    const user = await this.prisma.user.findUnique({
+      where: { extHash: hash },
+      select: { id: true, role: true, disabledAt: true },
     });
-    return sum._sum.amount ?? 0;
+    if (!user) {
+      throw httpError(404, 'Сотрудник не найден', 'EMPLOYEE_NOT_FOUND');
+    }
+    if (user.role === 'ADMIN' || user.role === 'METHODIST') {
+      throw httpError(403, 'Кадровый ключ не отключает эту роль', 'ROLE_ESCALATION');
+    }
+    if (user.disabledAt) {
+      return;
+    }
+    await this.users.update(
+      user.id,
+      { disabled: true },
+      { id: actorId, type: ActorType.API_CLIENT },
+    );
+  }
+
+  private async scoreOf(userId: string): Promise<{ levelPoints: number; points: number }> {
+    const now = this.clock.now();
+    const rows = await this.prisma.pointLedger.findMany({
+      where: { userId },
+      select: { amount: true, reason: true, expiresAt: true, expiredAt: true },
+    });
+    const ledger: LedgerRow[] = rows.map((row) => ({
+      amount: row.amount,
+      reason: row.reason,
+      expiresAt: row.expiresAt,
+      expiredAt: row.expiredAt,
+    }));
+    return { levelPoints: lifetimeLevelPoints(ledger), points: activePoints(ledger, now) };
   }
 
   private async runsOf(userId: string) {
@@ -251,13 +281,19 @@ async function brigadeOf(db: PlaceDb, input: UpsertEmployee): Promise<string> {
   return brigade.id;
 }
 
-type EmployeeRow = { id: string; login: string; callsign: string; role: Role };
+type EmployeeRow = {
+  id: string;
+  login: string;
+  callsign: string;
+  role: Role;
+  disabledAt: Date | null;
+};
 
 type EmployeeWrite = {
   user: {
     findUnique(args: {
       where: { id: string };
-      select: { id: true; login: true; callsign: true; role: true };
+      select: { id: true; login: true; callsign: true; role: true; disabledAt: true };
     }): Promise<EmployeeRow | null>;
     updateMany(args: {
       where: { id: string; role: Role };
@@ -291,10 +327,13 @@ async function updateEmployee(
 ): Promise<UpsertResult> {
   const existing = await db.user.findUnique({
     where: { id },
-    select: { id: true, login: true, callsign: true, role: true },
+    select: { id: true, login: true, callsign: true, role: true, disabledAt: true },
   });
   if (!existing) {
     throw httpError(404, 'Сотрудник не найден', 'EMPLOYEE_NOT_FOUND');
+  }
+  if (existing.disabledAt) {
+    throw httpError(409, 'Сотрудник отключён', 'EMPLOYEE_DISABLED');
   }
   if (!hrMaySetRole(existing.role, input.role)) {
     throw httpError(403, 'Кадровый ключ не повышает роль', 'ROLE_ESCALATION');

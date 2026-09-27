@@ -55,6 +55,14 @@ Postgres, Valkey, Backend и GameServer портов на хост не публ
 }
 ```
 
+Backend за Caddy видит адрес контейнера прокси, не клиента. В окружении
+сервиса `backend` задайте `TRUST_PROXY` адресом или подсетью Caddy в сети
+compose, например `172.28.0.0/16`, если сеть такая, или конкретный IP сервиса
+`caddy`. `true` и число хопов не подходят: Fastify 5.12 при числе хопов не
+читает `X-Forwarded-For`, и лимит входа 20/мин становится общим. `loopback`
+для этого варианта тоже не подходит: Caddy приходит из соседнего контейнера,
+не с `127.0.0.1`. Пустое значение оставляет адрес сокета.
+
 `/api/*` уводит на Backend и `/api/docs`, и `/api/openapi.json`. Внутренний
 префикс до приложения не доходит. Путь сокета игры — `/game-ws`, как в
 контракте v1. `PUBLIC_GAME_WS_URL` должен совпасть с этим URL
@@ -93,6 +101,9 @@ healthcheck не показывает, кто умер, падение симу�
 
 Значения из `.env.example` только для своей машины. В контуре другие.
 `COOKIE_SECURE=true`, `NODE_ENV=production`, `PUBLIC_GAME_WS_URL` на `wss`.
+Профиль `app` локального compose не подставляет секреты: без
+`JWT_ACCESS_SECRET`, `GAME_TICKET_SECRET`, `GAME_SERVER_TOKEN`, `SEED_ENC_KEY`
+и `EXT_ID_PEPPER` в `.env` рядом с compose `docker compose config` останавливается.
 
 Ротация `GAME_SERVER_TOKEN` и секретов JWT — смена env и рестарт Backend и
 GameServer. Отдельного менеджера секретов заказчик не называл.
