@@ -713,6 +713,42 @@ describe('прогрессия в базе', () => {
     );
   });
 
+  it('утверждение не меняет грейд, если HR уже сменил его', async () => {
+    const { brigade, depot } = await createBrigade();
+    const conductor = await createUser({
+      role: Role.CONDUCTOR,
+      brigadeId: brigade.id,
+      grade: 'CONDUCTOR',
+    });
+    const chief = await createUser({ role: Role.CHIEF, brigadeId: brigade.id });
+    const row = await prisma.promotionRecommendation.create({
+      data: {
+        userId: conductor.id,
+        fromGrade: 'TRAINEE',
+        toGrade: 'CONDUCTOR',
+        reasons: ['Уровень'],
+        status: 'PENDING',
+      },
+    });
+    const chiefView: AuthUser = {
+      id: chief.id,
+      role: Role.CHIEF,
+      brigadeId: brigade.id,
+      depotId: depot.id,
+    };
+    const denied = await inject(app, 'POST', `/api/v1/promotions/${row.id}/decision`, chiefView, {
+      approve: true,
+    });
+    expect(denied.statusCode).toBe(409);
+    expect(denied.json()).toMatchObject({ code: 'GRADE_CHANGED' });
+    expect(
+      (await prisma.promotionRecommendation.findUniqueOrThrow({ where: { id: row.id } })).status,
+    ).toBe('PENDING');
+    expect((await prisma.user.findUniqueOrThrow({ where: { id: conductor.id } })).grade).toBe(
+      'CONDUCTOR',
+    );
+  });
+
 });
 
 type HttpResult = {

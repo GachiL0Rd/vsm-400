@@ -142,6 +142,19 @@ export class PromotionsService {
 
     const now = this.clock.now();
     await this.prisma.$transaction(async (tx) => {
+      if (approve) {
+        const moved = await tx.user.updateMany({
+          where: { id: current.userId, grade: current.fromGrade },
+          data: { grade: current.toGrade },
+        });
+        // Откат транзакции оставляет рекомендацию PENDING: грейд уже не тот, решение не записано.
+        if (moved.count !== 1) {
+          throw new ConflictException({
+            message: 'Грейд уже изменился',
+            code: 'GRADE_CHANGED',
+          });
+        }
+      }
       const updated = await tx.promotionRecommendation.updateMany({
         where: { id, status: PromotionStatus.PENDING },
         data: {
@@ -154,12 +167,6 @@ export class PromotionsService {
         throw new ConflictException({
           message: 'Рекомендация уже рассмотрена',
           code: 'PROMOTION_DECIDED',
-        });
-      }
-      if (approve) {
-        await tx.user.update({
-          where: { id: current.userId },
-          data: { grade: current.toGrade },
         });
       }
       await tx.auditLog.create({
