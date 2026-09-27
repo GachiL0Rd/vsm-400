@@ -26,6 +26,12 @@ describe('rules.yaml', () => {
     expect(rules.weakScore()).toBe(50);
     expect(rules.failScore()).toBe(30);
     expect(rules.challengePoints()).toBe(40);
+    expect(rules.llm()).toEqual({
+      autoApprove: true,
+      poolTarget: 8,
+      maxUses: 25,
+      liveTimeoutMs: 8000,
+    });
     expect(rules.gradeRules().map((rule) => [rule.from, rule.to])).toEqual([
       ['TRAINEE', 'CONDUCTOR'],
       ['CONDUCTOR', 'CONDUCTOR_SENIOR'],
