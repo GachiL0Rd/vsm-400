@@ -1,4 +1,9 @@
-import { type ClientCommand, GAME_PROTOCOL_VERSION, type PublicTargetRef } from '../../common';
+import {
+  type ClientCommand,
+  GAME_PROTOCOL_VERSION,
+  type InvokeActionCommand,
+  type PublicTargetRef,
+} from '../../common';
 import type { PresentationStore } from '../presentation/presentation-store';
 
 export class InteractionController {
@@ -34,7 +39,7 @@ export class InteractionController {
     });
   }
 
-  invokeAction(actionHandle: string): void {
+  invokeAction(actionHandle: string, input?: InvokeActionCommand['input']): void {
     const revision = this.store.snapshot.revision;
     const offer = this.store.snapshot.currentOffer;
     if (revision === null || offer === null || offer.revision !== revision) return;
@@ -45,6 +50,7 @@ export class InteractionController {
       requestId: this.nextRequestId(),
       knownRevision: revision,
       actionHandle,
+      ...(input === undefined ? {} : { input }),
     });
   }
 

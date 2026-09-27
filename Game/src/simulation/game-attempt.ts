@@ -23,6 +23,10 @@ import {
 } from './entity-store';
 import { EventQueue, type ScheduledEvent } from './event-queue';
 import {
+  type AcceptanceJournalEdit,
+  type AcceptanceJournalState,
+  acceptanceJournalHasCriticalProblem,
+  acceptanceJournalIsComplete,
   createItemStore,
   type ItemEvent,
   type ItemSnapshot,
@@ -106,6 +110,8 @@ export class GameAttempt {
   private readonly platformRegionIds: ReadonlySet<string>;
   private readonly fixedRegionIds: readonly string[];
   private phaseState: AttemptPhase = { kind: 'pre-departure' };
+  private preDepartureReady = false;
+  private routeEndAt: SimTimeUs | null = null;
   private departureAt: SimTimeUs | null = null;
   private terminationState: AttemptTermination | null = null;
 
@@ -205,7 +211,7 @@ export class GameAttempt {
       if (requested !== this.time) throw new RangeError('Finished attempt cannot advance');
       return;
     }
-    const capped = Math.min(requested, this.scenario.normalEndTimeUs);
+    const capped = this.routeEndAt === null ? requested : Math.min(requested, this.routeEndAt);
     this.queue.advanceTo(
       capped,
       (at) => this.spatial.materialize(at),
@@ -235,6 +241,32 @@ export class GameAttempt {
 
   playerPosition(): SpatialSample {
     return this.spatial.positionAt(this.playerId, this.time);
+  }
+
+  takeJournal(): AcceptanceJournalState {
+    this.requirePreDeparture();
+    return this.items.takeJournal(this.playerId);
+  }
+
+  editJournal(edit: AcceptanceJournalEdit): AcceptanceJournalState {
+    this.requirePreDeparture();
+    return this.items.editJournal(this.playerId, edit);
+  }
+
+  returnJournal(): AcceptanceJournalState {
+    this.requirePreDeparture();
+    const current = this.items.snapshot().journal;
+    requireJournalReadyForSubmission(current);
+    const returned = this.items.returnJournal(this.playerId);
+    if (acceptanceJournalHasCriticalProblem(returned)) {
+      this.signal('critical-predeparture-fault');
+      return returned;
+    }
+    this.preDepartureReady = true;
+    if (this.time >= this.scenario.definition.preDeparture.durationUs) {
+      this.enterOriginStop(this.time);
+    }
+    return returned;
   }
 
   takeDrink(): void {
@@ -306,6 +338,12 @@ export class GameAttempt {
   }
 
   private enterOriginStop(at: SimTimeUs): void {
+    if (this.phaseState.kind !== 'pre-departure' || !this.preDepartureReady) return;
+    if (this.routeEndAt === null) {
+      const remainingAfterPreDeparture =
+        this.scenario.normalEndTimeUs - this.scenario.definition.preDeparture.durationUs;
+      this.routeEndAt = addTime(at, assertSimTimeUs(remainingAfterPreDeparture));
+    }
     const origin = this.scenario.definition.originStop;
     if (origin === undefined) {
       this.beginTravel(0, at);
@@ -456,9 +494,23 @@ export class GameAttempt {
     return stop;
   }
 
+  private requirePreDeparture(): void {
+    this.requireRunning();
+    if (this.phaseState.kind !== 'pre-departure') {
+      throw new RangeError('Acceptance journal is only available during pre-departure');
+    }
+  }
+
   private requireRunning(): void {
     if (this.terminationState !== null) throw new RangeError('Attempt is finished');
   }
+}
+
+function requireJournalReadyForSubmission(journal: AcceptanceJournalState): void {
+  if (!acceptanceJournalIsComplete(journal)) {
+    throw new RangeError('Acceptance journal checklist is incomplete');
+  }
+  if (!journal.accepted) throw new RangeError('Acceptance journal is not accepted');
 }
 
 function itemConfig(level: LoadedLevel, scenario: LoadedScenario): ItemWorldConfig {

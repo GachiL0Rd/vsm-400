@@ -9,6 +9,24 @@ function follow(attempt: GameAttempt, edgeIds: readonly string[]): void {
   }
 }
 
+function completeJournal(
+  attempt: GameAttempt,
+  overrides: Partial<Parameters<GameAttempt['editJournal']>[0]> = {},
+): void {
+  attempt.takeJournal();
+  attempt.editJournal({
+    communication: 'ok',
+    extinguisher: 'ok',
+    climate: 'ok',
+    emergencyBrake: 'ok',
+    sanitation: 'clean',
+    note: '',
+    accepted: true,
+    ...overrides,
+  });
+  attempt.returnJournal();
+}
+
 describe('GameAttempt', () => {
   it('runs the baseline scenario from pre-departure through the normal route end', () => {
     const attempt = new GameAttempt({ rootSeed: 17 });
@@ -17,6 +35,7 @@ describe('GameAttempt', () => {
     expect(attempt.snapshot().entities.map((entity) => entity.id)).toEqual(['player']);
     expect(attempt.snapshot().activeRegionIds).toEqual(['carriage-main', 'platform-origin']);
 
+    completeJournal(attempt);
     attempt.advanceTo(secondsToSimTimeUs(5 * 60));
     expect(attempt.phase).toEqual({ kind: 'origin-stop' });
     expect(attempt.snapshot().entities.map((entity) => entity.id)).toEqual([
@@ -61,6 +80,7 @@ describe('GameAttempt', () => {
 
   it('resolves a waiting passenger action through the authoritative item event', () => {
     const attempt = new GameAttempt({ rootSeed: 4 });
+    completeJournal(attempt);
     attempt.advanceTo(secondsToSimTimeUs(5 * 60));
 
     const passenger = attempt.entities.get('passenger-3');
@@ -93,6 +113,81 @@ describe('GameAttempt', () => {
     expect(completesAt).not.toBeNull();
     attempt.advanceTo(completesAt ?? attempt.time);
     expect(attempt.entities.get('passenger-3').traits).not.toContain('thirsty');
+  });
+
+  it('gates departure on a completed and returned acceptance journal', () => {
+    const attempt = new GameAttempt({ rootSeed: 2 });
+
+    attempt.advanceTo(secondsToSimTimeUs(5 * 60));
+    expect(attempt.phase).toEqual({ kind: 'pre-departure' });
+    expect(attempt.snapshot().entities.map((entity) => entity.id)).toEqual(['player']);
+
+    attempt.takeJournal();
+    attempt.editJournal({
+      communication: 'ok',
+      extinguisher: 'ok',
+      climate: 'ok',
+      emergencyBrake: 'ok',
+      sanitation: 'issue',
+      note: 'minor cleaning issue',
+      accepted: true,
+    });
+    attempt.returnJournal();
+
+    expect(attempt.phase).toEqual({ kind: 'origin-stop' });
+    expect(attempt.snapshot().items.journal).toMatchObject({
+      location: 'anchor',
+      submitted: true,
+      sanitation: 'issue',
+    });
+    expect(attempt.snapshot().entities.map((entity) => entity.id)).toEqual([
+      'passenger-1',
+      'passenger-2',
+      'passenger-3',
+      'player',
+    ]);
+  });
+
+  it('can complete a delayed acceptance and shifts the remaining route from the actual handover time', () => {
+    const attempt = new GameAttempt({ rootSeed: 9 });
+    const delayedAt = secondsToSimTimeUs(6 * 60);
+    attempt.advanceTo(delayedAt);
+    expect(attempt.phase).toEqual({ kind: 'pre-departure' });
+
+    completeJournal(attempt);
+    expect(attempt.phase).toEqual({ kind: 'origin-stop' });
+
+    const shiftedEnd =
+      attempt.scenario.normalEndTimeUs +
+      (delayedAt - attempt.scenario.definition.preDeparture.durationUs);
+    attempt.advanceTo(shiftedEnd);
+    expect(attempt.termination).toEqual({ kind: 'route-completed', at: shiftedEnd });
+  });
+
+  it('rejects an incomplete journal and terminates on a declared critical pre-departure fault', () => {
+    const attempt = new GameAttempt({ rootSeed: 3 });
+    attempt.takeJournal();
+    expect(() => attempt.returnJournal()).toThrow(/checklist is incomplete/);
+    expect(attempt.snapshot().items.journal.location).toBe('held');
+
+    attempt.editJournal({
+      communication: 'ok',
+      extinguisher: 'problem',
+      climate: 'ok',
+      emergencyBrake: 'ok',
+      sanitation: 'clean',
+      note: 'pressure gauge outside normal range',
+      accepted: true,
+    });
+    attempt.returnJournal();
+
+    expect(attempt.termination).toEqual({
+      kind: 'terminal-rule',
+      at: 0,
+      ruleId: 'predeparture-critical',
+      outcomeId: 'wagon-unserviceable',
+    });
+    expect(attempt.snapshot().items.journal.submitted).toBe(true);
   });
 
   it('keeps terminal-rule outcome separate from route completion', () => {

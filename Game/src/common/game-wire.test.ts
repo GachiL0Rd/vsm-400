@@ -53,8 +53,27 @@ describe('common game wire schemas', () => {
         type: 'action-offer',
         requestId: 'query-1',
         revision: 2,
-        target: { kind: 'object', objectId: 'service-point' },
-        actions: [],
+        target: { kind: 'entity', entityId: 'player' },
+        actions: [
+          {
+            handle: 'action/2/0',
+            uiKind: 'form',
+            label: 'Edit journal',
+            target: { kind: 'entity', entityId: 'player' },
+            form: {
+              kind: 'acceptance-journal',
+              value: {
+                communication: 'unset',
+                extinguisher: 'unset',
+                climate: 'unset',
+                emergencyBrake: 'unset',
+                sanitation: 'unset',
+                note: '',
+                accepted: false,
+              },
+            },
+          },
+        ],
       }).success,
     ).toBe(true);
     expect(

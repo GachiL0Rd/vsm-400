@@ -1,4 +1,5 @@
 import type {
+  AcceptanceJournalInput,
   ActionOfferMessage,
   AvailableActionView,
   CommandResultMessage,
@@ -14,21 +15,33 @@ import type {
   QueryActionsCommand,
   SessionModeView,
 } from '../common/game-wire';
-import { GAME_PROTOCOL_VERSION } from '../common/game-wire';
+import { acceptanceJournalInputSchema, GAME_PROTOCOL_VERSION } from '../common/game-wire';
 import type { EntityId, EntityState } from '../simulation/entity-store';
 import type { GameAttempt, GameAttemptSnapshot } from '../simulation/game-attempt';
-import type { ConsumableKind, ItemSnapshot } from '../simulation/item-store';
+import {
+  type AcceptanceJournalState,
+  acceptanceJournalIsComplete,
+  type ConsumableKind,
+  type ItemSnapshot,
+} from '../simulation/item-store';
 import type { SimTimeUs } from '../simulation/sim-time';
 
 export type RecordedGameplayCommand =
   | { readonly kind: 'move'; readonly edgeId: string }
   | { readonly kind: 'take-consumable'; readonly itemKind: ConsumableKind }
-  | { readonly kind: 'give-held-item'; readonly targetId: EntityId };
+  | { readonly kind: 'give-held-item'; readonly targetId: EntityId }
+  | { readonly kind: 'take-journal' }
+  | { readonly kind: 'edit-journal'; readonly value: AcceptanceJournalInput }
+  | { readonly kind: 'return-journal' };
+
+type RuntimeOperation =
+  | Exclude<RecordedGameplayCommand, { readonly kind: 'edit-journal' }>
+  | { readonly kind: 'edit-journal-form' };
 
 interface RuntimeAction {
   readonly sortKey: string;
   readonly view: Omit<AvailableActionView, 'handle'>;
-  readonly operation: RecordedGameplayCommand;
+  readonly operation: RuntimeOperation;
 }
 
 export interface PublicGameProjectionOptions {
@@ -58,7 +71,7 @@ export class PublicGameProjection {
 
   private revisionValue = 0;
   private lastState: PublicGameState | null = null;
-  private actionTable = new Map<string, RecordedGameplayCommand>();
+  private actionTable = new Map<string, RuntimeOperation>();
   private offerSequence = 0;
 
   constructor(options: PublicGameProjectionOptions) {
@@ -173,12 +186,22 @@ export class PublicGameProjection {
     if (command.knownRevision !== this.revisionValue) {
       return { result: rejected(command.requestId, this.revisionValue, 'stale-revision') };
     }
-    if (command.input !== undefined) {
-      return { result: rejected(command.requestId, this.revisionValue, 'invalid-input') };
-    }
-    const operation = this.actionTable.get(command.actionHandle);
-    if (operation === undefined) {
+    const template = this.actionTable.get(command.actionHandle);
+    if (template === undefined) {
       return { result: rejected(command.requestId, this.revisionValue, 'unknown-action') };
+    }
+    let operation: RecordedGameplayCommand;
+    try {
+      operation = resolveOperation(template, command.input);
+    } catch (error) {
+      return {
+        result: rejected(
+          command.requestId,
+          this.revisionValue,
+          'invalid-input',
+          errorMessage(error),
+        ),
+      };
     }
 
     return this.applyRecordedCommand(command.requestId, operation, clock);
@@ -249,6 +272,15 @@ export class PublicGameProjection {
         return;
       case 'give-held-item':
         this.attempt.giveHeldItem(operation.targetId);
+        return;
+      case 'take-journal':
+        this.attempt.takeJournal();
+        return;
+      case 'edit-journal':
+        this.attempt.editJournal(operation.value);
+        return;
+      case 'return-journal':
+        this.attempt.returnJournal();
         return;
     }
   }
@@ -347,7 +379,9 @@ function collectActionsForTarget(
   if (snapshot.termination !== null) return [];
   const player = snapshot.entities.find((entity) => entity.id === attempt.playerId);
   if (player === undefined || player.position.kind !== 'cell') return [];
-  if (target.kind === 'object') return collectObjectActions(attempt, player, target.objectId);
+  if (target.kind === 'object') {
+    return collectObjectActions(attempt, snapshot, player, target.objectId);
+  }
   if (target.kind === 'entity')
     return collectEntityActions(attempt, snapshot, player, target.entityId);
   return [];
@@ -355,12 +389,30 @@ function collectActionsForTarget(
 
 function collectObjectActions(
   attempt: GameAttempt,
+  snapshot: GameAttemptSnapshot,
   player: EntityState,
   objectId: string,
 ): RuntimeAction[] {
   const object = attempt.level.definition.objects.find((candidate) => candidate.id === objectId);
-  if (object === undefined || object.kind !== 'service-point') return [];
-  if (player.position.kind !== 'cell' || player.position.cellId !== object.cellId) return [];
+  if (object === undefined || player.position.kind !== 'cell') return [];
+  if (object.kind === 'acceptance-journal') {
+    if (snapshot.phase.kind !== 'pre-departure') return [];
+    if (snapshot.items.journal.location !== 'anchor' || snapshot.items.journal.submitted) return [];
+    if (player.position.cellId !== object.cellId || player.heldItemId !== undefined) return [];
+    return [
+      {
+        sortKey: 'journal/take',
+        view: {
+          uiKind: 'interaction',
+          label: 'Взять журнал приёмки',
+          target: { kind: 'object', objectId },
+        },
+        operation: { kind: 'take-journal' },
+      },
+    ];
+  }
+  if (object.kind !== 'service-point') return [];
+  if (player.position.cellId !== object.cellId) return [];
   if (player.heldItemId !== undefined) return [];
   const target = { kind: 'object' as const, objectId };
   return [
@@ -383,6 +435,7 @@ function collectEntityActions(
   player: EntityState,
   targetId: EntityId,
 ): RuntimeAction[] {
+  if (targetId === player.id) return collectPlayerActions(snapshot, player);
   if (player.heldItemId === undefined || player.position.kind !== 'cell') return [];
   const target = snapshot.entities.find((entity) => entity.id === targetId);
   if (target?.kind !== 'passenger' || target.position.kind !== 'cell') return [];
@@ -401,6 +454,58 @@ function collectEntityActions(
       operation: { kind: 'give-held-item', targetId: target.id },
     },
   ];
+}
+
+function collectPlayerActions(snapshot: GameAttemptSnapshot, player: EntityState): RuntimeAction[] {
+  if (snapshot.phase.kind !== 'pre-departure' || player.heldItemId !== snapshot.items.journal.id) {
+    return [];
+  }
+  const target = { kind: 'entity' as const, entityId: player.id };
+  const actions: RuntimeAction[] = [
+    {
+      sortKey: 'journal/edit',
+      view: {
+        uiKind: 'form',
+        label: 'Редактировать журнал приёмки',
+        target,
+        form: { kind: 'acceptance-journal', value: journalInput(snapshot.items.journal) },
+      },
+      operation: { kind: 'edit-journal-form' },
+    },
+  ];
+  if (
+    player.position.kind === 'cell' &&
+    player.position.cellId === snapshot.items.journal.homeCellId &&
+    snapshot.items.journal.accepted &&
+    acceptanceJournalIsComplete(snapshot.items.journal)
+  ) {
+    actions.push({
+      sortKey: 'journal/return',
+      view: { uiKind: 'interaction', label: 'Сдать журнал приёмки', target },
+      operation: { kind: 'return-journal' },
+    });
+  }
+  return actions;
+}
+
+function journalInput(journal: AcceptanceJournalState): AcceptanceJournalInput {
+  return {
+    communication: journal.communication,
+    extinguisher: journal.extinguisher,
+    climate: journal.climate,
+    emergencyBrake: journal.emergencyBrake,
+    sanitation: journal.sanitation,
+    note: journal.note,
+    accepted: journal.accepted,
+  };
+}
+
+function resolveOperation(template: RuntimeOperation, input: unknown): RecordedGameplayCommand {
+  if (template.kind === 'edit-journal-form') {
+    return { kind: 'edit-journal', value: acceptanceJournalInputSchema.parse(input) };
+  }
+  if (input !== undefined) throw new RangeError('This action does not accept input');
+  return template;
 }
 
 function withinInteractionRange(

@@ -178,6 +178,118 @@ describe('game server protocol integration', () => {
     }
   });
 
+  it('round-trips the acceptance journal form through the real socket', async () => {
+    const host = new GameSessionHost({
+      platformGateway: new MockPlatformGateway({
+        attemptId: 'attempt-journal',
+        gameLevelId: 'vsm-baseline-01',
+        mode: mockMode('live'),
+      }),
+      contentRegistry: new BaselineContentRegistry(),
+      resumeTokens: new InMemoryResumeTokenRegistry(),
+      disconnectDebounceMs: 1_000,
+      reconnectGraceMs: 30_000,
+    });
+    const app = createGameHttpServer(
+      parseServerConfig({ GAME_SERVER_PORT: '4174' }),
+      new CommonGameProtocolAdapter({ host }),
+    );
+    await app.listen(0);
+    const address = app.server.address() as AddressInfo;
+    const socket = new WebSocket(`ws://127.0.0.1:${address.port}/game-ws`);
+
+    try {
+      await open(socket);
+      const ready = await authenticate(socket, 'hello-journal');
+      let revision = ready.snapshot.state.revision;
+
+      const takeOfferPromise = nextMessage(socket);
+      socket.send(
+        JSON.stringify({
+          protocolVersion: GAME_PROTOCOL_VERSION,
+          type: 'query-actions',
+          requestId: 'query-journal',
+          knownRevision: revision,
+          target: { kind: 'object', objectId: 'acceptance-journal' },
+        }),
+      );
+      const takeOffer = expectType(await takeOfferPromise, 'action-offer');
+      const takeHandle = takeOffer.actions[0]?.handle;
+      if (takeHandle === undefined) throw new Error('Expected take journal action');
+
+      const takeResultPromise = nextMessages(socket, 2);
+      socket.send(
+        JSON.stringify({
+          protocolVersion: GAME_PROTOCOL_VERSION,
+          type: 'invoke-action',
+          requestId: 'take-journal',
+          knownRevision: revision,
+          actionHandle: takeHandle,
+        }),
+      );
+      const [, takeDeltaRaw] = await takeResultPromise;
+      revision = expectType(takeDeltaRaw, 'delta').revision;
+
+      const formOfferPromise = nextMessage(socket);
+      socket.send(
+        JSON.stringify({
+          protocolVersion: GAME_PROTOCOL_VERSION,
+          type: 'query-actions',
+          requestId: 'query-player',
+          knownRevision: revision,
+          target: { kind: 'entity', entityId: 'player' },
+        }),
+      );
+      const formOffer = expectType(await formOfferPromise, 'action-offer');
+      const formAction = formOffer.actions.find(
+        (action) => action.form?.kind === 'acceptance-journal',
+      );
+      if (formAction === undefined) throw new Error('Expected journal form action');
+      expect(formAction.form?.value).toMatchObject({ communication: 'unset', accepted: false });
+
+      const editResultPromise = nextMessages(socket, 2);
+      socket.send(
+        JSON.stringify({
+          protocolVersion: GAME_PROTOCOL_VERSION,
+          type: 'invoke-action',
+          requestId: 'edit-journal',
+          knownRevision: revision,
+          actionHandle: formAction.handle,
+          input: {
+            communication: 'ok',
+            extinguisher: 'ok',
+            climate: 'ok',
+            emergencyBrake: 'ok',
+            sanitation: 'clean',
+            note: '',
+            accepted: true,
+          },
+        }),
+      );
+      const [, editDeltaRaw] = await editResultPromise;
+      revision = expectType(editDeltaRaw, 'delta').revision;
+
+      const returnOfferPromise = nextMessage(socket);
+      socket.send(
+        JSON.stringify({
+          protocolVersion: GAME_PROTOCOL_VERSION,
+          type: 'query-actions',
+          requestId: 'query-return',
+          knownRevision: revision,
+          target: { kind: 'entity', entityId: 'player' },
+        }),
+      );
+      const returnOffer = expectType(await returnOfferPromise, 'action-offer');
+      const returnAction = returnOffer.actions.find(
+        (action) => action.label === 'Сдать журнал приёмки',
+      );
+      expect(returnAction).toBeDefined();
+    } finally {
+      socket.close();
+      await app.close();
+    }
+  });
+
   it('covers hello, movement, resync, action query and invocation through the real socket', async () => {
     const host = new GameSessionHost({
       platformGateway: new MockPlatformGateway({

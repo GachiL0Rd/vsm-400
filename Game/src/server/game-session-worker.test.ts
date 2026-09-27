@@ -78,6 +78,20 @@ async function flush(): Promise<void> {
   await new Promise<void>((resolve) => setTimeout(resolve, 0));
 }
 
+function completeJournal(attempt: GameAttempt): void {
+  attempt.takeJournal();
+  attempt.editJournal({
+    communication: 'ok',
+    extinguisher: 'ok',
+    climate: 'ok',
+    emergencyBrake: 'ok',
+    sanitation: 'clean',
+    note: '',
+    accepted: true,
+  });
+  attempt.returnJournal();
+}
+
 class FailOncePlatformGateway implements PlatformGateway {
   finishAttempts = 0;
 
@@ -205,6 +219,7 @@ describe('GameSessionWorker', () => {
   it('advances scenario state from the server loop and publishes only meaningful public deltas', () => {
     const runtime = new FakeRuntime();
     const attempt = new GameAttempt({ rootSeed: 7 });
+    completeJournal(attempt);
     const { value } = worker(runtime, attempt, { maxCatchUpMs: 10 * 60 * 1_000 });
     const publications: ServerMessage[] = [];
     value.subscribePublications((message) => publications.push(message));
@@ -264,6 +279,7 @@ describe('GameSessionWorker', () => {
   it('automatically finalizes a terminal attempt exactly once and publishes finishing/finished', async () => {
     const runtime = new FakeRuntime();
     const attempt = new GameAttempt({ rootSeed: 12 });
+    completeJournal(attempt);
     const { value, gateway } = worker(runtime, attempt, {
       maxCatchUpMs: attempt.scenario.normalEndTimeUs / 1_000 + 1_000,
     });

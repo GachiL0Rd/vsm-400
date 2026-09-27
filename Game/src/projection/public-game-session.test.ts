@@ -44,6 +44,68 @@ function moveToServicePoint(projection: PublicGameProjection): void {
   }
 }
 
+function completeJournal(projection: PublicGameProjection): void {
+  const takeOffer = projection.queryActions({
+    protocolVersion: GAME_PROTOCOL_VERSION,
+    type: 'query-actions',
+    requestId: 'query-journal',
+    knownRevision: projection.revision,
+    target: { kind: 'object', objectId: 'acceptance-journal' },
+  });
+  const take = takeOffer.actions.find((action) => action.label === 'Взять журнал приёмки');
+  const taken = projection.invoke({
+    protocolVersion: GAME_PROTOCOL_VERSION,
+    type: 'invoke-action',
+    requestId: 'take-journal',
+    knownRevision: projection.revision,
+    actionHandle: take?.handle ?? 'missing',
+  });
+  if (taken.result.status !== 'accepted') throw new Error('Journal take was rejected');
+
+  const editOffer = projection.queryActions({
+    protocolVersion: GAME_PROTOCOL_VERSION,
+    type: 'query-actions',
+    requestId: 'query-self',
+    knownRevision: projection.revision,
+    target: { kind: 'entity', entityId: 'player' },
+  });
+  const edit = editOffer.actions.find((action) => action.uiKind === 'form');
+  const edited = projection.invoke({
+    protocolVersion: GAME_PROTOCOL_VERSION,
+    type: 'invoke-action',
+    requestId: 'edit-journal',
+    knownRevision: projection.revision,
+    actionHandle: edit?.handle ?? 'missing',
+    input: {
+      communication: 'ok',
+      extinguisher: 'ok',
+      climate: 'ok',
+      emergencyBrake: 'ok',
+      sanitation: 'clean',
+      note: '',
+      accepted: true,
+    },
+  });
+  if (edited.result.status !== 'accepted') throw new Error('Journal edit was rejected');
+
+  const returnOffer = projection.queryActions({
+    protocolVersion: GAME_PROTOCOL_VERSION,
+    type: 'query-actions',
+    requestId: 'query-self-return',
+    knownRevision: projection.revision,
+    target: { kind: 'entity', entityId: 'player' },
+  });
+  const submit = returnOffer.actions.find((action) => action.label === 'Сдать журнал приёмки');
+  const returned = projection.invoke({
+    protocolVersion: GAME_PROTOCOL_VERSION,
+    type: 'invoke-action',
+    requestId: 'return-journal',
+    knownRevision: projection.revision,
+    actionHandle: submit?.handle ?? 'missing',
+  });
+  if (returned.result.status !== 'accepted') throw new Error('Journal return was rejected');
+}
+
 describe('PublicGameProjection', () => {
   it('projects only observable state and validates the snapshot schema', () => {
     const projection = createProjection();
@@ -79,18 +141,101 @@ describe('PublicGameProjection', () => {
   it('produces a delta when public state changes', () => {
     const projection = createProjection();
     projection.snapshot();
+    completeJournal(projection);
+    const beforeRevision = projection.revision;
     const update = projection.advanceTo(secondsToSimTimeUs(5 * 60));
 
     expect(update.type).toBe('delta');
     if (update.type !== 'delta') throw new Error('Expected delta');
     expect(gameDeltaSchema.parse(update)).toEqual(update);
-    expect(update.baseRevision).toBe(0);
-    expect(update.revision).toBe(1);
+    expect(update.baseRevision).toBe(beforeRevision);
+    expect(update.revision).toBe(beforeRevision + 1);
     expect(update.changes.phase).toEqual({ kind: 'origin-stop' });
     expect(update.changes.entities?.upsert.map((entity) => entity.id)).toEqual([
       'passenger-1',
       'passenger-2',
       'passenger-3',
+    ]);
+  });
+
+  it('exposes the acceptance journal as take, self-form edit, and return actions', () => {
+    const projection = createProjection();
+    projection.snapshot();
+
+    const takeOffer = projection.queryActions({
+      protocolVersion: GAME_PROTOCOL_VERSION,
+      type: 'query-actions',
+      requestId: 'journal-take-offer',
+      knownRevision: projection.revision,
+      target: { kind: 'object', objectId: 'acceptance-journal' },
+    });
+    expect(takeOffer.actions.map((action) => action.label)).toEqual(['Взять журнал приёмки']);
+    const take = projection.invoke({
+      protocolVersion: GAME_PROTOCOL_VERSION,
+      type: 'invoke-action',
+      requestId: 'journal-take',
+      knownRevision: projection.revision,
+      actionHandle: takeOffer.actions[0]?.handle ?? 'missing',
+    });
+    expect(take.result.status).toBe('accepted');
+    expect(take.delta?.changes.entities?.upsert[0]?.heldItem?.visualId).toBe(
+      'item.acceptance-journal',
+    );
+
+    const selfOffer = projection.queryActions({
+      protocolVersion: GAME_PROTOCOL_VERSION,
+      type: 'query-actions',
+      requestId: 'journal-self',
+      knownRevision: projection.revision,
+      target: { kind: 'entity', entityId: 'player' },
+    });
+    const edit = selfOffer.actions.find((action) => action.uiKind === 'form');
+    expect(edit).toMatchObject({
+      label: 'Редактировать журнал приёмки',
+      form: {
+        kind: 'acceptance-journal',
+        value: { communication: 'unset', sanitation: 'unset', accepted: false },
+      },
+    });
+
+    const invalid = projection.invoke({
+      protocolVersion: GAME_PROTOCOL_VERSION,
+      type: 'invoke-action',
+      requestId: 'journal-invalid',
+      knownRevision: projection.revision,
+      actionHandle: edit?.handle ?? 'missing',
+      input: { accepted: true },
+    });
+    expect(invalid.result).toMatchObject({ status: 'rejected', code: 'invalid-input' });
+
+    const edited = projection.invoke({
+      protocolVersion: GAME_PROTOCOL_VERSION,
+      type: 'invoke-action',
+      requestId: 'journal-edit',
+      knownRevision: projection.revision,
+      actionHandle: edit?.handle ?? 'missing',
+      input: {
+        communication: 'ok',
+        extinguisher: 'ok',
+        climate: 'ok',
+        emergencyBrake: 'ok',
+        sanitation: 'issue',
+        note: 'clean before boarding',
+        accepted: true,
+      },
+    });
+    expect(edited.result.status).toBe('accepted');
+
+    const returnOffer = projection.queryActions({
+      protocolVersion: GAME_PROTOCOL_VERSION,
+      type: 'query-actions',
+      requestId: 'journal-return-offer',
+      knownRevision: projection.revision,
+      target: { kind: 'entity', entityId: 'player' },
+    });
+    expect(returnOffer.actions.map((action) => action.label)).toEqual([
+      'Редактировать журнал приёмки',
+      'Сдать журнал приёмки',
     ]);
   });
 
@@ -116,6 +261,7 @@ describe('PublicGameProjection', () => {
     const projection = createProjection();
     const attempt = projection.attempt;
     projection.snapshot();
+    completeJournal(projection);
     attempt.advanceTo(secondsToSimTimeUs(5 * 60));
     moveToServicePoint(projection);
 
@@ -161,6 +307,7 @@ describe('PublicGameProjection', () => {
     const projection = createProjection();
     const attempt = projection.attempt;
     projection.snapshot();
+    completeJournal(projection);
     attempt.advanceTo(secondsToSimTimeUs(5 * 60));
     moveToServicePoint(projection);
     const serviceOffer = projection.queryActions({

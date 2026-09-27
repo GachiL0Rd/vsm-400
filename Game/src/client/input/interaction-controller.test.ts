@@ -52,4 +52,68 @@ describe('InteractionController', () => {
     ]);
     expect(store.snapshot.revision).toBe(3);
   });
+
+  it('passes structured form input through invoke-action unchanged', () => {
+    const sent: ClientCommand[] = [];
+    const store = new PresentationStore({ send: () => undefined, nextRequestId: () => 'unused' });
+    store.apply(
+      gameSnapshotSchema.parse({
+        protocolVersion: GAME_PROTOCOL_VERSION,
+        type: 'snapshot',
+        state: {
+          attemptId: 'a1',
+          revision: 1,
+          timeUs: 0,
+          clock: { timeScale: 1, paused: false },
+          mode: { kind: 'live' },
+          phase: { kind: 'pre-departure' },
+          termination: null,
+          activeRegionIds: [],
+          world: { regions: [], cells: [], edges: [], objects: [] },
+          entities: [],
+        },
+      }),
+    );
+    store.apply({
+      protocolVersion: GAME_PROTOCOL_VERSION,
+      type: 'action-offer',
+      requestId: 'q1',
+      revision: 1,
+      target: { kind: 'entity', entityId: 'player' },
+      actions: [
+        {
+          handle: 'journal-form',
+          uiKind: 'form',
+          label: 'Edit',
+          target: { kind: 'entity', entityId: 'player' },
+          form: {
+            kind: 'acceptance-journal',
+            value: {
+              communication: 'unset',
+              extinguisher: 'unset',
+              climate: 'unset',
+              emergencyBrake: 'unset',
+              sanitation: 'unset',
+              note: '',
+              accepted: false,
+            },
+          },
+        },
+      ],
+    });
+    const interactions = new InteractionController(store, (command) => sent.push(command));
+    const input = {
+      communication: 'ok' as const,
+      extinguisher: 'ok' as const,
+      climate: 'ok' as const,
+      emergencyBrake: 'ok' as const,
+      sanitation: 'clean' as const,
+      note: '',
+      accepted: true,
+    };
+
+    interactions.invokeAction('journal-form', input);
+
+    expect(sent[0]).toMatchObject({ type: 'invoke-action', actionHandle: 'journal-form', input });
+  });
 });

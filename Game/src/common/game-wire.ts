@@ -131,6 +131,27 @@ export const publicWorldSchema = z.object({
 });
 export type PublicWorldView = z.infer<typeof publicWorldSchema>;
 
+export const acceptanceJournalInputSchema = z
+  .object({
+    communication: z.enum(['unset', 'ok', 'problem']),
+    extinguisher: z.enum(['unset', 'ok', 'problem']),
+    climate: z.enum(['unset', 'ok', 'problem']),
+    emergencyBrake: z.enum(['unset', 'ok', 'problem']),
+    sanitation: z.enum(['unset', 'clean', 'issue']),
+    note: z.string().max(1000),
+    accepted: z.boolean(),
+  })
+  .strict();
+export type AcceptanceJournalInput = z.infer<typeof acceptanceJournalInputSchema>;
+
+const acceptanceJournalFormSchema = z.object({
+  kind: z.literal('acceptance-journal'),
+  value: acceptanceJournalInputSchema,
+});
+
+export const actionFormSchema = z.discriminatedUnion('kind', [acceptanceJournalFormSchema]);
+export type ActionFormView = z.infer<typeof actionFormSchema>;
+
 export const publicClockSchema = z.object({
   timeScale: z.number().positive(),
   paused: z.boolean(),
@@ -189,6 +210,7 @@ export const availableActionSchema = z.object({
   uiKind: z.enum(['interaction', 'inspect', 'dialogue', 'form']),
   label: z.string().min(1),
   target: publicTargetSchema,
+  form: actionFormSchema.optional(),
 });
 export type AvailableActionView = z.infer<typeof availableActionSchema>;
 

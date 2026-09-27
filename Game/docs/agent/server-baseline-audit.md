@@ -45,8 +45,8 @@ simulation primitives into `GameAttempt`/projection plus the game-specific asses
 | Passenger spawn/service classes | implemented | three baseline passengers and class traits | class entitlement is not used by assessment yet |
 | NPC trait/action loop | implemented baseline | wait/request/consume + deterministic RNG | very small behavior vocabulary |
 | Food/drink service | implemented | service point + held slot + give event | service windows do not currently gate/influence behavior |
-| Acceptance journal state | primitive implemented | `ItemStore` supports take/edit/submit/return | not exposed through `GameAttempt` / projection / wire actions |
-| Journal deadline / acceptance result | missing integration | scenario has preDeparture duration | transition ignores journal state; no assessment consequence |
+| Acceptance journal state | integrated baseline | take world action -> self form -> validated edit -> return action | visual styling can still evolve |
+| Journal deadline / acceptance result | integrated baseline | preDeparture is gated by completed/accepted/returned journal; technical `problem` triggers existing critical terminal rule | future assessment can compare declarations with observed world state |
 | Extinguisher | primitive implemented | inspect/take/prepare/use in `ItemStore` | not exposed through `GameAttempt`; not connected to fire |
 | Climate control | configuration only | level object exists | no runtime state, refresh action, observed-vs-actual reading |
 | Emergency brake | configuration + terminal signal | object + terminal rule | no public action/object runtime invokes the signal |
@@ -61,7 +61,7 @@ simulation primitives into `GameAttempt`/projection plus the game-specific asses
 | Assessment scores | missing | result shape exists | Game Server currently reports both scores as `0` |
 | Achievements | missing | result shape/event schema exists | reports `setVersion: unimplemented`, empty IDs |
 | Guided hints | contract only | guided mode + hint event schema | no coaching observer or hint production |
-| Replay | contract/seed only | replay mode resolves root seed | no action-log playback/seek; gameplay commands are not mode-blocked |
+| Replay | contract/seed + input policy | replay mode resolves root seed and rejects gameplay input | no action-log playback/seek executor |
 | Deterministic replay source | partial | seed + authoritative accepted command journal | replay executor/verification test is missing |
 
 ## 3. Server correctness blockers before adding more gameplay
@@ -107,23 +107,19 @@ This should be added before relying on replay data as a compatibility contract.
 
 ### B1. Pre-departure acceptance loop
 
-Best next baseline feature because most underlying state already exists.
-
-Connect:
+Journal handling is now integrated through the public protocol:
 
 ```text
-journal ItemStore
-  -> GameAttempt methods
-  -> PublicGameProjection action offers
-  -> form/action input
-  -> preDeparture deadline facts
-  -> assessment facts
+platform journal object
+  -> take action
+  -> click player
+  -> journal form action
+  -> validated checklist input
+  -> return action
+  -> preDeparture gate / critical terminal rule
 ```
 
-Also expose inspection actions for driver comms, extinguisher, climate, emergency brake and
-sanitation observations.
-
-Acceptance must remain player-authored: inspecting an object must not auto-fill the journal.
+Remaining work in this slice is to expose actual inspection actions for driver comms, extinguisher, climate, emergency brake and sanitation observations, then let assessment compare those facts with the player-authored journal. Inspecting an object must not auto-fill the journal.
 
 ### B2. Incident loop
 
