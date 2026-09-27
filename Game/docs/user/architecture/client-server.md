@@ -168,13 +168,13 @@ Server не должен отправлять императивное `move spr
 
 ```text
 speech bubble show/hide
-guided hint (baseline/deferred в release 0.1.0)
+guided hint
 notification
 short-lived visual/audio effect
 optional open/focus presentation request
 ```
 
-Они не являются authoritative simulation events. Release `0.1.0` эмитит `speech` из content, `notification` публичной смены фазы и `achievement-unlocked` при завершении попытки. `hint` остаётся deferred.
+Они не являются authoritative simulation events. Release `0.1.0` эмитит `speech` из content, `notification` публичной смены фазы, `achievement-unlocked` при завершении попытки и `hint` в guided-сессии.
 
 ### 7.3. Request/response
 
@@ -193,7 +193,7 @@ Internal simulation events автоматически наружу не пере
 
 ## 8. Hint events
 
-Protocol предусматривает transient `hint` events для guided mode. Release `0.1.0` server их пока не генерирует; это baseline/deferred capability. Они являются presentation output, а не state mutation.
+Protocol предусматривает transient `hint` events для guided mode. Release `0.1.0` server генерирует их из `hints.json`, когда сессия guided. Они являются presentation output, а не state mutation.
 
 ## 9. Replay extensions
 

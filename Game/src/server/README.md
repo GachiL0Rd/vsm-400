@@ -56,7 +56,7 @@ Operational boundaries are intentionally small and explicit:
 
 If `GAME_STATIC_DIR` is set, startup fails before listening unless the path is a
 directory containing `index.html`. `GAME_CONTENT_DIR` must contain a valid content
-manifest and referenced Level/Scenario/Actions/Assessment files; content is loaded
+manifest and referenced Level/Scenario/Actions/Hints/Assessment files; content is loaded
 fail-fast before the listener opens. The browser client may still be served separately. Platform mode still requires
 `PLATFORM_API_URL` and `PLATFORM_SERVICE_TOKEN` together; otherwise the server
 starts in explicit mock mode.

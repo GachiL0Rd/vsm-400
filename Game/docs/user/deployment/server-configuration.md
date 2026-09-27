@@ -82,7 +82,7 @@ All process environment parsing is centralized in `src/server/config.ts`.
 | `GAME_LOG_LEVEL` | `info` | no | Pino level: `trace`, `debug`, `info`, `warn`, `error`, `fatal`, or `silent`. Use `debug` while investigating client/server integration and `trace` only for short tick-level captures. |
 | `GAME_MOCK_ATTEMPT_ID` | `local-attempt` | mock only | Attempt ID returned by local mock PlatformGateway. |
 | `GAME_MOCK_LEVEL_ID` | `vsm-train2-01` | mock only | Level ID returned in local mock mode. |
-| `GAME_MOCK_MODE` | `live` | mock only | `live` or `guided`. |
+| `GAME_MOCK_MODE` | `guided` | mock only | `live` or `guided`. Default `guided` turns on every hint flag so a local mock session shows coaching. |
 
 ### Platform mode selection
 
@@ -157,7 +157,7 @@ The browser still needs `/game-ws` routed to the Game Server. If client and Game
 
 ## 5. Game content and media assets
 
-Server-side gameplay configuration is now file-backed. `GAME_CONTENT_DIR` contains the versioned `manifest.json` plus Level, Scenario, Actions and Assessment JSON files. The shipped baseline lives in `Game/content/` and is copied to `dist/content/` by `npm run build`.
+Server-side gameplay configuration is now file-backed. `GAME_CONTENT_DIR` contains the versioned `manifest.json` plus Level, Scenario, Actions, Hints and Assessment JSON files. The shipped baseline lives in `Game/content/` and is copied to `dist/content/` by `npm run build`.
 
 The runtime loads and validates the complete registry before opening the listener. Platform `gameLevelId` values are resolved only through this registry. See [`content-bundle.md`](content-bundle.md) for the exact release format and immutability rules.
 

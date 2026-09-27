@@ -2,6 +2,7 @@ import {
   GAME_PROTOCOL_VERSION,
   type PresentationEventMessage,
   type PresentationEventPayload,
+  type SessionModeView,
 } from '../common/game-wire';
 import type { CurrentAction } from '../simulation/entity-store';
 import type {
@@ -11,6 +12,8 @@ import type {
   GameAttemptSnapshot,
 } from '../simulation/game-attempt';
 import type { SimTimeUs } from '../simulation/sim-time';
+import { CoachingObserver } from './coaching-hints';
+import type { HintContent } from './hint-content';
 
 interface PhaseNotice {
   readonly notificationId: string;
@@ -32,25 +35,32 @@ interface SeenPassenger {
  *
  * Events stay out of snapshots. `beginSlice` drops anything not yet drained,
  * so only the worker publication that follows a projection call sends them.
- * Within one step the order is: action speech, trait speech, phase notice,
- * termination notice, achievement-unlocked.
+ * Within one step the order is: action speech, trait speech, guided coaching
+ * hints, phase notice, termination notice, achievement-unlocked.
  */
 export class PresentationTracker {
   private sequence = 0;
   private pending: PendingEvent[] = [];
   private phase: AttemptPhase;
   private terminated: boolean;
+  private savedInactivityAt = 0;
   private readonly seen = new Map<string, SeenPassenger>();
   private readonly emittedAchievements = new Set<string>();
+  private readonly coaching: CoachingObserver;
 
   constructor(
     private readonly attempt: GameAttempt,
     private readonly attemptId: string,
+    mode: SessionModeView = { kind: 'live' },
+    hints?: HintContent,
   ) {
     const snapshot = attempt.snapshot();
     this.phase = snapshot.phase;
     this.terminated = snapshot.termination !== null;
     this.remember(snapshot);
+    this.coaching = new CoachingObserver(attempt, mode, hints, (at, event) => {
+      this.push(at, event);
+    });
   }
 
   bind(): void {
@@ -63,9 +73,20 @@ export class PresentationTracker {
     this.pending = [];
   }
 
+  /** Marks a gameplay command so pre-departure idle hints restart from now. */
+  beginPlayerCommand(): void {
+    this.savedInactivityAt = this.coaching.clock();
+    this.coaching.notePlayerCommand(this.attempt.time);
+  }
+
+  abortPlayerCommand(): void {
+    this.coaching.restore(this.savedInactivityAt);
+  }
+
   capture(): void {
     const snapshot = this.attempt.snapshot();
     this.captureSpeech(snapshot);
+    this.coaching.capture(snapshot);
     this.capturePhase(snapshot);
     this.captureTermination(snapshot);
   }

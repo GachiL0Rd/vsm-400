@@ -38,6 +38,7 @@ Release candidate должен обеспечивать следующий ра�
 7. Live attempt завершается через idempotent Platform `finishSession` boundary.
 8. Replay mode умеет валидировать canonical replay source и детерминированно выполнять forward playback без создания нового Platform result.
 9. Production artifact содержит server, browser client root и versioned content bundle и проходит штатный verification/smoke contour.
+10. Guided-сессия выпускает content-driven coaching `hint` events по `HintPolicy`. Live-сессия их не выпускает. Hints не входят в simulation, seed, `userInputs` и assessment.
 
 Точные wire/content contracts определяются соответствующими документами `api/`, `architecture/`, `simulation/` и `deployment/`.
 
@@ -45,7 +46,6 @@ Release candidate должен обеспечивать следующий ра�
 
 Следующие возможности остаются частью целевого baseline или следующего этапа, но не блокируют текущий release:
 
-- полноценные guided coaching/hint events (сервер при этом выпускает наблюдаемые `speech`, phase `notification` и `achievement-unlocked`; генерация hints остаётся вне release);
 - replay seek/checkpoints, hidden-state inspection, assessment/logit reveal и расширенный replay UI;
 - gameplay-взаимодействие со связью с машинистом;
 - отдельное spatial sanitation state с public overlays и сравнением наблюдаемого состояния с журналом;

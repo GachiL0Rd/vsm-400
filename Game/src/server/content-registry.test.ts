@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { BASELINE_HINT_CONTENT } from '../projection/hint-content.ts';
 import { BASELINE_ASSESSMENT_CONFIG } from '../simulation/assessment-config.ts';
 import { BASELINE_ACTION_CONTENT } from '../simulation/baseline-content.ts';
 import { BASELINE_LEVEL_DEFINITION } from '../simulation/level.ts';
@@ -36,6 +37,8 @@ describe('FileGameContentRegistry', () => {
     expect(json('vsm-baseline-01/scenario.json')).toEqual(BASELINE_SCENARIO_DEFINITION);
     expect(json('vsm-baseline-01/actions.json')).toEqual(BASELINE_ACTION_CONTENT);
     expect(json('vsm-baseline-01/assessment.json')).toEqual(BASELINE_ASSESSMENT_CONFIG);
+    expect(json('vsm-baseline-01/hints.json')).toEqual(BASELINE_HINT_CONTENT);
+    expect(json('vsm-train2-01/hints.json')).toEqual(BASELINE_HINT_CONTENT);
     expect(json('vsm-train2-01/actions.json')).toEqual(BASELINE_ACTION_CONTENT);
     expect(json('vsm-train2-01/assessment.json')).toEqual(BASELINE_ASSESSMENT_CONFIG);
   });
@@ -57,6 +60,7 @@ describe('FileGameContentRegistry', () => {
   it('resolves a mock session to the default train2 level', async () => {
     const config = parseServerConfig({});
     expect(config.mock.gameLevelId).toBe('vsm-train2-01');
+    expect(config.mock.mode).toBe('guided');
     const host = new GameSessionHost({
       platformGateway: new MockPlatformGateway({
         attemptId: config.mock.attemptId,
@@ -72,6 +76,29 @@ describe('FileGameContentRegistry', () => {
     await host.attachWithSessionKey('local-session', 'connection-1');
     const worker = host.worker(config.mock.attemptId);
     expect(worker?.projection.attempt.level.definition.id).toBe('vsm-train2-01');
+    expect(worker?.projection.mode).toMatchObject({
+      kind: 'guided',
+      hints: {
+        immediateFeedback: true,
+        suggestions: true,
+        objectHighlights: true,
+        explanations: true,
+      },
+    });
+    worker?.projection.advanceTo(0);
+    const hints = worker?.projection
+      .takePresentationEvents()
+      .flatMap((message) =>
+        message.type === 'presentation-event' && message.event.kind === 'hint'
+          ? [message.event]
+          : [],
+      );
+    expect(hints?.[0]).toMatchObject({
+      kind: 'hint',
+      hintId: 'attempt-start',
+      presentation: 'message',
+      target: { kind: 'object', objectId: 'acceptance-journal' },
+    });
     host.shutdown();
   });
 

@@ -540,9 +540,9 @@ An offer is bound to its `revision`. Any revision change invalidates it, and inv
 
 `at` is the authoritative simulation time of the fact. `sequence` starts at 0 for the attempt and increases by 1 for every emitted event. The same root seed and gameplay inputs produce the same list. When a fact also changes public revision, the server sends that `delta` first and the presentation events for that step after it.
 
-Within one simulation step the order is: action `speech`, trait `speech`, phase `notification`, termination `notification`, then `achievement-unlocked`. Passengers are ordered by id. Hidden trait ids, action ids, and other non-public state are not copied into the event.
+Within one simulation step the order is: action `speech`, trait `speech`, guided `hint`s, phase `notification`, termination `notification`, then `achievement-unlocked`. Passengers are ordered by id. Hidden trait ids, action ids, and other non-public state are not copied into the event.
 
-Release `0.1.0` emits `speech`, `notification`, and `achievement-unlocked`. `hint` and `effect` stay in the schema and are not generated; guided coaching remains deferred. A separate fire notification is not emitted: active fire is already a public world object. A pressure-field notification is not emitted either: cabin pressure is not part of the durable snapshot.
+Release `0.1.0` emits `speech`, `notification`, `achievement-unlocked`, and, for a guided session, `hint`. `effect` stays in the schema and is not generated. Live mode emits no hints. A separate fire notification is not emitted: active fire is already a public world object. A pressure-field notification is not emitted either: cabin pressure is not part of the durable snapshot.
 
 ```json
 {
@@ -571,7 +571,7 @@ Payload kinds:
   - route completion: `termination:route-completed`, «Рейс завершён»;
   - terminal rule: `termination:terminal-rule`, «Рейс прерван».
 - `achievement-unlocked` — once per unlocked achievement id, at the termination time, after the termination notification and before `session-state` `finishing`.
-- `hint` — optional text/target and presentation style `message | toast | highlight`. Not emitted in release `0.1.0`.
+- `hint` — guided coaching only. `hintId`, presentation `message | toast | highlight`, optional `text`, optional `target` (`cell`, `entity`, or `object`). Copy and timings come from the bundle `hints.json`. `suggestions` gates objective messages and the pre-departure inactivity repeat. `objectHighlights` (platform field `highlights`) gates highlight events for the extinguisher, emergency brake, climate control, and driver comms. `immediateFeedback` gates error toasts. `explanations` gates the text of those toasts. A passenger request that stays open for the catalog `afterUs` emits one attention toast per request occurrence. Inactivity is the repeatable exception and reuses the current objective text. Each other trigger is emitted at most once. `at` is the simulation time the condition became true. Replay mode does not emit hints.
 - `effect` — public `visualId` with optional target. Not emitted in release `0.1.0`.
 
 An event may also contain mode-specific `extensions: [{ type, data }]`. Live and guided sessions do not attach hidden-state extensions.

@@ -133,6 +133,27 @@ Content-Type: application/json
 }
 ```
 
+Ожидаемый guided response. Backend переключается на этот payload отдельно; Game Server уже принимает его в `resolveSession` и включает coaching только при `kind: "guided"`:
+
+```json
+{
+  "contractVersion": 1,
+  "attemptId": "attempt-123",
+  "gameLevelId": "vsm-train2-01",
+  "mode": {
+    "kind": "guided",
+    "hints": {
+      "immediateFeedback": true,
+      "suggestions": true,
+      "highlights": true,
+      "explanations": true
+    }
+  }
+}
+```
+
+Поле `highlights` на этой границе соответствует wire-полю `objectHighlights`. Тексты подсказок Platform не передаёт: их берёт Game Server из `hints.json` выбранного bundle.
+
 Некорректный, просроченный или уже недопустимый key приводит к отказу запуска.
 
 HTTP adapter обязан сохранять смысл platform response и не маскировать service/infrastructure errors под ошибку пользовательского key. Для contract v1 используется следующая семантика:

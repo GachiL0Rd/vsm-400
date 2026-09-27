@@ -3,24 +3,14 @@ import {
   GAME_PROTOCOL_VERSION,
   type PresentationEventMessage,
   presentationEventSchema,
-  type SessionModeView,
 } from '../common/game-wire';
 import { BASELINE_ACTION_CONTENT } from '../simulation/baseline-content';
 import { GameAttempt } from '../simulation/game-attempt';
 import { BASELINE_LEVEL } from '../simulation/level';
 import { BASELINE_SCENARIO_DEFINITION, loadScenarioDefinition } from '../simulation/scenario';
 import { secondsToSimTimeUs } from '../simulation/sim-time';
+import { BASELINE_HINT_CONTENT } from './hint-content';
 import { PublicGameProjection } from './public-game-session';
-
-const GUIDED: SessionModeView = {
-  kind: 'guided',
-  hints: {
-    immediateFeedback: true,
-    suggestions: true,
-    objectHighlights: true,
-    explanations: true,
-  },
-};
 
 function quietScenario() {
   return loadScenarioDefinition({ ...BASELINE_SCENARIO_DEFINITION, incidents: [] }, BASELINE_LEVEL);
@@ -119,11 +109,11 @@ function decideBoarding(
   }
 }
 
-function drinkRequest(mode?: SessionModeView): PresentationEventMessage[] {
+function drinkRequest(): PresentationEventMessage[] {
   const projection = new PublicGameProjection({
     attemptId: 'attempt-drink',
     attempt: new GameAttempt({ rootSeed: 4 }),
-    ...(mode === undefined ? {} : { mode }),
+    hints: BASELINE_HINT_CONTENT,
   });
   const events: PresentationEventMessage[] = [];
   projection.snapshot();
@@ -236,11 +226,9 @@ describe('presentation events', () => {
     ]);
   });
 
-  it('keeps guided mode free of hints and repeats the same list for the same seed', () => {
+  it('keeps live mode free of hints and repeats the same list for the same seed', () => {
     const live = drinkRequest();
-    const guided = drinkRequest(GUIDED);
-    expect(guided).toEqual(live);
-    expect(guided.some((event) => event.event.kind === 'hint')).toBe(false);
+    expect(live.some((event) => event.event.kind === 'hint')).toBe(false);
     expect(drinkRequest()).toEqual(live);
   });
 

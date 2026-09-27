@@ -109,7 +109,7 @@ replay
 
 Modes различаются input policy, observers и разрешёнными protocol extensions, а не отдельными копиями domain state.
 
-Guided в baseline добавляет hint events. В release `0.1.0` guided mode уже существует как server-side policy/config, но генерация coaching/hint events отложена.
+Guided в release `0.1.0` использует ту же simulation, что live, и дополнительно выпускает coaching hint events по `HintPolicy`.
 
 Replay запрещает gameplay commands. Release `0.1.0` предоставляет deterministic forward playback; дополнительные diagnostic extensions/inspection handlers относятся к baseline/deferred capability.
 
@@ -120,7 +120,7 @@ Game Server формирует:
 - итоговые `safety` и `customerSatisfaction` scores;
 - achievement IDs.
 
-Baseline feedback layer также предусматривает guided hints при включённом coaching policy. Их runtime-генерация не входит в release `0.1.0`.
+Guided hints при включённом coaching policy входят в release `0.1.0` как transient presentation events.
 
 Platform Server хранит итог и выполняет межсессионную/profile логику.
 

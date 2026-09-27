@@ -38,6 +38,7 @@ import {
   type ItemSnapshot,
 } from '../simulation/item-store';
 import type { SimTimeUs } from '../simulation/sim-time';
+import type { HintContent } from './hint-content';
 import { PresentationTracker } from './presentation-events';
 
 export type RecordedGameplayCommand =
@@ -85,6 +86,7 @@ export interface PublicGameProjectionOptions {
   readonly attemptId: string;
   readonly attempt: GameAttempt;
   readonly mode?: SessionModeView;
+  readonly hints?: HintContent;
 }
 
 export interface InvokeResult {
@@ -116,7 +118,12 @@ export class PublicGameProjection {
     this.attemptId = assertId(options.attemptId, 'Attempt id');
     this.attempt = options.attempt;
     this.mode = options.mode ?? { kind: 'live' };
-    this.presentation = new PresentationTracker(this.attempt, this.attemptId);
+    this.presentation = new PresentationTracker(
+      this.attempt,
+      this.attemptId,
+      this.mode,
+      options.hints,
+    );
     this.presentation.bind();
   }
 
@@ -292,10 +299,12 @@ export class PublicGameProjection {
     clock: PublicClockView,
   ): InvokeResult {
     this.presentation.beginSlice();
+    this.presentation.beginPlayerCommand();
     const before = this.lastState ?? this.project(clock);
     try {
       this.applyOperation(operation);
     } catch (error) {
+      this.presentation.abortPlayerCommand();
       this.presentation.beginSlice();
       return {
         result: rejected(requestId, this.revisionValue, 'action-rejected', errorMessage(error)),

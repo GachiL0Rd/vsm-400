@@ -1,0 +1,88 @@
+{
+  "schemaVersion": 1,
+  "hints": [
+    {
+      "id": "attempt-start",
+      "trigger": "attempt-start",
+      "role": "suggestion",
+      "presentation": "message",
+      "text": "Начните приёмку: подойдите к журналу на перроне и возьмите его.",
+      "target": { "kind": "object", "objectId": "acceptance-journal" }
+    },
+    {
+      "id": "journal-taken",
+      "trigger": "journal-taken",
+      "role": "suggestion",
+      "presentation": "message",
+      "text": "Осмотрите вагон: огнетушитель, стоп-кран, климат и связь. Отметьте результат в журнале.",
+      "highlights": [
+        { "id": "highlight-extinguisher", "objectId": "extinguisher" },
+        { "id": "highlight-emergency-brake", "objectId": "emergency-brake" },
+        { "id": "highlight-climate-control", "objectId": "climate-control" },
+        { "id": "highlight-driver-comms", "objectId": "driver-comms" }
+      ]
+    },
+    {
+      "id": "journal-filled",
+      "trigger": "journal-filled",
+      "role": "suggestion",
+      "presentation": "message",
+      "text": "Верните журнал на стол приёмки до отправления.",
+      "target": { "kind": "object", "objectId": "acceptance-journal" }
+    },
+    {
+      "id": "meet-passengers",
+      "trigger": "meet-passengers",
+      "role": "suggestion",
+      "presentation": "message",
+      "text": "Встречайте пассажиров у двери и проверяйте документы."
+    },
+    {
+      "id": "passenger-waiting",
+      "trigger": "passenger-request-unhandled",
+      "role": "attention",
+      "presentation": "toast",
+      "text": "Пассажир ждёт — подойдите к нему.",
+      "afterUs": 30000000,
+      "requestActionIds": ["request-drink", "request-food"]
+    },
+    {
+      "id": "feedback-false-journal",
+      "trigger": "feedback-false-journal",
+      "role": "feedback",
+      "presentation": "toast",
+      "text": "В журнале отмечена неисправность, которой нет.",
+      "target": { "kind": "object", "objectId": "acceptance-journal" }
+    },
+    {
+      "id": "feedback-unsafe-admit",
+      "trigger": "feedback-unsafe-admit",
+      "role": "feedback",
+      "presentation": "toast",
+      "text": "Этого пассажира нельзя было пускать."
+    },
+    {
+      "id": "feedback-wrong-reject",
+      "trigger": "feedback-wrong-reject",
+      "role": "feedback",
+      "presentation": "toast",
+      "text": "Этого пассажира можно было пропустить."
+    },
+    {
+      "id": "feedback-false-emergency-brake",
+      "trigger": "feedback-false-emergency-brake",
+      "role": "feedback",
+      "presentation": "toast",
+      "text": "Аварийный тормоз применён без угрозы.",
+      "target": { "kind": "object", "objectId": "emergency-brake" }
+    },
+    {
+      "id": "inactivity",
+      "trigger": "inactivity",
+      "role": "suggestion",
+      "presentation": "message",
+      "afterUs": 60000000,
+      "repeatable": true
+    }
+  ]
+}

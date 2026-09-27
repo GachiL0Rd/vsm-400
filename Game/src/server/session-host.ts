@@ -105,6 +105,7 @@ export class GameSessionHost {
           attemptId: resolved.attemptId,
           attempt,
           mode: publicMode(resolved.mode),
+          hints: content.hints,
         }),
         platformGateway: this.options.platformGateway,
         resumeTokens: this.options.resumeTokens,

@@ -1,6 +1,11 @@
 import { readFileSync, statSync } from 'node:fs';
 import { isAbsolute, relative, resolve, sep } from 'node:path';
 import { z } from 'zod';
+import {
+  BASELINE_HINT_CONTENT,
+  type HintContent,
+  loadHintContent,
+} from '../projection/hint-content.ts';
 import { type ActionContent, loadActionContent } from '../simulation/action-decision.ts';
 import {
   type AssessmentConfig,
@@ -21,6 +26,7 @@ export interface ResolvedGameContent {
   readonly gameLevelId: string;
   readonly gameLevelVersion: string;
   readonly simulationCompatibilityVersion: string;
+  readonly hints: HintContent;
   createAttempt(rootSeed: number, mode: SessionMode): GameAttempt;
 }
 
@@ -35,6 +41,7 @@ interface LoadedBundle {
   readonly level: LoadedLevel;
   readonly scenario: LoadedScenario;
   readonly actions: ActionContent;
+  readonly hints: HintContent;
   readonly assessment: AssessmentConfig;
 }
 
@@ -49,6 +56,7 @@ const manifestSchema = z.object({
         level: z.string().min(1),
         scenario: z.string().min(1),
         actions: z.string().min(1),
+        hints: z.string().min(1),
         assessment: z.string().min(1),
       }),
     )
@@ -73,6 +81,10 @@ export class FileGameContentRegistry implements GameContentRegistry {
       );
       const actions = readJsonFile(resolveInside(root, entry.actions)) as ActionContent;
       loadActionContent(actions);
+      const hints = loadHintContent(readJsonFile(resolveInside(root, entry.hints)), {
+        objectIds: level.definition.objects.map((object) => object.id),
+        actionIds: actions.actions.map((action) => action.id),
+      });
       const assessment = parseAssessmentConfig(readJsonFile(resolveInside(root, entry.assessment)));
       if (level.definition.id !== scenario.definition.levelId) {
         throw new RangeError(`Content bundle ${entry.gameLevelId} has mismatched Level/Scenario`);
@@ -84,6 +96,7 @@ export class FileGameContentRegistry implements GameContentRegistry {
         level,
         scenario,
         actions,
+        hints,
         assessment,
       });
     }
@@ -110,16 +123,23 @@ export class BaselineContentRegistry implements GameContentRegistry {
       level: BASELINE_LEVEL,
       scenario: BASELINE_SCENARIO,
       actions: BASELINE_ACTION_CONTENT,
+      hints: BASELINE_HINTS,
       assessment: BASELINE_ASSESSMENT_CONFIG,
     });
   }
 }
+
+const BASELINE_HINTS = loadHintContent(BASELINE_HINT_CONTENT, {
+  objectIds: BASELINE_LEVEL.definition.objects.map((object) => object.id),
+  actionIds: BASELINE_ACTION_CONTENT.actions.map((action) => action.id),
+});
 
 function resolvedBundle(bundle: LoadedBundle): ResolvedGameContent {
   return {
     gameLevelId: bundle.gameLevelId,
     gameLevelVersion: bundle.gameLevelVersion,
     simulationCompatibilityVersion: bundle.simulationCompatibilityVersion,
+    hints: bundle.hints,
     createAttempt: (rootSeed) =>
       new GameAttempt({
         rootSeed,
