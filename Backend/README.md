@@ -38,7 +38,7 @@ docker compose --profile app up --build -d
 Остановка без удаления томов: `docker compose --profile app down`.
 
 `npm run prisma:seed` наполняет депо, бригады и историю рейсов. Повтор без
-`--reset` ничего не пишет, если логин `demo` уже есть. `npm run prisma:seed -- --reset`
+`--reset` ничего не пишет, если логин `demo` уже есть. `npm run prisma:seed -- -- --reset`
 очищает доменные таблицы и текущую Redis DB, миграции не трогает. Prisma 7
 `migrate reset` сам сид не вызывает: после сброса нужен `npm run prisma:seed`.
 
