@@ -18,3 +18,15 @@ dev:
 # Format supported files in place.
 format:
     npm run format
+
+# Build the deployable server + client distribution under dist/.
+build:
+    npm run build
+
+# Start the compiled distribution created by `just build`.
+start:
+    npm run start:server
+
+# Smoke-test the compiled distribution in isolation from sources/node_modules.
+test-production:
+    npm run test:production

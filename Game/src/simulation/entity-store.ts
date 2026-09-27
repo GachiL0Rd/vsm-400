@@ -77,7 +77,9 @@ export interface EntityStore {
   addPlayer(input: NewEntity): EntityState;
   addPassenger(input: NewEntity): EntityState;
   get(id: EntityId): EntityState;
+  remove(id: EntityId): EntityState;
   list(): readonly EntityState[];
+  traitGrantedAt(entityId: EntityId): Readonly<Record<TraitId, SimTimeUs>>;
   grantTrait(
     entityId: EntityId,
     traitId: TraitId,
@@ -128,6 +130,7 @@ export function createEntityStore(
 class EntityRuntime implements EntityStore {
   private readonly entities = new Map<EntityId, StoredEntity>();
   private readonly timing = new Map<string, TraitTiming>();
+  private readonly grantedAt = new Map<EntityId, Map<TraitId, SimTimeUs>>();
   private readonly rejectIf = new Map<TraitId, readonly EntitySelector[]>();
 
   constructor(
@@ -154,10 +157,27 @@ class EntityRuntime implements EntityStore {
     return toState(this.require(id));
   }
 
+  remove(id: EntityId): EntityState {
+    const entity = this.require(id);
+    const snapshot = toState(entity);
+    for (const traitId of entity.traits) this.invalidateExpiry(entity.id, traitId);
+    this.entities.delete(entity.id);
+    this.grantedAt.delete(entity.id);
+    return snapshot;
+  }
+
   list(): readonly EntityState[] {
     return [...this.entities.values()]
       .sort((left, right) => compareIds(left.id, right.id))
       .map(toState);
+  }
+
+  traitGrantedAt(entityId: EntityId): Readonly<Record<TraitId, SimTimeUs>> {
+    const entity = this.require(entityId);
+    const times = this.grantedAt.get(entity.id) ?? new Map<TraitId, SimTimeUs>();
+    return Object.fromEntries(
+      [...entity.traits].sort(compareIds).map((traitId) => [traitId, times.get(traitId) ?? 0]),
+    );
   }
 
   grantTrait(
@@ -181,6 +201,7 @@ class EntityRuntime implements EntityStore {
     this.assertRejected(entity, trait);
     if (duration !== undefined) this.scheduleExpiry(entity, trait, grantedAt, duration);
     entity.traits = sortTraits([...entity.traits, trait]);
+    this.requireGrantTimes(entity.id).set(trait, grantedAt);
     return toState(entity);
   }
 
@@ -193,6 +214,7 @@ class EntityRuntime implements EntityStore {
     }
     this.invalidateExpiry(entity.id, trait);
     entity.traits = entity.traits.filter((item) => item !== trait);
+    this.requireGrantTimes(entity.id).delete(trait);
     return toState(entity);
   }
 
@@ -204,6 +226,10 @@ class EntityRuntime implements EntityStore {
     const current = serviceClassOf(entity.traits);
     if (current === serviceClass) return toState(entity);
     this.invalidateExpiry(entity.id, current);
+    const times = this.requireGrantTimes(entity.id);
+    const inheritedGrantTime = times.get(current) ?? 0;
+    times.delete(current);
+    times.set(serviceClass, inheritedGrantTime);
     entity.traits = sortTraits([
       ...entity.traits.filter((trait) => !isServiceClass(trait)),
       serviceClass,
@@ -263,6 +289,7 @@ class EntityRuntime implements EntityStore {
     this.timing.delete(key);
     if (entity === undefined) return;
     entity.traits = entity.traits.filter((trait) => trait !== timing.traitId);
+    this.requireGrantTimes(entity.id).delete(timing.traitId);
   }
 
   private add(input: NewEntity, kind: EntityKind): EntityState {
@@ -283,7 +310,14 @@ class EntityRuntime implements EntityStore {
       entity.currentAction = validateAction(input.currentAction);
     }
     this.entities.set(id, entity);
+    this.grantedAt.set(id, new Map(traits.map((traitId) => [traitId, 0] as const)));
     return toState(entity);
+  }
+
+  private requireGrantTimes(entityId: EntityId): Map<TraitId, SimTimeUs> {
+    const times = this.grantedAt.get(entityId);
+    if (times === undefined) throw new RangeError(`Unknown entity ${entityId}`);
+    return times;
   }
 
   private scheduleExpiry(

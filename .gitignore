@@ -17,3 +17,7 @@ Thumbs.db
 # Local tool state
 .pueue/
 node_modules/
+
+# Local review / transfer artifacts
+*.patch
+*.zip

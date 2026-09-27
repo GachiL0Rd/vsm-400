@@ -1,0 +1,17 @@
+.badge {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+}
+
+.badge--earned {
+  background: var(--ink);
+  color: var(--white);
+}
+
+.badge--locked {
+  border: 2px dashed var(--line);
+  color: var(--smoke);
+}

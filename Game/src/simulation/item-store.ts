@@ -1,4 +1,4 @@
-import type { CurrentAction, EntityId, EntityStore, ItemId } from './entity-store';
+import type { EntityId, EntityStore, ItemId } from './entity-store';
 
 export type CheckState = 'unset' | 'ok' | 'problem';
 export type SanitationCheckState = 'unset' | 'clean' | 'issue';
@@ -6,6 +6,16 @@ export type JournalField = 'communication' | 'extinguisher' | 'climate' | 'emerg
 export type ExtinguisherPressure = 'low' | 'normal' | 'high';
 export type ExtinguisherDamage = 'none' | 'scratch' | 'dent';
 export type ConsumableKind = 'food' | 'drink';
+
+export interface AcceptanceJournalEdit {
+  readonly communication: CheckState;
+  readonly extinguisher: CheckState;
+  readonly climate: CheckState;
+  readonly emergencyBrake: CheckState;
+  readonly sanitation: SanitationCheckState;
+  readonly note: string;
+  readonly accepted: boolean;
+}
 
 export interface ItemWorldConfig {
   readonly journal: {
@@ -44,6 +54,25 @@ export interface AcceptanceJournalState {
   readonly submitted: boolean;
 }
 
+export function acceptanceJournalIsComplete(journal: AcceptanceJournalState): boolean {
+  return (
+    journal.communication !== 'unset' &&
+    journal.extinguisher !== 'unset' &&
+    journal.climate !== 'unset' &&
+    journal.emergencyBrake !== 'unset' &&
+    journal.sanitation !== 'unset'
+  );
+}
+
+export function acceptanceJournalHasCriticalProblem(journal: AcceptanceJournalState): boolean {
+  return (
+    journal.communication === 'problem' ||
+    journal.extinguisher === 'problem' ||
+    journal.climate === 'problem' ||
+    journal.emergencyBrake === 'problem'
+  );
+}
+
 export interface ExtinguisherState {
   readonly id: ItemId;
   readonly kind: 'extinguisher';
@@ -73,7 +102,6 @@ export interface ItemGiven {
   readonly targetId: EntityId;
   readonly itemId: ItemId;
   readonly itemKind: ConsumableKind;
-  readonly waitingActionGeneration: number | null;
 }
 
 export interface ExtinguisherUsed {
@@ -101,6 +129,7 @@ export interface ItemStore {
   ): AcceptanceJournalState;
   setJournalSanitation(actorId: EntityId, value: SanitationCheckState): AcceptanceJournalState;
   setJournalNote(actorId: EntityId, note: string): AcceptanceJournalState;
+  editJournal(actorId: EntityId, edit: AcceptanceJournalEdit): AcceptanceJournalState;
   markJournalAccepted(actorId: EntityId): AcceptanceJournalState;
   returnJournal(actorId: EntityId): AcceptanceJournalState;
   inspectExtinguisher(actorId: EntityId): ExtinguisherState;
@@ -144,12 +173,6 @@ interface MutableConsumable {
 
 export function createItemStore(entities: EntityStore, config: ItemWorldConfig): ItemStore {
   return new ItemRuntime(entities, cloneConfig(validateConfig(config)));
-}
-
-export function itemGivenMatchesWaitingAction(event: ItemGiven, action: CurrentAction): boolean {
-  if (action.phase.kind !== 'waiting') return false;
-  const expected = event.itemKind === 'drink' ? 'request-drink' : 'request-food';
-  return action.actionId === expected && event.waitingActionGeneration === action.generation;
 }
 
 class ItemRuntime implements ItemStore {
@@ -196,6 +219,7 @@ class ItemRuntime implements ItemStore {
     this.precheck(() => {
       this.requirePlayerAt(actorId, this.config.journal.homeCellId);
       if (this.journal.location !== 'anchor') throw new RangeError('Journal is not at its anchor');
+      if (this.journal.submitted) throw new RangeError('Journal has already been submitted');
       this.requireFreeHand(actorId);
     });
     return this.commit(actorId, this.config.journal.id, () => {
@@ -234,6 +258,26 @@ class ItemRuntime implements ItemStore {
       if (typeof note !== 'string') throw new RangeError('Journal note must be a string');
     });
     this.journal.note = note;
+    return this.journalState();
+  }
+
+  editJournal(actorId: EntityId, edit: AcceptanceJournalEdit): AcceptanceJournalState {
+    this.precheck(() => {
+      this.requireHolder(actorId, this.config.journal.id);
+      if (!isCheckState(edit.communication)) throw new RangeError('Communication entry is invalid');
+      if (!isCheckState(edit.extinguisher)) throw new RangeError('Extinguisher entry is invalid');
+      if (!isCheckState(edit.climate)) throw new RangeError('Climate entry is invalid');
+      if (!isCheckState(edit.emergencyBrake)) {
+        throw new RangeError('Emergency brake entry is invalid');
+      }
+      if (!isSanitation(edit.sanitation)) throw new RangeError('Sanitation entry is invalid');
+      if (typeof edit.note !== 'string' || edit.note.length > 1000) {
+        throw new RangeError('Journal note must be a string up to 1000 characters');
+      }
+      if (typeof edit.accepted !== 'boolean')
+        throw new RangeError('Journal accepted flag is invalid');
+    });
+    Object.assign(this.journal, edit);
     return this.journalState();
   }
 
@@ -335,24 +379,14 @@ class ItemRuntime implements ItemStore {
       }
       if (target.kind !== 'passenger')
         throw new RangeError('Food and drink are given to a passenger');
-      this.requireSameCell(actorId, targetId);
     });
     if (item === undefined) throw new RangeError('Player is not holding food or drink');
-    const waiting = target.currentAction;
-    const expectedAction = item.kind === 'drink' ? 'request-drink' : 'request-food';
-    const waitingActionGeneration =
-      waiting !== undefined &&
-      waiting.phase.kind === 'waiting' &&
-      waiting.actionId === expectedAction
-        ? waiting.generation
-        : null;
     const event: ItemGiven = {
       type: 'item-given',
       giverId: actorId,
       targetId,
       itemId: item.id,
       itemKind: item.kind,
-      waitingActionGeneration,
     };
     this.release(actorId, () => {
       item.location = 'given';
@@ -427,17 +461,6 @@ class ItemRuntime implements ItemStore {
       throw new RangeError('Player is not at the item');
     }
     return actor;
-  }
-
-  private requireSameCell(actorId: EntityId, targetId: EntityId): void {
-    const actor = this.requirePlayer(actorId);
-    const target = this.entities.get(targetId);
-    if (actor.position.kind !== 'cell' || target.position.kind !== 'cell') {
-      throw new RangeError('Player is not beside the passenger');
-    }
-    if (actor.position.cellId !== target.position.cellId) {
-      throw new RangeError('Player is not beside the passenger');
-    }
   }
 
   private requireFreeHand(actorId: EntityId): void {

@@ -1,0 +1,128 @@
+# Алкоголь в салоне: ситуации 21 и 50. По рации не говорить «пьяный» — ситуация 6.
+id: ride-drunk
+title: "Нетрезвый в салоне"
+category: security
+stage: enroute
+carClasses: [ECONOMY]
+difficulty: 2
+competencies: [escalation, safety, service]
+params:
+  occupancy: { min: 40, max: 100 }
+init: { loyalty: 60, safety: 66 }
+gates:
+  failIf:
+    safety: { lt: 30 }
+start: open
+nodes:
+  open:
+    text: "В экономе пассажир пьёт из фляги и повышает голос."
+    variants:
+      - if: { param: occupancy, gte: 85 }
+        text: "Соседи вплотную, ребёнок через ряд закрывает уши."
+    timer: 14
+    choices:
+      - id: bistro
+        text: "Напомнить: алкоголь только в бистро, без спора"
+        effects: { safety: 6, loyalty: 1 }
+        skills: { service: 1, escalation: 1 }
+        set: [reminded]
+        verdict: best
+        next: follow
+      - id: pour
+        text: "Налить ещё, чтобы скорее затих"
+        effects: { loyalty: 8, safety: -18 }
+        verdict: worse
+        better: "Нетрезвому алкоголь не наливают"
+        basis: "Ситуации на борту.pdf, с. 19, ситуация 50"
+        next: risk
+      - id: shield
+        text: "Встать между ним и проходом, без нотаций"
+        deviation: true
+        verdict: ok
+        better: "Сначала правило бистро, не только заслон"
+        basis: "Ситуации на борту.pdf, с. 9, ситуация 21"
+        set: [shielded]
+        next: follow
+    onTimeout:
+      effects: { safety: -12, loyalty: -4 }
+      verdict: missed
+      consequence: "Пассажир качнулся в проход и задел соседа"
+      next: late
+  follow:
+    text: "Флягу не прячет и просит не читать мораль."
+    timer: 16
+    choices:
+      - id: call
+        text: "Вызвать начальника и ПТБ, по рации не говорить «пьяный»"
+        requires: { flags: [reminded] }
+        effects: { safety: 10 }
+        skills: { escalation: 2 }
+        verdict: best
+        next: end-ok
+      - id: radio
+        text: "По рации: пьяный дебоширит, идите скорее"
+        effects: { loyalty: 2, safety: -8 }
+        verdict: worse
+        better: "По рации не произносят, что пассажир пьян"
+        basis: "Ситуации на борту.pdf, с. 4, ситуация 6"
+        next: end-bad
+      - id: rule-late
+        text: "Назвать бистро и звать начальника без слова «пьяный»"
+        effects: { safety: 6 }
+        set: [reminded]
+        verdict: ok
+        better: "Правило называют сразу, не когда фляга уже на виду"
+        basis: "Ситуации на борту.pdf, с. 9, ситуация 21"
+        next: end-ok
+    onTimeout:
+      effects: { safety: -16, loyalty: -6 }
+      verdict: missed
+      consequence: "Он толкнул соседа, фляга на полу"
+      next: end-stop
+  late:
+    text: "Сосед мокрый, голоса на весь вагон."
+    timer: 12
+    choices:
+      - id: split
+        text: "Развести, напомнить про бистро, звать начальника и ПТБ"
+        effects: { safety: 8 }
+        set: [reminded]
+        verdict: best
+        next: follow
+      - id: yell
+        text: "Крикнуть, чтобы немедленно извинился"
+        effects: { loyalty: -2, safety: -8 }
+        verdict: worse
+        better: "В спор и крик не вступают"
+        basis: "Ситуации на борту.pdf, с. 9, ситуация 21"
+        next: end-bad
+    onTimeout:
+      effects: { safety: -18, loyalty: -8 }
+      verdict: missed
+      consequence: "Ссора, люди встали в проход"
+      next: end-stop
+  risk:
+    text: "Фляга снова полная. Пассажир улыбается."
+    choices:
+      - id: stop-pour
+        text: "Остановить налив и звать начальника и ПТБ"
+        effects: { safety: 8, loyalty: -4 }
+        set: [reminded]
+        verdict: best
+        next: follow
+      - id: keep
+        text: "Оставить флягу: зато тихо"
+        effects: { loyalty: 4, safety: -14 }
+        verdict: worse
+        better: "Тишина не отменяет запрет пить в салоне"
+        basis: "Ситуации на борту.pdf, с. 9, ситуация 21"
+        next: end-stop
+  end-ok:
+    end: completed
+    text: "Правило названо, начальник поезда и ПТБ вызваны"
+  end-bad:
+    end: incident
+    text: "Спор или слово «пьяный» в эфире разогнали салон"
+  end-stop:
+    end: terminated
+    text: "Толкотня в проходе, ситуацию не удержали"

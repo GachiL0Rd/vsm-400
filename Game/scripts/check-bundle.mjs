@@ -1,8 +1,8 @@
 import { readdir, readFile } from 'node:fs/promises';
 
-const files = (await readdir('dist/assets')).filter((name) => name.endsWith('.js'));
+const files = (await readdir('dist/client/assets')).filter((name) => name.endsWith('.js'));
 if (files.length === 0) throw new Error('Production JavaScript bundle is missing.');
-const bundle = (await Promise.all(files.map((name) => readFile(`dist/assets/${name}`, 'utf8')))).join('\n');
+const bundle = (await Promise.all(files.map((name) => readFile(`dist/client/assets/${name}`, 'utf8')))).join('\n');
 
 for (const sentinel of [
   'Тестовая смена:',
