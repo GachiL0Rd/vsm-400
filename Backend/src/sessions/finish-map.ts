@@ -3,6 +3,12 @@ import { politenessOf } from '../engine/summarize';
 import type { RunSummary } from '../engine/types';
 
 /**
+ * Порог провала шкалы безопасности после округления.
+ * Тот же `lt: 30`, что `gates.failIf.safety` в сценариях и `rules.failScore`.
+ */
+export const FINISH_FAIL_SAFETY = 30;
+
+/**
  * Из FinishedGameResult в RunSummary идут только termination и scores.
  * userInputs и id ачивок игры в компетенциях Backend не участвуют.
  */
@@ -20,7 +26,7 @@ export type FinishAssessment = {
 export function finishToSummary(result: FinishAssessment): RunSummary {
   const safety = roundedScore(result.scores.safety);
   const loyalty = roundedScore(result.scores.customerSatisfaction);
-  const outcome = mapOutcome(result.termination);
+  const outcome = mapOutcome(result.termination, safety);
   return {
     outcome,
     loyalty,
@@ -39,12 +45,18 @@ export function finishToSummary(result: FinishAssessment): RunSummary {
   };
 }
 
-function mapOutcome(termination: FinishAssessment['termination']): RunSummary['outcome'] {
+function mapOutcome(
+  termination: FinishAssessment['termination'],
+  safety: number,
+): RunSummary['outcome'] {
+  if (safety < FINISH_FAIL_SAFETY) {
+    return 'terminated';
+  }
   if (termination.kind === 'route-completed') {
     return 'completed';
   }
   if (termination.outcomeId === 'route-safely-interrupted') {
-    return 'terminated';
+    return 'completed';
   }
   return 'incident';
 }

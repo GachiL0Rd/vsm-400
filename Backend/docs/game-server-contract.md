@@ -163,7 +163,7 @@ Guided и replay в этом адаптере не выдаются.
 | `safety` | `clamp(scores.safety)`, затем целое |
 | `loyalty` | `clamp(scores.customerSatisfaction)`, затем целое |
 | `politeness` | `politenessOf(loyalty, [], [])` |
-| `outcome` | `route-completed` → `completed`. `terminal-rule` и `outcomeId = route-safely-interrupted` → `terminated`. Любой другой `terminal-rule` (`wagon-unserviceable`, `wagon-unsalvageable`, неизвестный id) → `incident` |
+| `outcome` | Если `safety` после clamp и округления `< 30` (`FINISH_FAIL_SAFETY`, тот же порог, что `gates.failIf.safety.lt` и `rules.failScore`) → `terminated`. Иначе `route-completed` → `completed`. Иначе `terminal-rule` и `outcomeId = route-safely-interrupted` → `completed`. Любой другой `terminal-rule` (`wagon-unserviceable`, `wagon-unsalvageable`, неизвестный id) → `incident` |
 | `decisions` | `[]` |
 | `competencyDelta` | `{}` |
 | `timeouts`, `reactionAvgMs` | `0` |
@@ -171,8 +171,9 @@ Guided и replay в этом адаптере не выдаются.
 | `facts.incidents` | `1`, если `outcome = incident`, иначе `0` |
 | `facts.interventions` | `1`, если `outcomeId = route-safely-interrupted`, иначе `0` |
 
-`route-completed` не смотрит на `outcomeId` для `outcome`, но
-`interventions` смотрит только на `outcomeId`.
+Сначала шкала: `safety` ниже 30 даёт `terminated` при любом `termination`.
+Иначе `route-completed` не смотрит на `outcomeId`. `interventions` смотрит
+только на `outcomeId`, в том числе когда низкая шкала уже дала `terminated`.
 
 ## Переменные
 
