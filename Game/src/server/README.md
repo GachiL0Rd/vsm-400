@@ -31,7 +31,7 @@ Relevant configuration:
 - `GAME_DISCONNECT_DEBOUNCE_MS` — delay before a detached active attempt pauses;
 - `GAME_RECONNECT_GRACE_MS` — additional lifetime before an abandoned attempt aborts.
 
-Baseline live time scales are `1x`, `2x`, and `4x`. A clock/state change and any
+Release `0.1.0` live time scales are `1x`, `2x`, and `4x`. A clock/state change and any
 simulation-originated public state change are projected through the same public
 revision path as command-induced changes. Pure idle time does not invalidate
 revision-bound action handles.
@@ -59,6 +59,8 @@ fail-fast before the listener opens. The browser client may still be served sepa
 `PLATFORM_API_URL` and `PLATFORM_SERVICE_TOKEN` together; otherwise the server
 starts in explicit mock mode.
 
-Platform requests retain their existing timeout/error mapping and the worker keeps
-`finishSession` idempotent. H3 deliberately does not add automatic retries at the
-Platform boundary because retry semantics must be agreed with the Platform API.
+Platform requests use the documented timeout/error mapping and the worker keeps
+`finishSession` idempotent. Release `0.1.0` performs bounded in-memory retries for
+transient finish failures (`unavailable` / `timeout`) while keeping the simulation
+frozen in `finishing`. Durable retry/outbox recovery across process restarts remains
+a deferred platform-integration capability.

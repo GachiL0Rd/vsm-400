@@ -271,6 +271,43 @@ describe('PublicGameProjection', () => {
     ]);
   });
 
+  it('revalidates an action handle against current hidden simulation state before invoke', () => {
+    const projection = createProjection();
+    projection.snapshot();
+    completeJournal(projection);
+    projection.advanceTo(secondsToSimTimeUs(5 * 60));
+
+    const offer = projection.queryActions({
+      protocolVersion: GAME_PROTOCOL_VERSION,
+      type: 'query-actions',
+      requestId: 'boarding-offer',
+      knownRevision: projection.revision,
+      target: { kind: 'entity', entityId: 'passenger-1' },
+    });
+    const action = offer.actions[0];
+    expect(action?.form?.kind).toBe('passenger-documents');
+
+    projection.attempt.decidePassengerBoarding('passenger-1', 'admit');
+    const revisionBeforeInvoke = projection.revision;
+
+    const result = projection.invoke({
+      protocolVersion: GAME_PROTOCOL_VERSION,
+      type: 'invoke-action',
+      requestId: 'stale-hidden-state-offer',
+      knownRevision: revisionBeforeInvoke,
+      actionHandle: action?.handle ?? 'missing',
+      input: { decision: 'reject' },
+    });
+
+    expect(projection.revision).toBe(revisionBeforeInvoke);
+    expect(result.result).toMatchObject({
+      status: 'rejected',
+      code: 'action-rejected',
+      message: 'Action is no longer available',
+    });
+    expect(projection.attempt.boardingDecision('passenger-1')).toBe('admit');
+  });
+
   it('supports mounted and held extinguisher inspection and extinguishes the baseline fire', () => {
     const projection = createProjection();
     projection.snapshot();

@@ -279,7 +279,7 @@ Targets can be `cell`, `entity`, or `object`. A stale revision is rejected inste
 }
 ```
 
-`input` is optional JSON. Its semantic shape is action-specific and validated server-side. For form actions the current baseline contracts are listed in section 8. A client MUST submit a fresh action handle from the current revision; mutating a previously received form descriptor locally does not mutate server state.
+`input` is optional JSON. Its semantic shape is action-specific and validated server-side. For form actions the current release contracts are listed in section 8. A client MUST submit an action handle from the current revision. The server revalidates the offered action against current simulation state at invoke time; a handle can therefore be rejected even when the public revision has not changed. Mutating a previously received form descriptor locally does not mutate server state.
 
 In `replay` mode, gameplay-affecting commands are rejected with `unsupported-command`. This currently applies to `move-to`, `query-actions`, and `invoke-action`. `resync` remains available, and `set-time-scale` is treated as playback control rather than gameplay input.
 
@@ -295,7 +295,7 @@ In `replay` mode, gameplay-affecting commands are rejected with `unsupported-com
 }
 ```
 
-Current baseline scales are `1`, `2`, and `4`. Unsupported scales are rejected.
+Release `0.1.0` scales are `1`, `2`, and `4`. Unsupported scales are rejected.
 
 ### `resync`
 
