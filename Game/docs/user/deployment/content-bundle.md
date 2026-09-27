@@ -66,13 +66,14 @@ Serializable NPC action/trait content consumed by `loadActionContent`: action de
 
 ### `assessment.json`
 
-Versioned assessment tuning. Baseline v1 currently configures:
+Versioned assessment tuning. Baseline v2 currently configures:
 
 - starting score;
 - penalties for incorrect boarding decisions;
 - service response targets and penalties per class;
 - critical fire/pressure penalties;
 - false emergency-stop/seal penalties;
+- false critical journal report and missed critical problem penalties;
 - safe pre-departure minimum safety score;
 - fast-fire-response threshold;
 - achievement set version.

@@ -5,7 +5,13 @@ import { BASELINE_ASSESSMENT_CONFIG } from './assessment-config';
 describe('AssessmentRuntime', () => {
   it('rewards correct documents, clean pre-departure, and fast fire response', () => {
     const runtime = new AssessmentRuntime();
-    runtime.recordJournalSubmission({ sanitation: 'clean', criticalProblem: false });
+    runtime.recordJournalSubmission({
+      sanitation: 'clean',
+      reportedProblem: false,
+      realProblem: false,
+      falseReport: false,
+      missedProblem: false,
+    });
     runtime.recordBoardingDecision('p1', 'admit', 'admit');
     runtime.recordBoardingDecision('p2', 'reject', 'reject');
     runtime.recordFireStarted(10_000_000);
@@ -14,7 +20,7 @@ describe('AssessmentRuntime', () => {
     expect(runtime.result({ kind: 'route-completed' })).toEqual({
       scores: { safety: 100, customerSatisfaction: 100 },
       achievements: {
-        setVersion: 'baseline-v1',
+        setVersion: 'baseline-v2',
         ids: ['clean-predeparture', 'documents-perfect', 'fast-fire-response'],
       },
     });
@@ -42,7 +48,7 @@ describe('AssessmentRuntime', () => {
       justified.result({ kind: 'terminal-rule', outcomeId: 'route-safely-interrupted' }),
     ).toEqual({
       scores: { safety: 100, customerSatisfaction: 100 },
-      achievements: { setVersion: 'baseline-v1', ids: ['safe-emergency-stop'] },
+      achievements: { setVersion: 'baseline-v2', ids: ['safe-emergency-stop'] },
     });
 
     const unjustified = new AssessmentRuntime();
@@ -54,13 +60,50 @@ describe('AssessmentRuntime', () => {
     ).toEqual({ safety: 80, customerSatisfaction: 80 });
   });
 
-  it('does not punish correctly discovered critical pre-departure defects', () => {
-    const runtime = new AssessmentRuntime();
-    runtime.recordJournalSubmission({ sanitation: 'clean', criticalProblem: true });
+  it('lifts safety for a real pre-departure fault and not for a false report', () => {
+    const real = new AssessmentRuntime();
+    real.recordJournalSubmission({
+      sanitation: 'clean',
+      reportedProblem: true,
+      realProblem: true,
+      falseReport: false,
+      missedProblem: false,
+    });
+    real.recordBoardingDecision('p1', 'reject', 'admit');
 
     expect(
-      runtime.result({ kind: 'terminal-rule', outcomeId: 'wagon-unserviceable' }).scores.safety,
-    ).toBe(100);
+      real.result({ kind: 'terminal-rule', outcomeId: 'wagon-unserviceable' }).scores.safety,
+    ).toBe(95);
+
+    const fake = new AssessmentRuntime();
+    fake.recordJournalSubmission({
+      sanitation: 'clean',
+      reportedProblem: true,
+      realProblem: false,
+      falseReport: true,
+      missedProblem: false,
+    });
+    fake.recordBoardingDecision('p1', 'reject', 'admit');
+
+    expect(fake.result({ kind: 'terminal-rule', outcomeId: 'wagon-unserviceable' }).scores).toEqual(
+      { safety: 75, customerSatisfaction: 60 },
+    );
+  });
+
+  it('penalizes a missed critical problem and withholds clean-predeparture', () => {
+    const runtime = new AssessmentRuntime();
+    runtime.recordJournalSubmission({
+      sanitation: 'clean',
+      reportedProblem: false,
+      realProblem: false,
+      falseReport: false,
+      missedProblem: true,
+    });
+
+    expect(runtime.result({ kind: 'route-completed' })).toEqual({
+      scores: { safety: 70, customerSatisfaction: 100 },
+      achievements: { setVersion: 'baseline-v2', ids: [] },
+    });
   });
 
   it('heavily penalizes incidents allowed to reach critical state', () => {

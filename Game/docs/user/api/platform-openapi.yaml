@@ -339,7 +339,7 @@ components:
         achievements:
           allOf:
             - $ref: '#/components/schemas/AchievementResult'
-          description: Versioned Game Server assessment achievements. The baseline evaluator currently emits setVersion `baseline-v1`; consumers must treat IDs as opaque stable identifiers within that set version.
+          description: Versioned Game Server assessment achievements. The baseline evaluator currently emits setVersion `baseline-v2`; consumers must treat IDs as opaque stable identifiers within that set version.
         termination:
           $ref: '#/components/schemas/TerminationResult'
         scores:

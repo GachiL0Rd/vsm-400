@@ -28,7 +28,6 @@ import { type CellFieldState, createFieldWorld, type FieldWorld } from './field-
 import {
   type AcceptanceJournalEdit,
   type AcceptanceJournalState,
-  acceptanceJournalHasCriticalProblem,
   acceptanceJournalIsComplete,
   createItemStore,
   type ItemEvent,
@@ -36,6 +35,7 @@ import {
   type ItemStore,
   type ItemWorldConfig,
 } from './item-store';
+import { journalSubmissionFacts } from './journal-truth';
 import { BASELINE_LEVEL, type LoadedLevel } from './level';
 import { createSimulationRandom, type SimulationRandom } from './random';
 import { BASELINE_SCENARIO, type LoadedScenario } from './scenario';
@@ -323,15 +323,15 @@ export class GameAttempt {
 
   returnJournal(): AcceptanceJournalState {
     this.requirePreDeparture();
-    const current = this.items.snapshot().journal;
-    requireJournalReadyForSubmission(current);
+    const items = this.items.snapshot();
+    requireJournalReadyForSubmission(items.journal);
     const returned = this.items.returnJournal(this.playerId);
-    const criticalProblem = acceptanceJournalHasCriticalProblem(returned);
-    this.assessmentRuntime.recordJournalSubmission({
-      sanitation: returned.sanitation,
-      criticalProblem,
+    const facts = journalSubmissionFacts(returned, {
+      extinguisher: items.extinguisher,
+      emergencyBrake: this.emergencyBrakeState,
     });
-    if (criticalProblem) {
+    this.assessmentRuntime.recordJournalSubmission(facts);
+    if (facts.reportedProblem) {
       this.signal('critical-predeparture-fault');
       return returned;
     }

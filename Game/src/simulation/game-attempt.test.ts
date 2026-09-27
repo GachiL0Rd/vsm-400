@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { BASELINE_ASSESSMENT_CONFIG } from './assessment-config';
 import { GameAttempt } from './game-attempt';
 import { BASELINE_LEVEL } from './level';
 import { BASELINE_SCENARIO_DEFINITION, loadScenarioDefinition } from './scenario';
@@ -45,6 +46,25 @@ function resolveOriginBoarding(
 
 function scenarioWithoutIncidents() {
   return loadScenarioDefinition({ ...BASELINE_SCENARIO_DEFINITION, incidents: [] }, BASELINE_LEVEL);
+}
+
+function faultExtinguisher(attempt: GameAttempt): void {
+  follow(attempt, ['origin-desk-door:forward', 'origin-door-entry:forward', 'entry-cabin:forward']);
+  attempt.takeExtinguisher();
+  attempt.prepareExtinguisher();
+  attempt.returnExtinguisher();
+  follow(attempt, [
+    'entry-cabin:backward',
+    'origin-door-entry:backward',
+    'origin-desk-door:backward',
+  ]);
+}
+
+function finishQuietRoute(attempt: GameAttempt): void {
+  const originAt = secondsToSimTimeUs(5 * 60);
+  if (attempt.time < originAt) attempt.advanceTo(originAt);
+  resolveOriginBoarding(attempt);
+  attempt.advanceTo(attempt.scenario.normalEndTimeUs);
 }
 
 function prepareForBaselineFire(attempt: GameAttempt): void {
@@ -382,5 +402,111 @@ describe('GameAttempt', () => {
     });
     expect(attempt.phase).toEqual({ kind: 'finished' });
     expect(() => attempt.advanceTo(1)).toThrow(/Finished attempt/);
+  });
+
+  it('penalizes a false critical journal report and does not lift safety', () => {
+    const attempt = new GameAttempt({ rootSeed: 3 });
+    completeJournal(attempt, {
+      extinguisher: 'problem',
+      note: 'pressure gauge outside normal range',
+    });
+
+    expect(attempt.termination).toEqual({
+      kind: 'terminal-rule',
+      at: 0,
+      ruleId: 'predeparture-critical',
+      outcomeId: 'wagon-unserviceable',
+    });
+    expect(attempt.assessmentResult()).toEqual({
+      scores: { safety: 90, customerSatisfaction: 60 },
+      achievements: { setVersion: 'baseline-v2', ids: [] },
+    });
+  });
+
+  it('treats climate and communication problem marks as false reports', () => {
+    for (const field of ['climate', 'communication'] as const) {
+      const attempt = new GameAttempt({ rootSeed: 5 });
+      completeJournal(attempt, { [field]: 'problem' });
+
+      expect(attempt.termination).toMatchObject({
+        kind: 'terminal-rule',
+        outcomeId: 'wagon-unserviceable',
+      });
+      expect(attempt.assessmentResult().scores).toEqual({
+        safety: 90,
+        customerSatisfaction: 60,
+      });
+      expect(attempt.assessmentResult().achievements.ids).not.toContain('clean-predeparture');
+    }
+  });
+
+  it('keeps the safe pre-departure floor when the reported extinguisher fault is real', () => {
+    const attempt = new GameAttempt({
+      rootSeed: 41,
+      assessmentConfig: {
+        ...BASELINE_ASSESSMENT_CONFIG,
+        startingScore: 50,
+      },
+    });
+    faultExtinguisher(attempt);
+    expect(attempt.snapshot().items.extinguisher).toMatchObject({
+      pin: 'removed',
+      seal: 'broken',
+    });
+    completeJournal(attempt, { extinguisher: 'problem' });
+
+    expect(attempt.termination).toMatchObject({
+      kind: 'terminal-rule',
+      ruleId: 'predeparture-critical',
+      outcomeId: 'wagon-unserviceable',
+    });
+    const result = attempt.assessmentResult();
+    expect(result.scores.safety).toBeGreaterThanOrEqual(95);
+    expect(result.scores.customerSatisfaction).toBe(50);
+    expect(result.achievements.ids).not.toContain('clean-predeparture');
+  });
+
+  it('penalizes a missed critical fault when the journal marks it ok', () => {
+    const attempt = new GameAttempt({ rootSeed: 11, scenario: scenarioWithoutIncidents() });
+    faultExtinguisher(attempt);
+    completeJournal(attempt);
+
+    expect(attempt.termination).toBeNull();
+    finishQuietRoute(attempt);
+
+    expect(attempt.termination).toMatchObject({ kind: 'route-completed' });
+    expect(attempt.assessmentResult()).toEqual({
+      scores: { safety: 70, customerSatisfaction: 0 },
+      achievements: { setVersion: 'baseline-v2', ids: ['documents-perfect'] },
+    });
+  });
+
+  it('stacks a false mark with a missed real fault and does not lift safety', () => {
+    const attempt = new GameAttempt({ rootSeed: 8 });
+    faultExtinguisher(attempt);
+    completeJournal(attempt, { communication: 'problem', extinguisher: 'ok' });
+
+    expect(attempt.termination).toMatchObject({
+      kind: 'terminal-rule',
+      outcomeId: 'wagon-unserviceable',
+    });
+    expect(attempt.assessmentResult()).toEqual({
+      scores: { safety: 60, customerSatisfaction: 60 },
+      achievements: { setVersion: 'baseline-v2', ids: [] },
+    });
+  });
+
+  it('keeps honest pre-departure scores and grants clean-predeparture', () => {
+    const attempt = new GameAttempt({ rootSeed: 11, scenario: scenarioWithoutIncidents() });
+    completeJournal(attempt);
+    finishQuietRoute(attempt);
+
+    expect(attempt.assessmentResult()).toEqual({
+      scores: { safety: 100, customerSatisfaction: 0 },
+      achievements: {
+        setVersion: 'baseline-v2',
+        ids: ['clean-predeparture', 'documents-perfect'],
+      },
+    });
   });
 });
