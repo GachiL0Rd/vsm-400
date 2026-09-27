@@ -93,17 +93,7 @@ export class HttpPlatformGateway implements PlatformGateway {
         body: JSON.stringify(body),
         signal: controller.signal,
       });
-      if (response.status === 401 || response.status === 403 || response.status === 404) {
-        throw new PlatformGatewayError(
-          'invalid-session',
-          `Platform rejected ${path} with ${response.status}`,
-        );
-      }
-      if (!response.ok)
-        throw new PlatformGatewayError(
-          'unavailable',
-          `Platform returned ${response.status} for ${path}`,
-        );
+      if (!response.ok) throw platformHttpError(path, response.status);
       return response;
     } catch (error) {
       if (error instanceof PlatformGatewayError) throw error;
@@ -118,6 +108,28 @@ export class HttpPlatformGateway implements PlatformGateway {
       clearTimeout(timeout);
     }
   }
+}
+
+function platformHttpError(path: string, status: number): PlatformGatewayError {
+  const message = `Platform returned ${status} for ${path}`;
+  if (status === 401 || status === 403) return new PlatformGatewayError('authentication', message);
+
+  const kind =
+    path === '/api/game/sessions/resolve' ? resolveErrorKind(status) : finishErrorKind(status);
+  return new PlatformGatewayError(kind, message);
+}
+
+function resolveErrorKind(status: number): PlatformGatewayError['kind'] {
+  if (status === 404 || status === 410) return 'invalid-session';
+  if (status === 409) return 'session-unavailable';
+  if (status === 400) return 'contract';
+  return 'unavailable';
+}
+
+function finishErrorKind(status: number): PlatformGatewayError['kind'] {
+  if (status === 404) return 'session-unavailable';
+  if (status === 400 || status === 409) return 'contract';
+  return 'unavailable';
 }
 
 function parseResponse<T>(schema: z.ZodType<T>, response: Response, operation: string): Promise<T> {

@@ -6,11 +6,12 @@
 
 ## 1. Цель
 
-Game остаётся самостоятельным приложением, но код внутри него разделяется на четыре явных слоя:
+Game остаётся самостоятельным приложением, но код внутри него разделяется на пять явных слоёв:
 
 ```text
 common      browser-safe shared contract
 simulation  authoritative game rules
+projection  safe public view/action boundary
 server      session/orchestration/transport/platform integration
 client      Phaser presentation and input
 ```
@@ -23,9 +24,13 @@ client      Phaser presentation and input
 client ───────────────► common
                          ▲
                          │
-server ───────────────► common
+projection ───────────► common
   │
   └───────────────────► simulation
+                         ▲
+                         │
+server ───────────────► projection
+server ───────────────► common
 
 simulation ──► common/foundation   (только при необходимости)
 ```
@@ -34,7 +39,8 @@ simulation ──► common/foundation   (только при необходим
 
 - `client` никогда не импортирует `simulation`;
 - `simulation` не импортирует WebSocket/HTTP/Phaser и transport DTO;
-- `server` является composition root и связывает simulation с transport/platform integration;
+- `projection` является безопасной промежуточной границей: читает authoritative simulation state и выдаёт только public browser-facing state/actions;
+- `server` является composition root и связывает projection с transport/platform integration;
 - `common` содержит только данные, которые безопасно включить в browser bundle.
 
 Если `simulation` использует что-либо из `common`, это должны быть только нейтральные foundation primitives (например branded IDs), а не wire messages.
@@ -83,15 +89,31 @@ RNG / replay semantics
 
 Simulation работает без WebSocket и Platform Server.
 
-## 5. `server`
+## 5. `projection`
 
-Server использует `simulation` и `common` и отвечает за внешнюю жизнь игровой попытки:
+`projection` — безопасное промежуточное звено между authoritative simulation и browser/server transport.
+
+Он:
+
+```text
+читает authoritative simulation state
+строит public snapshot/diff
+формирует browser-safe entity/world views
+выдаёт opaque public action offers/handles
+принимает public action invocation и переводит её в simulation operation
+скрывает private traits, RNG, future events и assessment internals
+```
+
+Projection не владеет transport/session lifecycle и не является вторым источником истины. Его задача — явная trust/serialization boundary.
+
+## 6. `server`
+
+Server использует `projection` и `common` и отвечает за внешнюю жизнь игровой попытки:
 
 ```text
 GameSessionWorker
 WebSocket endpoint
 command serialization
-public projection
 interaction query/response
 SessionKey / ResumeToken
 PlatformGateway
@@ -102,7 +124,7 @@ runtime config
 
 Game Server не содержит меню, профиль пользователя и историю попыток платформы.
 
-## 6. `client`
+## 7. `client`
 
 Client использует только `common` и client-side content/assets.
 
@@ -121,13 +143,13 @@ asset registry
 
 Client не рассчитывает navigation, action availability, scores, NPC decisions или hidden state.
 
-## 7. Static client delivery
+## 8. Static client delivery
 
 Game Server может отдавать собранный Browser Client по HTTP endpoint, но сам frontend build остаётся отдельным слоем и не получает доступа к server/simulation modules.
 
 Раздача статического клиента является обязанностью server package, а не simulation.
 
-## 8. Platform API
+## 9. Platform API
 
 Контракт Platform Server описывается отдельно от его реализации. Для параллельной разработки предполагается versioned OpenAPI/Swagger specification поверх `resolveSession` и `finishSession`.
 

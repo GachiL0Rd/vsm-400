@@ -170,7 +170,7 @@ response time
 resolution time
 resolution quality
 refusal correctness
-communication outcome
+communication outcome (после реализации соответствующего interaction/assessment extension)
 ```
 
 Более высокий класс означает более строгую content policy, а не автоматическую потерю/прибавку satisfaction.

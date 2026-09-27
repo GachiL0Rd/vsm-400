@@ -32,6 +32,57 @@ describe('platform gateways', () => {
     ]);
   });
 
+  it.each([
+    [401, 'authentication'],
+    [403, 'authentication'],
+    [404, 'invalid-session'],
+    [409, 'session-unavailable'],
+    [410, 'invalid-session'],
+    [503, 'unavailable'],
+  ] as const)('maps resolve HTTP %i to %s', async (status, kind) => {
+    const gateway = new HttpPlatformGateway({
+      baseUrl: 'https://platform.test/',
+      serviceToken: 'service-token',
+      timeoutMs: 100,
+      fetch: async () => new Response(null, { status }),
+    });
+
+    await expect(gateway.resolveSession('opaque-key')).rejects.toMatchObject<
+      Partial<PlatformGatewayError>
+    >({ kind });
+  });
+
+  it.each([
+    [400, 'contract'],
+    [401, 'authentication'],
+    [404, 'session-unavailable'],
+    [409, 'contract'],
+    [503, 'unavailable'],
+  ] as const)('maps finish HTTP %i to %s', async (status, kind) => {
+    const gateway = new HttpPlatformGateway({
+      baseUrl: 'https://platform.test/',
+      serviceToken: 'service-token',
+      timeoutMs: 100,
+      fetch: async () => new Response(null, { status }),
+    });
+
+    await expect(
+      gateway.finishSession({
+        attemptId: 'a-1',
+        content: {
+          gameLevelId: 'vsm-baseline-01',
+          gameLevelVersion: '1',
+          simulationCompatibilityVersion: '1',
+        },
+        rootSeed: '1',
+        userInputs: [],
+        achievements: { setVersion: '1', ids: [] },
+        termination: { kind: 'route-completed', outcomeId: 'route-completed' },
+        scores: { safety: 0, customerSatisfaction: 0 },
+      }),
+    ).rejects.toMatchObject<Partial<PlatformGatewayError>>({ kind });
+  });
+
   it('maps an aborted platform request to a timeout error', async () => {
     const gateway = new HttpPlatformGateway({
       baseUrl: 'https://platform.test/',

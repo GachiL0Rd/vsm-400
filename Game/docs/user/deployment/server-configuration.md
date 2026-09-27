@@ -120,7 +120,7 @@ Endpoints:
 | --- | --- |
 | `GET /health` | Process liveness. Returns `200` with `{"status":"ok"}` while the process handles HTTP. |
 | `GET /ready` | Readiness/draining state. Returns `200 {"status":"ready"}` while accepting new work, otherwise `503 {"status":"draining"}`. |
-| `GET /...` | Static browser files only when `GAME_STATIC_DIR` is configured. SPA fallback uses `index.html` for extensionless paths. |
+| `GET /...` | Static browser files when a client root is available: explicit `GAME_STATIC_DIR` or auto-detected sibling `dist/client/`. SPA fallback uses `index.html` for extensionless paths. |
 | `WS /game-ws` | Game protocol v1. See [`../api/websocket-protocol.md`](../api/websocket-protocol.md). |
 
 Readiness intentionally does not perform a live Platform Server dependency check. Temporary Platform unavailability should not by itself make the Game Server process unready.
@@ -159,7 +159,9 @@ Server-side gameplay configuration is now file-backed. `GAME_CONTENT_DIR` contai
 
 The runtime loads and validates the complete registry before opening the listener. Platform `gameLevelId` values are resolved only through this registry. See [`content-bundle.md`](content-bundle.md) for the exact release format and immutability rules.
 
-Browser/media files remain a separate concern. `GAME_STATIC_DIR` is an ordinary folder root containing `index.html` and its assets; it does not need to follow the Game Server content-manifest format. Large visual/audio assets may therefore be packaged with the client or served separately as long as stable projected `visualId` values remain compatible.
+Browser/media files remain a separate concern. `GAME_STATIC_DIR` is an ordinary folder root containing `index.html` and its assets; it does not need to follow the Game Server content-manifest format. Large visual/audio/text presentation assets may therefore be packaged with the client or served separately as long as stable projected `visualId` values remain compatible.
+
+The client integration may introduce a dedicated HTTP file-storage namespace for browser-only assets. Its path/layout/manifest/cache contract is intentionally not fixed in release `0.1.0`; it should be defined from the actual client asset requirements rather than from simulation content structure.
 
 ## 6. Secrets and configuration ownership
 
@@ -218,7 +220,7 @@ Container orchestrators should send `SIGTERM` and allow at least the configured 
 
 Current logging uses process console output for startup/shutdown and errors. There is no structured production logging/metrics contract yet.
 
-Containers should capture stdout/stderr. Do not require local log files or writable application directories for baseline operation.
+Containers should capture stdout/stderr. Do not require local log files or writable application directories for normal release operation.
 
 ## 10. Platform API behavior
 
@@ -238,7 +240,7 @@ POST /api/game/sessions/{attemptId}/finish
 
 See [`../api/platform-openapi.yaml`](../api/platform-openapi.yaml).
 
-There is currently no automatic retry loop at the PlatformGateway boundary. `finishSession` is designed to be idempotent at the contract level, but retry/outbox policy is intentionally deferred.
+`finishSession` is idempotent at the contract level. The worker performs a bounded in-memory retry sequence for transient Platform `unavailable`/`timeout` failures while keeping the terminal attempt frozen in `finishing`. Durable retry/outbox persistence across process restarts remains deferred.
 
 ## 11. Current runtime state boundary
 

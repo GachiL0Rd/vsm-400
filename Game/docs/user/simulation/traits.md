@@ -45,7 +45,7 @@ Trait одновременно может быть:
 interface TraitDefinition {
   id: string;
 
-  addActions?: ActionAssetRef[];
+  addActions?: string[];
   blacklistActions?: ActionSelector[];
   whitelistActions?: ActionSelector[];
 

@@ -14,6 +14,7 @@ import type { AssessmentResult } from '../simulation/assessment.ts';
 import type { GameAttemptSnapshot } from '../simulation/game-attempt.ts';
 import { SimulationClock } from '../simulation/simulation-clock.ts';
 import type { ResolvedGameContent } from './content-registry.ts';
+import { parseReplayInputs, type RecordedReplayInput } from './replay-input.ts';
 import type { ResumeTokenRegistry } from './resume-token-registry.ts';
 import type {
   FinishedGameResult,
@@ -21,6 +22,7 @@ import type {
   PlatformGateway,
   SessionMode,
 } from './types.ts';
+import { PlatformGatewayError } from './types.ts';
 
 export type AttemptLifecycle =
   | 'initializing'
@@ -72,6 +74,8 @@ export interface GameSessionWorkerOptions {
   readonly allowedTimeScales?: readonly number[];
   readonly clock?: WorkerClock;
   readonly scheduler?: WorkerScheduler;
+  readonly finishRetryDelaysMs?: readonly number[];
+  readonly onFinished?: (attemptId: string) => void;
   readonly onAborted?: (attemptId: string) => void;
 }
 
@@ -87,6 +91,7 @@ type PublicationListener = (message: WorkerPublication) => void;
 const DEFAULT_SIMULATION_STEP_MS = 50;
 const DEFAULT_MAX_CATCH_UP_MS = 1_000;
 const DEFAULT_TIME_SCALES = [1, 2, 4] as const;
+const DEFAULT_FINISH_RETRY_DELAYS_MS = [1_000, 3_000, 10_000] as const;
 
 /** Owns an attempt, not a socket. Wire payload interpretation stays outside this type. */
 export class GameSessionWorker {
@@ -102,10 +107,16 @@ export class GameSessionWorker {
   private pauseTimer: WorkerTimer | null = null;
   private abortTimer: WorkerTimer | null = null;
   private tickTimer: WorkerTimer | null = null;
+  private finishRetryTimer: WorkerTimer | null = null;
   private finishPromise: Promise<FinishSessionResponse> | null = null;
   private finishReceipt: FinishSessionResponse | null = null;
+  private readonly finishRetryDelaysMs: readonly number[];
+  private nextFinishRetryIndex = 0;
   private readonly publications = new Set<PublicationListener>();
   private nextInputSequence = 0;
+  private readonly replayInputs: readonly RecordedReplayInput[];
+  private replayInputIndex = 0;
+  private replayEnded = false;
   private readonly userInputs: Array<{
     readonly at: number;
     readonly sequence: number;
@@ -123,6 +134,10 @@ export class GameSessionWorker {
       positiveInteger(options.maxCatchUpMs ?? DEFAULT_MAX_CATCH_UP_MS, 'catch-up window'),
     );
     this.allowedTimeScales = new Set(options.allowedTimeScales ?? DEFAULT_TIME_SCALES);
+    this.finishRetryDelaysMs = options.finishRetryDelaysMs ?? DEFAULT_FINISH_RETRY_DELAYS_MS;
+    if (this.finishRetryDelaysMs.some((delay) => !nonNegativeInteger(delay))) {
+      throw new RangeError('finishRetryDelaysMs must contain non-negative safe integers');
+    }
     if (
       this.allowedTimeScales.size === 0 ||
       [...this.allowedTimeScales].some((scale) => !validScale(scale))
@@ -131,6 +146,8 @@ export class GameSessionWorker {
     }
     const initial = options.attempt.snapshot();
     this.simulationClock = new SimulationClock(this.nowWallUs(), initial.time);
+    this.replayInputs =
+      options.mode.kind === 'replay' ? parseReplayInputs(options.mode.source.userInputs) : [];
   }
 
   get attemptId(): string {
@@ -156,7 +173,7 @@ export class GameSessionWorker {
   publicClock(): PublicClockView {
     return {
       timeScale: this.simulationClock.timeScale,
-      paused: this.simulationClock.paused || this.lifecycleState === 'paused',
+      paused: this.simulationClock.paused || this.lifecycleState === 'paused' || this.replayEnded,
     };
   }
 
@@ -248,6 +265,7 @@ export class GameSessionWorker {
 
   shutdown(): void {
     this.cancelDisconnectTimers();
+    this.cancelFinishRetry();
     this.cancelTick();
     this.connectionId = null;
     this.connectionState = 'detached';
@@ -261,6 +279,7 @@ export class GameSessionWorker {
   async finish(): Promise<FinishSessionResponse> {
     if (this.finishReceipt !== null) return this.finishReceipt;
     if (this.finishPromise !== null) return this.finishPromise;
+    this.cancelFinishRetry();
     const result = this.finishedResult();
     this.lifecycleState = 'finishing';
     this.cancelDisconnectTimers();
@@ -273,13 +292,16 @@ export class GameSessionWorker {
         this.lifecycleState = 'finished';
         this.options.resumeTokens.revokeAttempt(this.attemptId);
         this.publishSessionState('finished', receipt.redirectUrl);
+        this.options.onFinished?.(this.attemptId);
         return receipt;
       })
       .catch((error: unknown) => {
         this.finishPromise = null;
         // The simulation is already terminal. A failed platform handoff must not
-        // revive it or restart ticking; callers may retry finish() idempotently.
+        // revive it or restart ticking. Transient failures receive a small bounded
+        // retry budget; callers may still invoke finish() explicitly and idempotently.
         this.lifecycleState = 'finishing';
+        this.scheduleFinishRetry(error);
         throw error;
       });
     return this.finishPromise;
@@ -307,11 +329,47 @@ export class GameSessionWorker {
       this.simulationClock.advanceProcessedTo(current);
     }
     target = Math.max(target, current);
+    if (this.options.mode.kind === 'replay') {
+      this.advanceReplayTo(target);
+      return;
+    }
     const delta = this.options.projection.advanceTo(target, this.publicClock());
     const applied = this.options.attempt.snapshot().time;
     this.simulationClock.advanceProcessedTo(applied);
     this.publishDelta(delta);
     this.finishIfTerminated();
+  }
+
+  private advanceReplayTo(target: number): void {
+    while (this.replayInputIndex < this.replayInputs.length) {
+      const input = this.replayInputs[this.replayInputIndex];
+      if (input === undefined || input.at > target || this.options.attempt.termination !== null)
+        break;
+
+      const advanceDelta = this.options.projection.advanceTo(input.at, this.publicClock());
+      this.publishDelta(advanceDelta);
+      this.simulationClock.advanceProcessedTo(this.options.attempt.snapshot().time);
+
+      if (this.options.attempt.termination !== null) break;
+      const commandDelta = this.options.projection.applyReplayCommand(
+        input.command,
+        this.publicClock(),
+      );
+      this.publishDelta(commandDelta);
+      this.replayInputIndex += 1;
+      this.simulationClock.advanceProcessedTo(this.options.attempt.snapshot().time);
+    }
+
+    if (this.options.attempt.termination === null) {
+      const finalDelta = this.options.projection.advanceTo(target, this.publicClock());
+      this.publishDelta(finalDelta);
+      this.simulationClock.advanceProcessedTo(this.options.attempt.snapshot().time);
+    }
+    if (this.options.attempt.termination !== null && !this.replayEnded) {
+      this.replayEnded = true;
+      this.cancelTick();
+      this.publishDelta(this.options.projection.refresh(this.publicClock()));
+    }
   }
 
   private finishIfTerminated(): void {
@@ -347,13 +405,30 @@ export class GameSessionWorker {
   }
 
   private ensureTickScheduled(): void {
-    if (this.tickTimer !== null || this.lifecycleState !== 'active') return;
+    if (this.tickTimer !== null || this.lifecycleState !== 'active' || this.replayEnded) return;
     this.tickTimer = this.scheduler.after(this.simulationStepMs, () => this.tick());
   }
 
   private cancelTick(): void {
     this.tickTimer?.cancel();
     this.tickTimer = null;
+  }
+
+  private scheduleFinishRetry(error: unknown): void {
+    if (!isRetryableFinishError(error)) return;
+    const delayMs = this.finishRetryDelaysMs[this.nextFinishRetryIndex];
+    if (delayMs === undefined) return;
+    this.nextFinishRetryIndex += 1;
+    this.finishRetryTimer = this.scheduler.after(delayMs, () => {
+      this.finishRetryTimer = null;
+      if (this.lifecycleState !== 'finishing' || this.finishReceipt !== null) return;
+      void this.finish().catch(() => undefined);
+    });
+  }
+
+  private cancelFinishRetry(): void {
+    this.finishRetryTimer?.cancel();
+    this.finishRetryTimer = null;
   }
 
   private publishDelta(delta: GameDeltaMessage): void {
@@ -431,4 +506,15 @@ function positiveInteger(value: number, label: string): number {
 
 function validScale(value: number): boolean {
   return typeof value === 'number' && Number.isFinite(value) && value > 0;
+}
+
+function nonNegativeInteger(value: number): boolean {
+  return Number.isSafeInteger(value) && value >= 0;
+}
+
+function isRetryableFinishError(error: unknown): boolean {
+  return (
+    error instanceof PlatformGatewayError &&
+    (error.kind === 'unavailable' || error.kind === 'timeout')
+  );
 }

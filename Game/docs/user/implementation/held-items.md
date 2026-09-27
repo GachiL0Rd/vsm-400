@@ -14,11 +14,11 @@ heldItemId?: ItemId;
 
 Полноценный многослотовый inventory не требуется.
 
-Item не является Entity: Entity в baseline — только player/passenger.
+Item не является Entity: в текущей release-модели Entity — только player/passenger.
 
 ## 2. Переносимые предметы
 
-Baseline предусматривает:
+Текущий release предусматривает:
 
 1. журнал приёмки;
 2. огнетушитель;
@@ -73,7 +73,7 @@ held + used/partially used
 
 ## 5. Еда и напиток
 
-Для baseline обслуживание максимально простое.
+В текущем release обслуживание максимально простое.
 
 В вагоне существует service point/storage с простой модалкой:
 
@@ -105,7 +105,7 @@ give-drink
 
 Передача предмета создаёт domain event (`ItemGiven` или эквивалент), который может завершить waiting action пассажира.
 
-## 6. Что не моделируется в baseline
+## 6. Что не моделируется в текущем release
 
 Пока не нужны:
 

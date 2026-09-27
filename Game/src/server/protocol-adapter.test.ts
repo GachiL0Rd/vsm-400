@@ -236,7 +236,7 @@ describe('CommonGameProtocolAdapter', () => {
       type: 'command-result',
       requestId: 'move-replay',
       status: 'rejected',
-      code: 'action-rejected',
+      code: 'unsupported-command',
       message: 'Gameplay input is disabled in replay mode',
     });
 
@@ -251,7 +251,7 @@ describe('CommonGameProtocolAdapter', () => {
       type: 'command-result',
       requestId: 'query-replay',
       status: 'rejected',
-      code: 'action-rejected',
+      code: 'unsupported-command',
     });
 
     connection.receive({
@@ -261,6 +261,42 @@ describe('CommonGameProtocolAdapter', () => {
       knownRevision: ready.snapshot.state.revision,
     });
     expect(connection.sent.at(-1)).toMatchObject({ type: 'snapshot' });
+  });
+
+  it('rejects replay sessions recorded against incompatible content versions', async () => {
+    const replayMode: SessionMode = {
+      kind: 'replay',
+      source: {
+        simulationCompatibilityVersion: '0.0.9',
+        gameLevelVersion: 'old-level',
+        rootSeed: '7',
+        userInputs: [],
+      },
+      reveal: {
+        traits: false,
+        actionLogits: false,
+        hiddenObjectState: false,
+        assessment: false,
+        explanations: false,
+      },
+    };
+    const { adapter } = setup(replayMode);
+    const connection = new FakeConnection('socket-replay-mismatch');
+    adapter.open(connection);
+    connection.receive({
+      protocolVersion: GAME_PROTOCOL_VERSION,
+      type: 'hello',
+      requestId: 'hello-replay-mismatch',
+      sessionKey: 'platform-key',
+    });
+    await flush();
+
+    expect(connection.sent[0]).toMatchObject({
+      type: 'error',
+      requestId: 'hello-replay-mismatch',
+      code: 'authentication-failed',
+    });
+    expect(connection.closes).toEqual([{ code: 1008, reason: 'authentication failed' }]);
   });
 
   it('closes malformed messages after reporting a protocol error', () => {

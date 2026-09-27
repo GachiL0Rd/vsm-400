@@ -135,11 +135,15 @@ Content-Type: application/json
 
 Некорректный, просроченный или уже недопустимый key приводит к отказу запуска.
 
-Точные HTTP status/error DTO относятся к adapter implementation, но ошибки должны различать хотя бы:
+HTTP adapter обязан сохранять смысл platform response и не маскировать service/infrastructure errors под ошибку пользовательского key. Для contract v1 используется следующая семантика:
 
-- invalid/expired key;
-- session unavailable/already finished;
-- temporary platform failure.
+- `404`/`410` на `resolveSession` → invalid/expired session key;
+- `409` на `resolveSession` → attempt/session существует, но сейчас недоступен для запуска;
+- `401`/`403` → ошибка service credential/permission Game Server, а не invalid user session;
+- `5xx`/network error → temporary platform unavailability;
+- malformed success DTO → contract error.
+
+Для `finishSession` `409` означает конфликт terminal result и рассматривается как contract/integrity error; `404` означает, что ранее разрешённый attempt больше недоступен на Platform.
 
 ## 7. Кто создаёт seed
 
@@ -153,12 +157,12 @@ Replay получает сохранённый seed из `ReplaySource`.
 
 ## 8. Что считается user event log
 
-Для воспроизведения хранится последовательность пользовательских команд, которым Game Server назначил authoritative simulation timestamp/order.
+Для воспроизведения хранится последовательность пользовательских команд, которым Game Server назначил authoritative simulation timestamp/sequence.
 
 ```ts
 interface RecordedUserInput {
   at: SimTimeUs;
-  order: number;
+  sequence: number;
   command: RecordedGameplayCommand;
 }
 ```

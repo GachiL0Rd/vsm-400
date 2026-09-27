@@ -1,12 +1,12 @@
 # Взаимодействие клиента, игрового сервера и Platform Server
 
-**Версия документа:** 0.4.0
+**Версия документа:** 0.5.0
 **Статус:** Draft
 **Дата редакции:** 2026-09-27
 
 ## 1. Область документа
 
-Документ определяет границу Browser Client, Game Server и внешнего Platform Server.
+Документ определяет границу Browser Client, Game Server и внешнего Platform Server. Он описывает архитектурную границу и baseline extension points; обязательные возможности конкретного выпуска определяются `../release-scope-0.1.0.md`.
 
 Детальный Browser ↔ Game Server wire contract зафиксирован в [`../api/websocket-protocol.md`](../api/websocket-protocol.md). HTTP/service contract Platform Server вынесен в `architecture/platform-contract.md` и [`../api/platform-openapi.yaml`](../api/platform-openapi.yaml). Режимы live/guided/replay — в `architecture/session-modes.md`.
 
@@ -36,7 +36,8 @@
 - WebSocket protocol;
 - public projection/serialization gate;
 - deterministic replay;
-- assessment, achievements и coaching;
+- assessment и achievements;
+- baseline coaching observers/presentation extensions;
 - финализацию результата через Platform Server.
 
 Game Server не реализует меню и постоянную профильную бизнес-логику.
@@ -49,7 +50,7 @@ Game Server не реализует меню и постоянную профи�
 - отображение public presentation state/events;
 - interpolation;
 - локальное UI-state;
-- mode-specific UI (guided hints/replay controls);
+- mode-specific UI для доступных session capabilities (в baseline — guided hints и расширенные replay controls);
 - reconnect.
 
 Client не содержит authoritative domain logic.
@@ -147,7 +148,7 @@ Protocol разделяет долговечное presentation state, transient
 
 ### 7.1. Durable state
 
-`snapshot` и `delta/delta-batch` описывают состояние, которое должно сохраняться до следующего изменения:
+`snapshot` и `delta` описывают состояние, которое должно сохраняться до следующего изменения. Protocol v1 не определяет `delta-batch`:
 
 ```text
 entity position / motion
@@ -166,7 +167,7 @@ Server не должен отправлять императивное `move spr
 
 ```text
 speech bubble show/hide
-guided hint
+guided hint (baseline/deferred в release 0.1.0)
 notification
 short-lived visual/audio effect
 optional open/focus presentation request
@@ -176,7 +177,7 @@ optional open/focus presentation request
 
 ### 7.3. Request/response
 
-Некоторые операции удобнее моделировать как запрос клиента к серверу, а не как постоянно публикуемое состояние. Baseline пример — запрос доступных действий после клика по объекту/сущности.
+Некоторые операции удобнее моделировать как запрос клиента к серверу, а не как постоянно публикуемое состояние. Текущий release-пример — запрос доступных действий после клика по объекту/сущности.
 
 ```text
 Client:  query-actions(requestId, targetId)
@@ -185,15 +186,13 @@ Client:  invoke-action(actionHandle, optionalInput)
 Server:  command-result + subsequent state diff/events
 ```
 
-`actionHandle` opaque и проверяется повторно при invoke. Offer может стать невалидным после изменения revision/state.
+`actionHandle` opaque и повторно проверяется при invoke против текущего simulation state. Offer может стать невалидным не только после изменения public revision, но и после скрытого authoritative state transition.
 
 Internal simulation events автоматически наружу не передаются.
 
 ## 8. Hint events
 
-Guided mode может выдавать специальные transient `hint` events.
-
-Они являются presentation output, а не state mutation.
+Protocol предусматривает transient `hint` events для guided mode. Release `0.1.0` server их пока не генерирует; это baseline/deferred capability. Они являются presentation output, а не state mutation.
 
 ## 9. Replay extensions
 
@@ -213,16 +212,7 @@ additional debug state
 
 Визуальные ассеты персонажей, предметов, документов и модалок могут храниться целиком на стороне клиента.
 
-Game Server передаёт только стабильные public visual IDs и runtime state, например:
-
-```text
-bodyId / clothingIds
-heldItemVisualId
-pin state
-gauge value
-handle state
-modal document fields
-```
+Game Server передаёт только стабильные public visual IDs и runtime state. В release `0.1.0` public entity использует `appearanceId`, а held item — отдельный `visualId`; layered appearance (`bodyId`, `clothingIds` и т.п.) остаётся deferred до фиксации клиентского контракта. Остальные presentation values могут включать состояния форм/приборов и modal document fields.
 
 Client разрешает эти IDs через локальный asset registry и композитит слои. Локальность изображения не делает соответствующее состояние client-authoritative.
 
@@ -230,15 +220,17 @@ Client разрешает эти IDs через локальный asset registr
 
 ## 10. Client → Server intents
 
-Baseline client input сводится к небольшому набору intent/request сообщений:
+Release `0.1.0` client input сводится к небольшому набору intent/request сообщений:
 
 ```text
-move-to(target position/cell)
-query-actions(targetId)
+move-to(target cell)
+query-actions(target)
 invoke-action(actionHandle, optionalInput)
 set-time-scale(requestedScale)
-replay controls: play/pause/seek/inspect (только replay policy)
+resync
 ```
+
+В replay mode `set-time-scale` выполняет роль текущего playback control. Seek/inspect и дополнительные replay-команды остаются baseline/deferred.
 
 Клик по объекту сам по себе не выполняет доменное действие: он может только запросить доступные server actions.
 

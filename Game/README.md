@@ -4,27 +4,16 @@
 клиентское представление развиваются как отдельные слои: клиент не должен
 принимать доменные решения и не является источником игрового состояния.
 
-Актуальная архитектура и baseline находятся в
+Актуальные release-требования, целевой baseline и архитектура находятся в
 [`docs/user/`](docs/user/README.md). Рабочие инструкции находятся в [`docs/agent/`](docs/agent/README.md), а устаревшие материалы — в [`docs/backlog/`](docs/backlog/README.md). Они не имеют приоритета над `docs/user/`.
 
 ## Текущее состояние
 
-В `src/simulation/` уже реализованы независимые примитивы времени, очереди
-событий, deterministic RNG streams, grid/navigation, spatial movement, fields,
-entity state, NPC action decision и предметы baseline.
+`src/simulation/` содержит authoritative simulation primitives и gameplay runtime, `src/server/` — lifecycle/Game Server composition root, `src/common/` — browser-safe protocol/projection contracts, а `src/client/` — Phaser presentation client.
 
-Старый mechanics-playground, встроенный WebSocket demo-server и zone-based
-Phaser client удалены. В `src/client/` оставлена только минимальная Phaser-
-оболочка, чтобы production build оставался рабочим до появления `GameAttempt` и
-новой public projection. `npm run dev` сейчас показывает именно эту оболочку;
-полноценный локальный игровой сервер и presentation layer будут возвращены уже
-поверх нового authoritative runtime.
+Обязательный scope текущего release candidate находится в [`docs/user/release-scope-0.1.0.md`](docs/user/release-scope-0.1.0.md). Более полный целевой вертикальный срез описан в [`docs/user/vsm_baseline_vertical_slice.md`](docs/user/vsm_baseline_vertical_slice.md).
 
-Состояние интеграционного контура и ссылки на уже зафиксированные protocol/
-deployment contracts находятся в
-[`docs/agent/integration-hardening.md`](docs/agent/integration-hardening.md).
-Известная недостающая visual data boundary описана в
-[`docs/agent/client-visual-blockers.md`](docs/agent/client-visual-blockers.md).
+Актуальные рабочие ограничения и точечные блокеры находятся в `docs/agent/`; они не заменяют normative release/baseline contracts из `docs/user/`.
 
 ## Требования
 
@@ -65,6 +54,7 @@ npm run dev
 
 Перед изменениями прочитайте `AGENTS.md`, затем:
 
+- [`release-scope-0.1.0.md`](docs/user/release-scope-0.1.0.md);
 - [`vsm_baseline_vertical_slice.md`](docs/user/vsm_baseline_vertical_slice.md);
 - [`project_direction.md`](docs/user/project_direction.md);
 - [`simulation/actions.md`](docs/user/simulation/actions.md);

@@ -9,7 +9,14 @@ import { Tag, type TagTone } from '../../components/Tag/Tag';
 import { findRun } from '../../demo';
 import { formatDate, formatDelta, plural } from '../../format';
 import { usePageTitle } from '../../hooks/usePageTitle';
-import { COMPETENCIES, type Decision, FAIL_SCORE, STAGE_TITLES, type Verdict } from '../../model';
+import {
+  COMPETENCIES,
+  type Decision,
+  FAIL_SCORE,
+  STAGE_TITLES,
+  scoreGrade,
+  type Verdict,
+} from '../../model';
 import { paths } from '../../paths';
 import './RunScreen.css';
 
@@ -45,7 +52,7 @@ export function RunScreen() {
       </header>
 
       <dl className="facts">
-        <div>
+        <div className="facts__wide">
           <dt className="label">Маршрут</dt>
           <dd>{run.route}</dd>
         </div>
@@ -147,7 +154,7 @@ function Scale({ title, value }: { title: string; value: number }) {
     <div className="scale">
       <div className="row">
         <span className="label">{title}</span>
-        <b className={`scale__value num${failed ? ' down' : ''}`}>
+        <b className={`scale__value scale__value--${scoreGrade(value)} num`}>
           {value}
           {failed && <span className="label down"> низкая</span>}
         </b>

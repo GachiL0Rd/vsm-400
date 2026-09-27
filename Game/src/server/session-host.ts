@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto';
+import { isDeepStrictEqual } from 'node:util';
 import type { SessionModeView } from '../common/game-wire.ts';
 import { PublicGameProjection } from '../projection/public-game-session.ts';
 import type { GameContentRegistry } from './content-registry.ts';
@@ -12,6 +13,12 @@ import {
 import type { ResumeTokenRegistry } from './resume-token-registry.ts';
 import type { PlatformGateway, SessionMode } from './types.ts';
 
+interface HostedWorker {
+  readonly worker: GameSessionWorker;
+  readonly gameLevelId: string;
+  readonly mode: SessionMode;
+}
+
 export interface GameSessionHostOptions {
   readonly platformGateway: PlatformGateway;
   readonly contentRegistry: GameContentRegistry;
@@ -21,13 +28,14 @@ export interface GameSessionHostOptions {
   readonly simulationStepMs?: number;
   readonly maxCatchUpMs?: number;
   readonly allowedTimeScales?: readonly number[];
+  readonly finishRetryDelaysMs?: readonly number[];
   readonly clock?: WorkerClock;
   readonly scheduler?: WorkerScheduler;
 }
 
 /** Maps authenticated platform attempts to durable-in-memory workers. */
 export class GameSessionHost {
-  private readonly workers = new Map<string, GameSessionWorker>();
+  private readonly workers = new Map<string, HostedWorker>();
   private readonly clock: WorkerClock;
 
   constructor(private readonly options: GameSessionHostOptions) {
@@ -36,14 +44,20 @@ export class GameSessionHost {
 
   async attachWithSessionKey(sessionKey: string, connectionId: string): Promise<SessionAttachment> {
     const resolved = await this.options.platformGateway.resolveSession(sessionKey);
-    let worker = this.workers.get(resolved.attemptId);
-    if (worker === undefined) {
+    const existing = this.workers.get(resolved.attemptId);
+    if (existing !== undefined) {
+      assertSameResolvedSession(existing, resolved.gameLevelId, resolved.mode);
+      return existing.worker.attach(connectionId);
+    }
+
+    {
       const content = this.options.contentRegistry.resolve(resolved.gameLevelId);
+      assertReplayCompatible(resolved.mode, content);
       const seed = rootSeed(
         resolved.mode.kind === 'replay' ? resolved.mode.source.rootSeed : undefined,
       );
       const attempt = content.createAttempt(seed, resolved.mode);
-      worker = new GameSessionWorker({
+      const worker = new GameSessionWorker({
         attemptId: resolved.attemptId,
         mode: resolved.mode,
         content,
@@ -66,35 +80,53 @@ export class GameSessionHost {
         ...(this.options.allowedTimeScales === undefined
           ? {}
           : { allowedTimeScales: this.options.allowedTimeScales }),
+        ...(this.options.finishRetryDelaysMs === undefined
+          ? {}
+          : { finishRetryDelaysMs: this.options.finishRetryDelaysMs }),
         clock: this.clock,
         ...(this.options.scheduler === undefined ? {} : { scheduler: this.options.scheduler }),
+        onFinished: (attemptId) => this.workers.delete(attemptId),
         onAborted: (attemptId) => this.workers.delete(attemptId),
       });
-      this.workers.set(resolved.attemptId, worker);
+      this.workers.set(resolved.attemptId, {
+        worker,
+        gameLevelId: resolved.gameLevelId,
+        mode: resolved.mode,
+      });
+      return worker.attach(connectionId);
     }
-    return worker.attach(connectionId);
   }
 
   attachWithResumeToken(resumeToken: string, connectionId: string): SessionAttachment {
     const nowMs = this.clock.nowMs();
     const attemptId = this.options.resumeTokens.resolve(resumeToken, nowMs);
     if (attemptId === null) throw new Error('Invalid or expired resume token');
-    const worker = this.workers.get(attemptId);
-    if (worker === undefined) throw new Error('Attempt is not available for resume');
-    return worker.attach(connectionId);
+    const hosted = this.workers.get(attemptId);
+    if (hosted === undefined) throw new Error('Attempt is not available for resume');
+    return hosted.worker.attach(connectionId);
   }
 
   detach(attemptId: string, connectionId: string): void {
-    this.workers.get(attemptId)?.detach(connectionId);
+    this.workers.get(attemptId)?.worker.detach(connectionId);
   }
 
   worker(attemptId: string): GameSessionWorker | undefined {
-    return this.workers.get(attemptId);
+    return this.workers.get(attemptId)?.worker;
   }
 
   shutdown(): void {
-    for (const worker of this.workers.values()) worker.shutdown();
+    for (const { worker } of this.workers.values()) worker.shutdown();
     this.workers.clear();
+  }
+}
+
+function assertSameResolvedSession(
+  existing: HostedWorker,
+  gameLevelId: string,
+  mode: SessionMode,
+): void {
+  if (existing.gameLevelId !== gameLevelId || !isDeepStrictEqual(existing.mode, mode)) {
+    throw new Error('Platform returned conflicting launch data for an existing attempt');
   }
 }
 
@@ -125,13 +157,33 @@ function publicMode(mode: SessionMode): SessionModeView {
       return {
         kind: 'replay',
         capabilities: {
-          seek: true,
-          speeds: [0.25, 0.5, 1, 2, 4, 8],
-          entityInspection: true,
-          revealTraits: mode.reveal.traits,
-          revealActionScores: mode.reveal.actionLogits,
-          revealAssessment: mode.reveal.assessment,
+          seek: false,
+          speeds: [1, 2, 4],
+          entityInspection: false,
+          revealTraits: false,
+          revealActionScores: false,
+          revealAssessment: false,
         },
       };
+  }
+}
+
+function assertReplayCompatible(
+  mode: SessionMode,
+  content: {
+    readonly gameLevelVersion: string;
+    readonly simulationCompatibilityVersion: string;
+  },
+): void {
+  if (mode.kind !== 'replay') return;
+  if (mode.source.gameLevelVersion !== content.gameLevelVersion) {
+    throw new RangeError(
+      `Replay game level version ${mode.source.gameLevelVersion} does not match ${content.gameLevelVersion}`,
+    );
+  }
+  if (mode.source.simulationCompatibilityVersion !== content.simulationCompatibilityVersion) {
+    throw new RangeError(
+      `Replay simulation compatibility version ${mode.source.simulationCompatibilityVersion} does not match ${content.simulationCompatibilityVersion}`,
+    );
   }
 }

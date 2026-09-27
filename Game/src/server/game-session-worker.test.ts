@@ -11,7 +11,13 @@ import {
 } from './game-session-worker.ts';
 import { MockPlatformGateway, mockMode } from './platform-gateway.ts';
 import { InMemoryResumeTokenRegistry } from './resume-token-registry.ts';
-import type { FinishedGameResult, FinishSessionResponse, PlatformGateway } from './types.ts';
+import type {
+  FinishedGameResult,
+  FinishSessionResponse,
+  PlatformGateway,
+  SessionMode,
+} from './types.ts';
+import { PlatformGatewayError } from './types.ts';
 
 class FakeRuntime implements WorkerScheduler, WorkerClock {
   private now = 0;
@@ -45,7 +51,12 @@ class FakeRuntime implements WorkerScheduler, WorkerClock {
 function worker(
   runtime: FakeRuntime,
   attempt = new GameAttempt({ rootSeed: 5 }),
-  options: { simulationStepMs?: number; maxCatchUpMs?: number; reconnectGraceMs?: number } = {},
+  options: {
+    simulationStepMs?: number;
+    maxCatchUpMs?: number;
+    reconnectGraceMs?: number;
+    finishRetryDelaysMs?: readonly number[];
+  } = {},
 ) {
   const registry = new InMemoryResumeTokenRegistry();
   const gateway = new MockPlatformGateway({
@@ -68,6 +79,9 @@ function worker(
       reconnectGraceMs: options.reconnectGraceMs ?? 20,
       simulationStepMs: options.simulationStepMs ?? 50,
       maxCatchUpMs: options.maxCatchUpMs ?? 1_000,
+      ...(options.finishRetryDelaysMs === undefined
+        ? {}
+        : { finishRetryDelaysMs: options.finishRetryDelaysMs }),
       scheduler: runtime,
       clock: runtime,
     }),
@@ -108,22 +122,27 @@ class FailOncePlatformGateway implements PlatformGateway {
 
   async finishSession(_result: FinishedGameResult): Promise<FinishSessionResponse> {
     this.finishAttempts += 1;
-    if (this.finishAttempts === 1) throw new Error('platform unavailable');
+    if (this.finishAttempts === 1) {
+      throw new PlatformGatewayError('unavailable', 'platform unavailable');
+    }
     return { resultId: 'result-1', redirectUrl: 'http://localhost/results/attempt-1' };
   }
 }
 
 describe('GameSessionWorker', () => {
-  it('keeps a resume token reusable only for its bound attempt before expiry', () => {
+  it('keeps only the latest resume token for an attempt and expires it at the deadline', () => {
     const registry = new InMemoryResumeTokenRegistry();
-    const token = registry.issue('attempt-1', 10);
+    const first = registry.issue('attempt-1', 10);
 
-    expect(registry.validate(token, 'attempt-1', 10)).toBe(true);
-    expect(registry.resolve(token, 10)).toBe('attempt-1');
-    expect(registry.validate(token, 'attempt-1', 10)).toBe(true);
-    expect(registry.validate(token, 'another-attempt', 10)).toBe(false);
-    expect(registry.validate(token, 'attempt-1', 11)).toBe(false);
-    expect(registry.resolve(token, 11)).toBeNull();
+    expect(registry.validate(first, 'attempt-1', 10)).toBe(true);
+    expect(registry.resolve(first, 10)).toBe('attempt-1');
+    expect(registry.validate(first, 'another-attempt', 10)).toBe(false);
+
+    const second = registry.issue('attempt-1', 20);
+    expect(registry.resolve(first, 10)).toBeNull();
+    expect(registry.resolve(second, 20)).toBe('attempt-1');
+    expect(registry.validate(second, 'attempt-1', 21)).toBe(false);
+    expect(registry.resolve(second, 21)).toBeNull();
   });
 
   it('pauses only after disconnect debounce and resumes before grace expires without wall catch-up', () => {
@@ -320,7 +339,7 @@ describe('GameSessionWorker', () => {
     expect(gateway.finished).toHaveLength(1);
   });
 
-  it('keeps a terminal attempt frozen when platform finalization fails and allows an explicit retry', async () => {
+  it('keeps a terminal attempt frozen and automatically retries a transient platform finalization failure', async () => {
     const runtime = new FakeRuntime();
     const attempt = new GameAttempt({ rootSeed: 13 });
     const gateway = new FailOncePlatformGateway();
@@ -339,6 +358,7 @@ describe('GameSessionWorker', () => {
       maxCatchUpMs: 10_000,
       scheduler: runtime,
       clock: runtime,
+      finishRetryDelaysMs: [100],
     });
     value.attach('socket-1');
 
@@ -350,13 +370,107 @@ describe('GameSessionWorker', () => {
     expect(value.lifecycle).toBe('finishing');
     const terminalTime = attempt.time;
 
-    runtime.advanceBy(10_000);
+    runtime.advanceBy(99);
     expect(attempt.time).toBe(terminalTime);
     expect(value.lifecycle).toBe('finishing');
+    expect(gateway.finishAttempts).toBe(1);
 
-    await value.finish();
+    runtime.advanceBy(1);
+    await flush();
     expect(gateway.finishAttempts).toBe(2);
     expect(value.lifecycle).toBe('finished');
+  });
+
+  it('replays authoritative input records at their saved simulation times without finishing a platform result', () => {
+    const runtime = new FakeRuntime();
+    const attempt = new GameAttempt({ rootSeed: 77 });
+    const content = new BaselineContentRegistry().resolve('vsm-baseline-01');
+    const replayMode: SessionMode = {
+      kind: 'replay',
+      source: {
+        simulationCompatibilityVersion: content.simulationCompatibilityVersion,
+        gameLevelVersion: content.gameLevelVersion,
+        rootSeed: '77',
+        userInputs: [
+          { at: 0, sequence: 0, command: { kind: 'take-journal' } },
+          {
+            at: 0,
+            sequence: 1,
+            command: {
+              kind: 'edit-journal',
+              value: {
+                communication: 'ok',
+                extinguisher: 'ok',
+                climate: 'ok',
+                emergencyBrake: 'ok',
+                sanitation: 'clean',
+                note: '',
+                accepted: true,
+              },
+            },
+          },
+          { at: 0, sequence: 2, command: { kind: 'return-journal' } },
+        ],
+      },
+      reveal: {
+        traits: false,
+        actionLogits: false,
+        hiddenObjectState: false,
+        assessment: false,
+        explanations: false,
+      },
+    };
+    const gateway = new MockPlatformGateway({
+      attemptId: 'attempt-replay',
+      gameLevelId: 'vsm-baseline-01',
+      mode: replayMode,
+    });
+    const value = new GameSessionWorker({
+      attemptId: 'attempt-replay',
+      mode: replayMode,
+      content,
+      attempt,
+      projection: new PublicGameProjection({
+        attemptId: 'attempt-replay',
+        attempt,
+        mode: {
+          kind: 'replay',
+          capabilities: {
+            seek: false,
+            speeds: [1, 2, 4],
+            entityInspection: false,
+            revealTraits: false,
+            revealActionScores: false,
+            revealAssessment: false,
+          },
+        },
+      }),
+      platformGateway: gateway,
+      resumeTokens: new InMemoryResumeTokenRegistry(),
+      disconnectDebounceMs: 10,
+      reconnectGraceMs: 20,
+      simulationStepMs: 50,
+      maxCatchUpMs: 10_000,
+      scheduler: runtime,
+      clock: runtime,
+    });
+
+    value.attach('socket-replay');
+    value.projection.snapshot(value.publicClock());
+    runtime.advanceBy(50);
+
+    expect(attempt.snapshot().items.journal).toMatchObject({
+      submitted: true,
+      location: 'anchor',
+    });
+    expect(attempt.time).toBe(50_000);
+    expect(value.projection.revision).toBe(3);
+    expect(gateway.finished).toEqual([]);
+
+    attempt.signal('emergency-brake-used');
+    runtime.advanceBy(50);
+    expect(value.publicClock().paused).toBe(true);
+    expect(gateway.finished).toEqual([]);
   });
 
   it('records accepted input order together with authoritative simulation time', async () => {

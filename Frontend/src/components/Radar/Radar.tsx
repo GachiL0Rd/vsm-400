@@ -22,7 +22,7 @@ export function Radar({ values }: { values: Competencies }) {
   return (
     <svg
       className="radar"
-      viewBox="-40 0 420 236"
+      viewBox="-24 0 388 236"
       role="img"
       aria-label={`Компетенции: ${summary}`}
     >
@@ -37,8 +37,8 @@ export function Radar({ values }: { values: Competencies }) {
       ))}
       <polygon
         points={polygon(scores.map((v) => (R * v) / 100))}
-        fill="var(--ink-08)"
-        stroke="var(--ink)"
+        fill="var(--signal-12)"
+        stroke="var(--signal)"
         strokeWidth="2.5"
         strokeLinejoin="round"
       />
@@ -54,7 +54,7 @@ export function Radar({ values }: { values: Competencies }) {
               cx={x}
               cy={y}
               r="4.5"
-              fill={weak ? 'var(--stop)' : 'var(--ink)'}
+              fill={weak ? 'var(--stop)' : 'var(--signal)'}
               stroke="var(--white)"
               strokeWidth="2"
             />
@@ -62,7 +62,7 @@ export function Radar({ values }: { values: Competencies }) {
               x={lx}
               y={ly + 4}
               textAnchor={anchor}
-              fontSize="12"
+              fontSize="14"
               fontWeight={weak ? 700 : 500}
               fill={weak ? 'var(--stop)' : 'var(--iron)'}
             >

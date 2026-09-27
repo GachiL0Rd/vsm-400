@@ -10,3 +10,8 @@ WebSocket demo и прежнего Phaser-клиента только для и�
 `game-progress.md`, `iteration-07-gap-analysis.md` и
 `iteration-07-remaining-work-pre-integration.md` фиксируют состояния до
 authoritative integration hardening.
+
+`integration-hardening-2026-09-27.md` и
+`server-baseline-audit-2026-09-27.md` сохраняют рабочие checklist/audit
+завершённого этапа интеграции. Их незакрытые пункты нельзя трактовать как
+текущие release blockers без повторной проверки по `../user/release-scope-*`.

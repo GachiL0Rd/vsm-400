@@ -1,8 +1,14 @@
 # Assessment
 
+**Версия документа:** 0.2.0
+**Статус:** Release implementation contract
+**Дата редакции:** 2026-09-27
+
 Assessment — отдельный детерминированный слой над authoritative simulation. Он наблюдает уже произошедшие игровые факты, но не меняет состояние мира, доступность действий или terminal rules.
 
-Первая baseline-версия имеет `setVersion = baseline-v1` и формирует два независимых score `0..100`:
+Текущая реализованная версия assessment имеет `setVersion = baseline-v1` и формирует два независимых score `0..100`:
+
+Здесь `baseline-v1` — стабильный идентификатор набора assessment rules, а не указание на product-level Baseline scope из [`../vsm_baseline_vertical_slice.md`](../vsm_baseline_vertical_slice.md). Этот assessment set входит в release `0.1.0`.
 
 - `safety`;
 - `customerSatisfaction`.

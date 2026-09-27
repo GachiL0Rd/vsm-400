@@ -18,7 +18,9 @@
 
 ## 2. Санитарное состояние
 
-Санитарная обстановка отображается накладываемыми visual tiles поверх базовой карты.
+> **Baseline/deferred:** release `0.1.0` пока не публикует spatial contamination state клиенту. Текущее release-поведение ограничивается полем санитарного состояния в журнале приёмки. Ниже описан целевой baseline contract для наблюдаемого загрязнения.
+
+Санитарная обстановка должна отображаться накладываемыми visual tiles поверх базовой карты.
 
 Примеры:
 
@@ -28,7 +30,7 @@ spill-01
 stain-seat-01
 ```
 
-Server хранит runtime contamination component и публичный `visualId`. Client сопоставляет ID локальному asset.
+В целевой baseline-модели Server хранит runtime contamination component и публикует `visualId`; Client сопоставляет ID локальному asset.
 
 Для baseline:
 
