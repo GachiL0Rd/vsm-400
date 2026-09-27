@@ -27,6 +27,24 @@ const host = new GameSessionHost({
   maxCatchUpMs: config.maxCatchUpMs,
 });
 
-const application = createGameHttpServer(config, new CommonGameProtocolAdapter({ host }));
+const protocol = new CommonGameProtocolAdapter({ host });
+const application = createGameHttpServer(config, protocol);
 await application.listen();
 console.info(`VSM Game Server listening on http://${config.host}:${config.port}`);
+
+let shuttingDown = false;
+async function shutdown(signal: NodeJS.Signals): Promise<void> {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.info(`VSM Game Server received ${signal}; shutting down`);
+  try {
+    await application.close();
+    process.exitCode = 0;
+  } catch (error) {
+    console.error('VSM Game Server shutdown failed', error);
+    process.exitCode = 1;
+  }
+}
+
+process.once('SIGINT', () => void shutdown('SIGINT'));
+process.once('SIGTERM', () => void shutdown('SIGTERM'));

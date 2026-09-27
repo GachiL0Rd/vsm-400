@@ -91,6 +91,11 @@ export class GameSessionHost {
   worker(attemptId: string): GameSessionWorker | undefined {
     return this.workers.get(attemptId);
   }
+
+  shutdown(): void {
+    for (const worker of this.workers.values()) worker.shutdown();
+    this.workers.clear();
+  }
 }
 
 function rootSeed(replaySeed: string | undefined): number {

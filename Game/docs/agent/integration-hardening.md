@@ -37,17 +37,17 @@ This is the main remaining server-integration gap. Simulation already supports e
 - [x] **Disconnect/reconnect lifecycle test.** Exercise active → detached → paused → resumed, plus expiry/abort behavior, with deterministic fake clock/scheduler.
 - [x] **Deterministic command journal.** Accepted gameplay commands retain authoritative simulation time/order suitable for the later replay source; rejected/stale commands are not recorded as accepted input.
 
-## H3 — Transport/operational hardening: third batch
+## H3 — Transport/operational hardening: complete
 
 Do this before freezing deployment documentation, but keep it smaller than a production security project.
 
-- [ ] **Backpressure policy.** Define a bounded policy for a slow WebSocket client. The simulation must never wait for socket drain; when incremental delivery is no longer safe, drop/coalesce and require a fresh snapshot/resync rather than buffering without limit.
-- [ ] **Message limits.** Set explicit maximum WebSocket message size and reject unreasonable payloads before expensive parsing/processing.
-- [ ] **Connection cleanup.** Closing/replacing a socket removes listeners/references and cannot leave a worker permanently attached to a dead connection.
-- [ ] **Graceful shutdown.** HTTP/WS server stops accepting connections, closes active sockets/workers predictably, and exposes enough lifecycle to be used from a container entrypoint.
-- [ ] **Health/readiness split.** Keep a cheap liveness endpoint and define readiness semantics that can detect invalid startup configuration/content. Do not make readiness depend on the external platform being permanently reachable unless deployment policy explicitly requires that.
-- [ ] **Static-client/config behavior.** Missing static bundle, mock/platform configuration and startup errors fail clearly; `process.env` remains confined to the config/composition root.
-- [ ] **Platform boundary robustness.** Preserve timeout/error mapping and idempotent finish semantics. Do not add retries that can duplicate effects unless retry/idempotency behavior is explicit.
+- [x] **Backpressure policy.** Define a bounded policy for a slow WebSocket client. The simulation must never wait for socket drain; when incremental delivery is no longer safe, drop/coalesce and require a fresh snapshot/resync rather than buffering without limit.
+- [x] **Message limits.** Set explicit maximum WebSocket message size and reject unreasonable payloads before expensive parsing/processing.
+- [x] **Connection cleanup.** Closing/replacing a socket removes listeners/references and cannot leave a worker permanently attached to a dead connection.
+- [x] **Graceful shutdown.** HTTP/WS server stops accepting connections, closes active sockets/workers predictably, and exposes enough lifecycle to be used from a container entrypoint.
+- [x] **Health/readiness split.** Keep a cheap liveness endpoint and define readiness semantics that can detect invalid startup configuration/content. Do not make readiness depend on the external platform being permanently reachable unless deployment policy explicitly requires that.
+- [x] **Static-client/config behavior.** Missing static bundle, mock/platform configuration and startup errors fail clearly; `process.env` remains confined to the config/composition root.
+- [x] **Platform boundary robustness.** Preserve timeout/error mapping and idempotent finish semantics. Do not add retries that can duplicate effects unless retry/idempotency behavior is explicit.
 
 ## Explicitly outside this hardening pass
 

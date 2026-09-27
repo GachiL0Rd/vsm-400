@@ -115,6 +115,22 @@ describe('GameSessionWorker', () => {
     expect(value.projection.attempt.snapshot().time).toBe(pausedAt + 100_000);
   });
 
+  it('shuts down timers, publications, and resume state without waiting for disconnect grace', () => {
+    const runtime = new FakeRuntime();
+    const { value, registry } = worker(runtime);
+    const attachment = value.attach('socket-1');
+    const publications: ServerMessage[] = [];
+    value.subscribePublications((message) => publications.push(message));
+
+    value.shutdown();
+    runtime.advanceBy(10_000);
+
+    expect(value.lifecycle).toBe('aborted');
+    expect(value.connectionLifecycle).toBe('detached');
+    expect(registry.validate(attachment.resumeToken, 'attempt-1', runtime.nowMs())).toBe(false);
+    expect(publications).toEqual([]);
+  });
+
   it('aborts after the reconnect grace period and revokes resume tokens', () => {
     const runtime = new FakeRuntime();
     const { value, registry } = worker(runtime);

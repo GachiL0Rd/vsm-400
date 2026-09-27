@@ -19,6 +19,7 @@ export interface GameProtocolConnection {
 
 export interface GameProtocolAdapter {
   open(connection: GameProtocolConnection): void;
+  shutdown(): void;
 }
 
 /** Safe production default until a common-wire adapter is supplied. */
@@ -26,6 +27,8 @@ export class RejectingProtocolAdapter implements GameProtocolAdapter {
   open(connection: GameProtocolConnection): void {
     connection.close(1008, 'Game protocol adapter is not configured');
   }
+
+  shutdown(): void {}
 }
 
 export interface CommonGameProtocolAdapterOptions {
@@ -47,6 +50,14 @@ export class CommonGameProtocolAdapter implements GameProtocolAdapter {
     const state: ConnectionState = { phase: 'awaiting-hello' };
     connection.onMessage((data) => void this.receive(connection, state, data));
     connection.onClose(() => this.closed(connection, state));
+  }
+
+  shutdown(): void {
+    for (const connection of this.activeConnections.values()) {
+      connection.close(1001, 'server shutting down');
+    }
+    this.activeConnections.clear();
+    this.options.host.shutdown();
   }
 
   private async receive(

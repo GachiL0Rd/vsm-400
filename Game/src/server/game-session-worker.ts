@@ -244,6 +244,18 @@ export class GameSessionWorker {
     );
   }
 
+  shutdown(): void {
+    this.cancelDisconnectTimers();
+    this.cancelTick();
+    this.connectionId = null;
+    this.connectionState = 'detached';
+    this.publications.clear();
+    if (this.lifecycleState === 'finished' || this.lifecycleState === 'aborted') return;
+    this.lifecycleState = 'aborted';
+    this.options.resumeTokens.revokeAttempt(this.attemptId);
+    this.options.onAborted?.(this.attemptId);
+  }
+
   async finish(): Promise<FinishSessionResponse> {
     if (this.finishReceipt !== null) return this.finishReceipt;
     if (this.finishPromise !== null) return this.finishPromise;

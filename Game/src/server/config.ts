@@ -14,6 +14,9 @@ const environmentSchema = z.object({
   GAME_RECONNECT_GRACE_MS: z.coerce.number().int().positive().optional(),
   GAME_SIMULATION_STEP_MS: z.coerce.number().int().positive().optional(),
   GAME_MAX_CATCH_UP_MS: z.coerce.number().int().positive().optional(),
+  GAME_WS_MAX_PAYLOAD_BYTES: z.coerce.number().int().positive().optional(),
+  GAME_WS_MAX_BUFFERED_BYTES: z.coerce.number().int().positive().optional(),
+  GAME_SHUTDOWN_GRACE_MS: z.coerce.number().int().nonnegative().optional(),
   GAME_MOCK_ATTEMPT_ID: z.string().min(1).optional(),
   GAME_MOCK_LEVEL_ID: z.string().min(1).optional(),
   GAME_MOCK_MODE: z.enum(['live', 'guided']).optional(),
@@ -32,6 +35,9 @@ export interface ServerConfig {
   readonly reconnectGraceMs: number;
   readonly simulationStepMs: number;
   readonly maxCatchUpMs: number;
+  readonly webSocketMaxPayloadBytes: number;
+  readonly webSocketMaxBufferedBytes: number;
+  readonly shutdownGraceMs: number;
   readonly mock: {
     readonly attemptId: string;
     readonly gameLevelId: string;
@@ -50,6 +56,9 @@ export function parseServerConfig(environment: Record<string, string | undefined
     reconnectGraceMs: input.GAME_RECONNECT_GRACE_MS ?? 30_000,
     simulationStepMs: input.GAME_SIMULATION_STEP_MS ?? 50,
     maxCatchUpMs: input.GAME_MAX_CATCH_UP_MS ?? 1_000,
+    webSocketMaxPayloadBytes: input.GAME_WS_MAX_PAYLOAD_BYTES ?? 64 * 1024,
+    webSocketMaxBufferedBytes: input.GAME_WS_MAX_BUFFERED_BYTES ?? 256 * 1024,
+    shutdownGraceMs: input.GAME_SHUTDOWN_GRACE_MS ?? 5_000,
     mock: {
       attemptId: input.GAME_MOCK_ATTEMPT_ID ?? 'local-attempt',
       gameLevelId: input.GAME_MOCK_LEVEL_ID ?? 'vsm-baseline-01',

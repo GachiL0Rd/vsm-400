@@ -35,3 +35,25 @@ revision-bound action handles.
 When the attempt reaches a terminal state, the worker sends `finishing`, calls
 `PlatformGateway.finishSession()` idempotently, then sends `finished` with the
 platform redirect URL.
+
+
+## Transport and operations
+
+Operational boundaries are intentionally small and explicit:
+
+- `GET /health` is process liveness and does not depend on Platform Server reachability;
+- `GET /ready` is `200` only while this process is accepting new HTTP/WS work;
+- `/game-ws` limits one incoming frame to `GAME_WS_MAX_PAYLOAD_BYTES` (default `65536`);
+- outbound WebSocket buffering is capped by `GAME_WS_MAX_BUFFERED_BYTES` (default `262144`). A client that cannot keep up is closed with `1013` instead of allowing unbounded memory growth;
+- `GAME_SHUTDOWN_GRACE_MS` (default `5000`) bounds graceful socket draining before remaining connections are terminated;
+- `SIGINT` and `SIGTERM` stop acceptance, close WebSockets with `1001`, cancel live worker timers/resume state, and close the HTTP server.
+
+If `GAME_STATIC_DIR` is set, startup fails before listening unless the path is a
+directory containing `index.html`. Leaving it unset is valid for deployments that
+serve the browser client separately. Platform mode still requires
+`PLATFORM_API_URL` and `PLATFORM_SERVICE_TOKEN` together; otherwise the server
+starts in explicit mock mode.
+
+Platform requests retain their existing timeout/error mapping and the worker keeps
+`finishSession` idempotent. H3 deliberately does not add automatic retries at the
+Platform boundary because retry semantics must be agreed with the Platform API.
