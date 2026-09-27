@@ -64,6 +64,50 @@ describe('browser session bootstrap', () => {
     expect(bootstrap.helloCommand('hello-1')).toBeNull();
   });
 
+  it('falls back to the local demo key when a localhost resume token is rejected', () => {
+    const storage = new MemoryStorage();
+    storage.setItem('vsm-game.resume-token', 'superseded-token');
+    const bootstrap = createBrowserSessionBootstrap({
+      href: 'http://localhost:4174/',
+      storage,
+      replaceUrl: () => undefined,
+    });
+
+    expect(bootstrap.helloCommand('hello-1')).toMatchObject({ resumeToken: 'superseded-token' });
+    bootstrap.invalidateCredentials();
+
+    expect(bootstrap.hasCredential).toBe(true);
+    expect(bootstrap.helloCommand('hello-2')).toMatchObject({ sessionKey: 'local-demo' });
+  });
+
+  it('does not retry the local demo key after the demo key itself is rejected', () => {
+    const bootstrap = createBrowserSessionBootstrap({
+      href: 'http://localhost:4174/',
+      storage: new MemoryStorage(),
+      replaceUrl: () => undefined,
+    });
+
+    expect(bootstrap.helloCommand('hello-1')).toMatchObject({ sessionKey: 'local-demo' });
+    bootstrap.invalidateCredentials();
+
+    expect(bootstrap.hasCredential).toBe(false);
+  });
+
+  it('does not invent a fallback credential for a rejected remote resume token', () => {
+    const storage = new MemoryStorage();
+    storage.setItem('vsm-game.resume-token', 'expired-token');
+    const bootstrap = createBrowserSessionBootstrap({
+      href: 'https://game.test/',
+      storage,
+      replaceUrl: () => undefined,
+    });
+
+    bootstrap.helloCommand('hello-1');
+    bootstrap.invalidateCredentials();
+
+    expect(bootstrap.hasCredential).toBe(false);
+  });
+
   it('retains a launch credential across a reload before session-ready arrives', () => {
     const storage = new MemoryStorage();
     createBrowserSessionBootstrap({

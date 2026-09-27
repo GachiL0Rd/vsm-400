@@ -79,6 +79,8 @@ network = new GameWebSocketClient({
     sessionBootstrap.observe(message);
     if (message.type === 'error' && message.code === 'authentication-failed') {
       sessionBootstrap.invalidateCredentials();
+      // Reconnect after the store has applied this error so the fresh snapshot clears it.
+      if (sessionBootstrap.hasCredential) window.setTimeout(() => network.reconnect(), 0);
     }
   },
   log: (message, detail) => logger.record('warn', 'websocket', message, { detail }),
