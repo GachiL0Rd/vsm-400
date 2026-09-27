@@ -3,8 +3,8 @@
 ## Контекст и границы
 
 `Backend/` — API тренажёра «Перегон»: сценарии, сессии, прогрессия, кабинет.
-Игра ходит в GameServer по WebSocket, GameServer — в этот API. GameServer в
-репозитории ещё нет. `Game/` и `Frontend/` отсюда не импортируются.
+Игра ходит в Game Server (`Game/`) по WebSocket. Game Server ходит сюда за
+ключом запуска и итогом попытки. `Game/` и `Frontend/` отсюда не импортируются.
 
 Доменные модули лежат в `src/`: `auth`, `users`, `org`, `scenarios`,
 `sessions`, `progression`, `achievements`, `leaderboard`, `notifications`,
@@ -12,9 +12,10 @@
 «на будущее» нет.
 
 `src/engine/` — чистый TypeScript. Разрешены только `zod` и `node:crypto`.
-Nest, Prisma, Redis, Fastify и файловый IO туда не входят: пакет потом уедет
-в GameServer. Ход сессии: `createState`, `step`, `view`, `summarize`,
-`validateScenario`, `generateShift`. Их зовёт `src/sessions`.
+Nest, Prisma, Redis, Fastify и файловый IO туда не входят. Это словарь
+сценария и план смены: граф и компетенции (`schema`), `RunSummary`,
+`JournalEntry`, `generateShift`, `validateScenario`, `rng`. Ход симуляции
+считает Game. `src/sessions` зовёт план и проверку графа.
 
 ## Среда и команды
 
@@ -52,9 +53,8 @@ npm run verify
 Swagger (`/api/docs`, `/api/openapi.json`) вне версии (`VERSION_NEUTRAL` и
 явные пути). Туда же входят `POST /api/game/sessions/resolve` и
 `POST /api/game/sessions/:attemptId/finish`: Bearer `GAME_SERVER_TOKEN`,
-контракт Platform Server, см. `docs/game-server-contract.md`. Legacy
-`/api/internal/v1` с `X-Service-Token` не заменяется. Внутренний префикс
-`/internal/v1` из SPEC §7 сюда не входит.
+контракт Platform Server, см. `docs/game-server-contract.md`. Внутренний
+префикс `/internal/v1` из SPEC §7 сюда не входит.
 
 Ошибки — `application/problem+json` (RFC 9457): `type`, `title`, `status`,
 `detail`, `code`, у Zod ещё `errors[]`. Zod и обёртка nestjs-zod дают 422.

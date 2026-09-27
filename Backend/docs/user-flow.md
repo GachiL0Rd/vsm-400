@@ -3,14 +3,13 @@
 Регистрации на сайте нет. Учётку создаёт администратор или HR. В пустой базе
 первый запуск печатает в лог логин `admin` и одноразовый пароль.
 
-Каталог `content/scenarios/<id>.yaml` в этой ветке пуст: файлы кладёт задача
-сценариев при слиянии. Имя файла — `id` графа. Формат один, его проверяет
-`ScenarioGraphSchema` в `src/engine/schema.ts`. Ниже два примера этого
-формата, не выданные файлы.
+Каталог `content/scenarios/<id>.yaml` — выданные графы. Имя файла — `id`.
+Формат проверяет `ScenarioGraphSchema` в `src/engine/schema.ts`. Ниже два
+примера того же формата.
 
-Пространственная игра (давление, пожар, сервис, конфликт на стенде v1) в эти
-YAML не сериализована. Она заканчивается `RunReport`. Диалоговый перегон
-идёт узлами графа.
+Пространственная игра идёт на Game Server и в эти YAML не сериализована.
+Итог попытки — `POST /api/game/sessions/{attemptId}/finish`. Граф остаётся
+словарём сценария для плана смены и разбора.
 
 ## Проводник
 
@@ -22,21 +21,24 @@ YAML не сериализована. Она заканчивается `RunRepo
    `GET /api/v1/me/stats`. Смена: поезд, маршрут, вагон, класс, фокус
    компетенций. Если назначений нет, план соберёт генератор в момент
    «Играть».
-3. «Играть» — `POST /api/v1/game-sessions`. Ответ: `sessionId`, билет,
-   `wsUrl`, `seedCommit`, публичный план. Дальше либо сокет `/game-ws`
-   (см. `game-server-contract.md`), либо REST без GameServer:
-   `GET /api/v1/game-sessions/:id` и `POST .../decisions`.
-4. На экране текст узла, кнопки, две шкалы, дедлайн. Вердикта до разбора нет.
-   Молчание до дедлайна — ход `timeout`, не «сеть упала».
-5. После финала — `GET /api/v1/me/runs/:id`: исход, шкалы, вежливость, очки,
-   решения с `better` и `basis`, раскрытый seed. Лента
+3. «Играть» — `POST /api/v1/game-sessions`. Тело `{transport?: "WS", carClass?}`.
+   `transport` можно не слать: по умолчанию `WS`. `REST` — 422. Ответ:
+   `sessionId`, билет, `wsUrl`, `launchUrl`, `seedCommit`, публичный план.
+   Браузер открывает `launchUrl` (`PUBLIC_GAME_URL` и query `sessionKey`).
+4. Игра идёт на Game Server. Backend на ходе не вызывается. Game Server
+   сначала `POST /api/game/sessions/resolve`, в финале
+   `POST /api/game/sessions/{attemptId}/finish`
+   (см. `game-server-contract.md`).
+5. После финала клиент уходит на `{PUBLIC_APP_URL}/runs/{runId}`. Кабинет
+   читает `GET /api/v1/me/runs/:id`: исход, шкалы, вежливость, очки, решения
+   с `better` и `basis`. Seed в разбор не входит. Лента
    `GET /api/v1/notifications` (ачивка, сгорание баллов, «вас обогнал»).
    Рейтинг `GET /api/v1/leaderboards/:scope` — бригада, депо или компания,
    по позывным.
 6. `GET /api/v1/me/compare` — свои компетенции против среднего бригады и депо.
    Чужие разборы не открываются.
-7. Выход: `POST /api/v1/auth/logout`. Refresh гаснет, игровой сокет этой
-   учётки закрывается.
+7. Выход: `POST /api/v1/auth/logout`. Refresh гаснет. Игровую попытку этот
+   вызов не закрывает: её снимает `abort`, `finish` или срок `expiresAt`.
 
 Пока `mustChangePassword`, смена пароля `POST /api/v1/auth/password` раньше
 игры.
@@ -205,10 +207,9 @@ nodes:
 ## Пример 2. Свист давления
 
 Тот же смысл, что ветка `pressure` стенда игры (свист, доклад), но как
-диалоговый перегон для REST и для `decisions`. На стенде это команды
-`inspect` и `report`, не YAML. Файл появится как
-`content/scenarios/pressure-whistle.yaml`, когда каталог сольют. До слияния
-его в дереве нет.
+диалоговый граф. На стенде это команды `inspect` и `report`, не YAML.
+Файла `content/scenarios/pressure-whistle.yaml` в дереве нет: выданный
+перегон давления — `ride-pressure.yaml`.
 
 ```yaml
 id: pressure-whistle
@@ -277,6 +278,6 @@ nodes:
     text: "Источник шума не передан начальнику поезда."
 ```
 
-Если этот перегон идёт внутри пространственной сессии, GameServer не
-подставляет свои `safety` и `loyalty` в рейтинг. Он вызывает `decisions`,
-а по `finish` сдаёт `RunReport`. Очки в обоих случаях считает Backend.
+Если этот перегон идёт внутри пространственной сессии, Game Server не
+подставляет свои `safety` и `loyalty` в рейтинг. Итог сдаёт `finish`.
+Очки считает Backend.

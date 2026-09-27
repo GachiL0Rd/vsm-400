@@ -26,7 +26,7 @@
 
 - оргструктура депо и бригад (код, название, город депо);
 - сессии входа: хеш refresh, user-agent, IP, сроки, отзыв;
-- игровые сессии, журнал ходов `GameEvent` и телеметрия GameServer `GameTelemetry`, рейсы, решения, шкалы, компетенции;
+- игровые сессии, рейсы, решения, шкалы, компетенции;
 - леджер очков, ачивки, сезон, уведомления, рекомендации к грейду;
 - клиенты интеграции: sha256 ключа `vsm_<id>_<secret>`, scopes, URL вебхука;
 - `AuditLog`: тип актёра, id, действие, цель, meta, IP, время.
@@ -51,7 +51,7 @@
   проводника, не карту здоровья.
 
 В логах и в seed нет ФИО. Bootstrap печатает пароль администратора один раз.
-Структурный лог не пишет пароль, cookie и `X-Service-Token`.
+Структурный лог не пишет пароль, cookie и `Authorization`.
 
 Пассажиры сценариев — вымышленные роли. Концепт прямо запрещает имена и фото
 реальных людей. Имена вроде тех, что стоят в dev-стенде игры, в сид Backend
@@ -61,7 +61,7 @@
 
 `prisma db seed` заводит стенд, не контур заказчика: два условных депо,
 бригады, позывные, демо-логины `demo`, `chief`, `methodist`. История рейсов
-считается движком, не ручными «реальными» сменами. Повторный seed на базе, где
+собирается как `RunSummary`, не ручными «реальными» сменами. Повторный seed на базе, где
 уже есть люди HR, политикой SPEC не описан и на проде не запускается
 (`migrate deploy` его не вызывает).
 
@@ -120,12 +120,12 @@ HR — не роль пользователя и не cookie. Запись `ApiC
 | --- | --- |
 | `JWT_ACCESS_SECRET` | Подпись access-JWT. |
 | `GAME_TICKET_SECRET` | Подпись билета `aud=vsm-game`. |
-| `GAME_SERVER_TOKEN` | `X-Service-Token` на `/api/internal/v1` и Bearer на `/api/game`. |
+| `GAME_SERVER_TOKEN` | Bearer на `/api/game` (`resolve` и `finish`). |
 | `SEED_ENC_KEY` | AES-256-GCM для seed смены. |
 | `EXT_ID_PEPPER` | HMAC табельного номера. |
 
 Утечка `EXT_ID_PEPPER` позволяет перебирать табельные номера в HMAC.
-Утечка `GAME_SERVER_TOKEN` позволяет сдать `RunReport` и вызвать `/api/game`. Оба меняются сменой
+Утечка `GAME_SERVER_TOKEN` позволяет вызвать `/api/game` (`resolve` и `finish`). Оба меняются сменой
 env и рестартом. Отдельного KMS в постановке нет.
 
 ## Cookie
@@ -134,22 +134,20 @@ env и рестартом. Отдельного KMS в постановке не
 | --- | --- | --- |
 | `vsm_access` | 15 минут | HttpOnly, SameSite=Lax, Path=/, Secure в prod. JWT. |
 | `vsm_refresh` | 7 дней | HttpOnly, SameSite=Strict, Path=/api/v1/auth. Opaque, в базе хеш. Ротация каждый refresh. |
-| `vsm_game` | 2 минуты | HttpOnly, SameSite=Strict, Path=/game, Secure в prod. Билет. |
 
 `SameSite=None` не используется. Токен кабинета в `localStorage` не кладётся.
 Secure включает `COOKIE_SECURE=true` (в проде за TLS — да). Схема env не
 подставляет `true` сама только из `NODE_ENV=production`: флаг явный, чтобы
 локальный профиль `app` по HTTP мог подняться.
 
-Path=`/game` не покрывает URL `/game-ws`. Для сокета билет дублируется в
-`hello.ticket`. Подробности — `game-server-contract.md`.
+Игровой билет в cookie не кладётся. Кабинет получает его в `launchUrl`
+(`sessionKey`). Подробности — `game-server-contract.md`.
 
 ## CORS и заголовки
 
 `enableCors`: origin только из `CORS_ORIGINS` (список через запятую),
 `credentials: true`. Методы: GET, POST, PUT, PATCH, DELETE, OPTIONS.
-Заголовки запроса: `Content-Type`, `Authorization`, `X-API-Key`,
-`X-Service-Token`.
+Заголовки запроса: `Content-Type`, `Authorization`, `X-API-Key`.
 
 Helmet (`@fastify/helmet`) включён в `configure-app.ts`. CSP выключен:
 Swagger UI ставит inline-скрипты, остальные заголовки helmet остаются.
