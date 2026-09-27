@@ -60,6 +60,13 @@
   align-self: stretch;
 }
 
+.departure__error {
+  margin: 0;
+  color: var(--stop);
+  font-size: 14px;
+  font-weight: 500;
+}
+
 @media (min-width: 600px) {
   .departure {
     padding: 32px;

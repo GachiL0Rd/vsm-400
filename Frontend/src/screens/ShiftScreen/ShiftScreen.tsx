@@ -1,6 +1,7 @@
 import { Link } from 'react-router';
 import type { RunPage } from '../../api/cabinet';
-import { useNextShift, useRuns } from '../../api/cabinet';
+import { useNextShift, useRuns, useStartShift } from '../../api/cabinet';
+import { ApiError } from '../../api/client';
 import { OutcomeTag } from '../../components/OutcomeTag/OutcomeTag';
 import { QueryState } from '../../components/QueryState/QueryState';
 import { Section } from '../../components/Section/Section';
@@ -10,7 +11,10 @@ import { COMPETENCIES, FAIL_SCORE, type NextShift, type RunSummary } from '../..
 import { paths } from '../../paths';
 import './ShiftScreen.css';
 
-const gameUrl = import.meta.env.VITE_GAME_URL;
+function startMessage(err: unknown): string {
+  if (err instanceof ApiError && err.status === 0) return 'Нет связи с сервером.';
+  return 'Не удалось начать смену. Попробуйте ещё раз.';
+}
 
 function focusLine(ids: NextShift['focus']): string {
   const titles = ids.map((id) => COMPETENCIES.find((row) => row.id === id)?.title ?? id);
@@ -62,7 +66,10 @@ export function ShiftScreen() {
 }
 
 function Departure({ next }: { next: NextShift }) {
+  const start = useStartShift();
   const stations = [next.from, ...next.stops, next.to];
+  const pending = start.isPending;
+  const error = start.isError ? startMessage(start.error) : null;
 
   return (
     <section className="departure" aria-labelledby="next-title">
@@ -104,14 +111,26 @@ function Departure({ next }: { next: NextShift }) {
         </div>
       </dl>
 
-      {gameUrl ? (
-        <a className="btn departure__start" href={gameUrl}>
-          Начать смену
-        </a>
-      ) : (
-        <span className="btn departure__start" aria-disabled="true">
-          Игра недоступна
-        </span>
+      <button
+        className="btn departure__start"
+        type="button"
+        onClick={() => {
+          start.mutate(undefined, {
+            onSuccess: (data) => {
+              window.location.assign(data.launchUrl);
+            },
+          });
+        }}
+        disabled={pending}
+        aria-busy={pending}
+        aria-describedby={error ? 'start-error' : undefined}
+      >
+        {pending ? 'Готовим смену…' : 'Начать смену'}
+      </button>
+      {error && (
+        <p className="departure__error" id="start-error" role="alert">
+          {error}
+        </p>
       )}
     </section>
   );

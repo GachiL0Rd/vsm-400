@@ -103,6 +103,11 @@
   list-style: none;
 }
 
+.log__empty {
+  margin: 0;
+  color: var(--iron);
+}
+
 .log__entry {
   display: grid;
   grid-template-columns: 72px 1fr;
