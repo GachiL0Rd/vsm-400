@@ -41,6 +41,19 @@
   gap: 8px;
 }
 
+.notice__when {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Прочитано — две галочки акцентом, как отметка о прочтении в мессенджере. */
+.notice__read {
+  display: grid;
+  color: var(--signal);
+}
+
 .notice__title {
   font-weight: 500;
   line-height: 1.3;

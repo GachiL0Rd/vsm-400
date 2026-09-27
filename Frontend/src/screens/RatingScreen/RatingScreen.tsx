@@ -78,7 +78,7 @@ function BoardRow({ row, gapBefore }: { row: LeaderRow; gapBefore: boolean }) {
       className={`board__row${row.me ? ' board__row--me' : ''}${gapBefore ? ' board__row--gap' : ''}`}
       value={row.rank}
     >
-      <span className="board__rank num">{row.rank}</span>
+      <span className="board__rank num">{row.rank <= 3 ? <Cup rank={row.rank} /> : row.rank}</span>
       <Avatar callsign={row.callsign} size="sm" />
       <span className="board__name">
         {row.me ? <b>Вы</b> : `#${row.callsign}`}
@@ -92,5 +92,26 @@ function BoardRow({ row, gapBefore }: { row: LeaderRow; gapBefore: boolean }) {
       </span>
       <b className="board__points num">{formatNumber(row.points)}</b>
     </li>
+  );
+}
+
+const CUPS = ['gold', 'silver', 'bronze'] as const;
+
+// Первые три места — кубок вместо номера. Номер остаётся для чтения с экрана.
+function Cup({ rank }: { rank: number }) {
+  return (
+    <span className={`cup cup--${CUPS[rank - 1]}`}>
+      <svg viewBox="0 0 24 24" width="32" height="32" aria-hidden="true" focusable="false">
+        <path
+          className="cup__handles"
+          d="M7 6H4.5v1.5A3.5 3.5 0 0 0 8 11M17 6h2.5v1.5A3.5 3.5 0 0 1 16 11"
+        />
+        <path
+          className="cup__body"
+          d="M7 3.5h10V9a5 5 0 0 1-10 0V3.5ZM11 13.8h2V17h-2ZM8 17.5h8v3H8Z"
+        />
+      </svg>
+      <span className="visually-hidden">{rank}</span>
+    </span>
   );
 }

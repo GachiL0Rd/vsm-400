@@ -38,7 +38,13 @@ export function Nav({ unread, callsign, level }: NavProps) {
   return (
     <nav className="nav" aria-label="Разделы">
       <Link className="nav__brand" to={paths.shift}>
-        Перегон
+        <span className="nav__word">Перегон</span>
+        {/* Ступенька из трёх квадратов — только в марке. */}
+        <svg className="nav__stairs" viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+          <rect x="0" y="14" width="6" height="6" />
+          <rect x="7" y="7" width="6" height="6" />
+          <rect x="14" y="0" width="6" height="6" />
+        </svg>
       </Link>
       <ul className="nav__list">
         {tabs.map((tab) => {
