@@ -52,7 +52,15 @@ function NoticeEntry({ notice }: { notice: Notice }) {
             {notice.unread && <Tag tone="new">Новое</Tag>}
             <span className="label">{kind.title}</span>
           </span>
-          <span className="label">{formatAgo(notice.at)}</span>
+          <span className="notice__when">
+            {!notice.unread && (
+              <span className="notice__read">
+                <Icon name="read" size={18} />
+                <span className="visually-hidden">Прочитано, </span>
+              </span>
+            )}
+            <span className="label">{formatAgo(notice.at)}</span>
+          </span>
         </span>
         <b className="notice__title">{notice.title}</b>
         <span className="notice__text">{notice.text}</span>

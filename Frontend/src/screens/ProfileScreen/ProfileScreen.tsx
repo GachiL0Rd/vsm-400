@@ -106,6 +106,7 @@ function StreakBlock() {
               key={daysAgo}
               className={`streak__day${done ? ' streak__day--done' : ''}${daysAgo === 0 ? ' streak__day--today' : ''}`}
             >
+              <Car />
               <span className="visually-hidden">
                 {daysAgo === 0 ? 'Сегодня' : `${days(daysAgo)} назад`}:{' '}
                 {done ? 'был рейс' : 'рейса нет'}
@@ -246,5 +247,27 @@ function InsigniaBlock() {
         ))}
       </ul>
     </Section>
+  );
+}
+
+// Вагон сбоку: крыша со скруглением, двери по краям, три окна, рама, две тележки,
+// сцепки. Цвет частей задаёт состояние дня в ProfileScreen.css.
+function Car() {
+  return (
+    <svg className="car" viewBox="0 0 64 36" aria-hidden="true" focusable="false">
+      <rect className="car__coupler" x="0" y="19" width="3" height="3" />
+      <rect className="car__coupler" x="61" y="19" width="3" height="3" />
+      <rect className="car__body" x="2" y="2" width="60" height="23" rx="5" />
+      <rect className="car__glass" x="6" y="7" width="5" height="15" rx="1" />
+      <rect className="car__glass" x="53" y="7" width="5" height="15" rx="1" />
+      <rect className="car__glass" x="15" y="7" width="9" height="7" rx="1" />
+      <rect className="car__glass" x="27.5" y="7" width="9" height="7" rx="1" />
+      <rect className="car__glass" x="40" y="7" width="9" height="7" rx="1" />
+      <rect className="car__frame" x="7" y="25" width="50" height="3" />
+      <circle className="car__wheel" cx="14" cy="31" r="3.5" />
+      <circle className="car__wheel" cx="22" cy="31" r="3.5" />
+      <circle className="car__wheel" cx="42" cy="31" r="3.5" />
+      <circle className="car__wheel" cx="50" cy="31" r="3.5" />
+    </svg>
   );
 }

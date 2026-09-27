@@ -31,12 +31,13 @@
   border-radius: 0 var(--radius-xs) var(--radius-xs) 0;
 }
 
-.segmented__item:hover {
-  text-decoration: underline;
+@media (hover: hover) {
+  .segmented__item:hover {
+    text-decoration: underline;
+  }
 }
 
-.segmented__item--on,
-.segmented__item--on:hover {
+.segmented__item--on {
   background: var(--ink);
   color: var(--white);
 }
@@ -81,6 +82,41 @@
   text-align: center;
 }
 
+/* Кубки: металл заливкой, контур темнее той же гаммы. */
+.cup {
+  display: inline-grid;
+  vertical-align: middle;
+}
+
+.cup__body {
+  fill: var(--metal);
+  stroke: var(--metal-edge);
+  stroke-width: 1.2;
+  stroke-linejoin: round;
+}
+
+.cup__handles {
+  fill: none;
+  stroke: var(--metal-edge);
+  stroke-width: 1.8;
+  stroke-linecap: round;
+}
+
+.cup--gold {
+  --metal: #f2c230;
+  --metal-edge: #9a7200;
+}
+
+.cup--silver {
+  --metal: #d3d7dc;
+  --metal-edge: #6b7178;
+}
+
+.cup--bronze {
+  --metal: #d98c4a;
+  --metal-edge: #8a4b17;
+}
+
 .board__name {
   display: flex;
   align-items: baseline;
@@ -97,7 +133,7 @@
   font-weight: 700;
 }
 
-/* «Вы здесь» — тот же оранжевый маркер, что в навигации */
+/* «Вы здесь» — тот же акцент, что у активного пункта меню */
 .board__row--me {
   font-weight: 800;
 }
