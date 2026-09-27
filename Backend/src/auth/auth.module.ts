@@ -11,6 +11,7 @@ import { AuthService } from './auth.service';
 import { BootstrapService } from './bootstrap.service';
 import { ACCESS_TTL_SEC, AuthCookies } from './cookies';
 import { PasswordService } from './password.service';
+import { PlatformServiceGuard } from './platform-service.guard';
 import { RedisThrottlerStorage } from './redis-throttler.storage';
 import { RolesGuard } from './roles.guard';
 import { ServiceTokenGuard } from './service-token.guard';
@@ -43,6 +44,7 @@ import { authThrottlers } from './throttle';
     AuthCookies,
     BootstrapService,
     ServiceTokenGuard,
+    PlatformServiceGuard,
     ThrottlerGuard,
     AccessGuard,
     RolesGuard,
@@ -50,6 +52,6 @@ import { authThrottlers } from './throttle';
     { provide: APP_GUARD, useExisting: AccessGuard },
     { provide: APP_GUARD, useExisting: RolesGuard },
   ],
-  exports: [ServiceTokenGuard, PasswordService, JwtModule],
+  exports: [ServiceTokenGuard, PlatformServiceGuard, PasswordService, JwtModule],
 })
 export class AuthModule {}

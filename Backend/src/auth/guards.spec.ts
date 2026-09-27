@@ -14,6 +14,7 @@ import { Role } from '../generated/prisma/client';
 import type { PrismaService } from '../prisma/prisma.service';
 import { AccessGuard } from './access.guard';
 import { InternalService } from './internal-service.decorator';
+import { PlatformServiceGuard } from './platform-service.guard';
 import { Public } from './public.decorator';
 import { Roles } from './roles.decorator';
 import { RolesGuard } from './roles.guard';
@@ -220,6 +221,30 @@ describe('ServiceTokenGuard', () => {
     expect(() => guard.canActivate(withHeader('nope'))).toThrow(UnauthorizedException);
     expect(() => guard.canActivate(withHeader('x'))).toThrow(UnauthorizedException);
     expect(() => guard.canActivate(withHeader())).toThrow(UnauthorizedException);
+  });
+});
+
+describe('bearer платформы', () => {
+  const token = 'local-dev-game-server-token';
+  const guard = new PlatformServiceGuard({ gameServerToken: token } as AppConfig);
+
+  function headers(value: Record<string, string>): ExecutionContext {
+    return context({ headers: value }, Probe.prototype.internal);
+  }
+
+  it('принимает Bearer и не принимает один X-Service-Token', () => {
+    expect(guard.canActivate(headers({ authorization: `Bearer ${token}` }))).toBe(true);
+    expect(guard.canActivate(headers({ authorization: `bearer ${token}` }))).toBe(true);
+    expect(() => guard.canActivate(headers({ 'x-service-token': token }))).toThrow(
+      UnauthorizedException,
+    );
+    expect(() => guard.canActivate(headers({ authorization: 'Bearer nope' }))).toThrow(
+      UnauthorizedException,
+    );
+    expect(() => guard.canActivate(headers({}))).toThrow(UnauthorizedException);
+    expect(() =>
+      guard.canActivate(headers({ authorization: `Basic ${token}`, 'x-service-token': token })),
+    ).toThrow(UnauthorizedException);
   });
 });
 

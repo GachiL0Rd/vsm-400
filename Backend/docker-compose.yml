@@ -56,6 +56,9 @@ services:
       EXT_ID_PEPPER: ${EXT_ID_PEPPER:?задайте EXT_ID_PEPPER}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://127.0.0.1:5173}
       PUBLIC_GAME_WS_URL: ${PUBLIC_GAME_WS_URL:-ws://127.0.0.1:3001/game}
+      PUBLIC_GAME_URL: ${PUBLIC_GAME_URL:-http://127.0.0.1:4174/}
+      PUBLIC_APP_URL: ${PUBLIC_APP_URL:-http://127.0.0.1:5173}
+      GAME_LEVEL_ID: ${GAME_LEVEL_ID:-vsm-baseline-01}
       # Образ всегда NODE_ENV=production: false из .env хоста роняет старт.
       COOKIE_SECURE: "true"
     ports:

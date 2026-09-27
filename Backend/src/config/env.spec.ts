@@ -227,6 +227,21 @@ describe('loadConfig', () => {
     ).toBe('vllm');
   });
 
+  it('ставит адреса кабинета и уровень игры по умолчанию', () => {
+    const config = loadConfig(valid);
+    expect(config.gameLevelId).toBe('vsm-baseline-01');
+    expect(config.publicGameUrl).toBe('http://127.0.0.1:4174/');
+    expect(config.publicAppUrl).toBe('http://127.0.0.1:5173');
+    expect(loadConfig({ ...valid, GAME_LEVEL_ID: '' }).gameLevelId).toBe('vsm-baseline-01');
+    expect(
+      loadConfig({ ...valid, PUBLIC_GAME_URL: 'https://game.example/play/' }).publicGameUrl,
+    ).toBe('https://game.example/play/');
+    expect(() => loadConfig({ ...valid, PUBLIC_APP_URL: 'ws://127.0.0.1:5173' })).toThrow(
+      /PUBLIC_APP_URL/,
+    );
+    expect(() => loadConfig({ ...valid, PUBLIC_GAME_URL: '/game' })).toThrow(/PUBLIC_GAME_URL/);
+  });
+
   it('разбирает allowlist вебхуков и считает пустое значение открытым', () => {
     expect(loadConfig(valid).webhookAllowedHosts).toEqual([]);
     expect(

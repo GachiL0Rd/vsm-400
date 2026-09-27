@@ -57,6 +57,7 @@ import {
   ticketReused,
   wrongTransport,
 } from './http-errors';
+import { gameLaunchUrl } from './platform-url';
 import { decisionBody, presentView, readReplay } from './present';
 import { reportToSummary } from './report-map';
 import { loadRoutesFile } from './routes-file';
@@ -540,6 +541,7 @@ export class SessionsService {
       sessionId: row.id,
       ticket,
       wsUrl: this.config.publicGameWsUrl,
+      launchUrl: gameLaunchUrl(this.config.publicGameUrl, ticket),
       seedCommit: row.seedCommit,
       plan: toPublicPlan(plan, titles),
     };
@@ -723,6 +725,14 @@ export class SessionsService {
       return undefined;
     }
     return payloadVariant(row.payload);
+  }
+
+  flagTicketReuse(claims: TicketClaims): Promise<void> {
+    return this.flagReuse(claims);
+  }
+
+  activatePendingSession(session: GameSession, now: Date): Promise<GameSession['status']> {
+    return this.activatePending(session, now);
   }
 
   private async activatePending(session: GameSession, now: Date): Promise<GameSession['status']> {
