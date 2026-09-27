@@ -234,6 +234,5 @@ Scenario может объявлять requirements/capabilities Level, вклю
 ## 16. Открытые вопросы
 
 - первый authoring format: YAML или JSON;
-- public world coordinates для Phaser;
 - нужен ли отдельный level editor после стабилизации schema;
 - достаточно ли одного reusable platform region или позже понадобятся разные station presets.

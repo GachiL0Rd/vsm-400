@@ -69,7 +69,7 @@ Duplicate `gameLevelId` values are rejected at startup.
 
 Canonical `LevelDefinition` data: regions, grid cells/edges, anchors, interactable world objects, failure locations, and sanitation locations. It is parsed by `levelDefinitionSchema` and reference validation before the server starts accepting sessions.
 
-`vsm-baseline-01/level.json` is a small hand-authored grid. `vsm-train2-01/level.json` is generated. Do not edit it by hand. `content/vsm-train2-01/map-bindings.json` holds the semantics the Tiled art does not carry, and `npm run map:build` writes the level from `assets/map/train2-long.tmx`. `npm run map:check` regenerates that level in memory and fails when the committed file differs. The same command also checks the finite client map `src/client/assets/map/train2-long.map.json`. `map-bindings.json` is authoring input, not a file the content registry loads.
+`vsm-baseline-01/level.json` is a small hand-authored grid. `vsm-train2-01/level.json` is generated. Do not edit it by hand. `content/vsm-train2-01/map-bindings.json` holds the semantics the Tiled art does not carry, and `npm run map:build` writes the level from `assets/map/train2-long.tmx`. `npm run map:check` regenerates that level in memory and fails when the committed file differs. The same command also checks the finite client map `src/client/assets/map/train2-long.map.json`, which the Phaser client loads when a public region visual id starts with `map.train2-long`. `map-bindings.json` is authoring input, not a file the content registry loads.
 
 ### `scenario.json`
 
