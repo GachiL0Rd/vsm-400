@@ -7,9 +7,10 @@ describe('parseReplayInputs', () => {
       parseReplayInputs([
         { at: 0, sequence: 0, command: { kind: 'take-journal' } },
         { at: 0, sequence: 1, command: { kind: 'return-journal' } },
-        { at: 10, sequence: 2, command: { kind: 'take-extinguisher' } },
+        { at: 10, sequence: 2, command: { kind: 'move-to', targetCellId: 'carriage.service' } },
+        { at: 20, sequence: 3, command: { kind: 'take-extinguisher' } },
       ]),
-    ).toHaveLength(3);
+    ).toHaveLength(4);
   });
 
   it('rejects malformed commands and non-monotonic ordering', () => {

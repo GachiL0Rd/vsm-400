@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { parseServerConfig } from './config.ts';
 import { FileGameContentRegistry } from './content-registry.ts';
 import { createGameHttpServer } from './http-server.ts';
+import { createServerLogger } from './logger.ts';
 import { HttpPlatformGateway, MockPlatformGateway, mockMode } from './platform-gateway.ts';
 import { CommonGameProtocolAdapter } from './protocol-adapter.ts';
 import { InMemoryResumeTokenRegistry } from './resume-token-registry.ts';
@@ -31,19 +32,26 @@ const host = new GameSessionHost({
 
 const protocol = new CommonGameProtocolAdapter({ host });
 const application = createGameHttpServer(config, protocol);
+const logger = createServerLogger();
 await application.listen();
-console.info(`VSM Game Server listening on http://${config.host}:${config.port}`);
+logger.info(
+  { event: 'server-listening', host: config.host, port: config.port },
+  'Game Server listening',
+);
 
 let shuttingDown = false;
 async function shutdown(signal: NodeJS.Signals): Promise<void> {
   if (shuttingDown) return;
   shuttingDown = true;
-  console.info(`VSM Game Server received ${signal}; shutting down`);
+  logger.info({ event: 'server-shutdown', signal }, 'Game Server shutting down');
   try {
     await application.close();
     process.exitCode = 0;
   } catch (error) {
-    console.error('VSM Game Server shutdown failed', error);
+    logger.error(
+      { err: error, event: 'server-shutdown-failed', signal },
+      'Game Server shutdown failed',
+    );
     process.exitCode = 1;
   }
 }

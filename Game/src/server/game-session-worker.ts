@@ -188,6 +188,11 @@ export class GameSessionWorker {
     this.advanceAtWall(this.nowWallUs());
   }
 
+  /** Publishes a server-controlled public-state mutation after its command result was sent. */
+  publishPublicDelta(delta: GameDeltaMessage): void {
+    this.publishDelta(delta);
+  }
+
   /** Publishes the projection mutation produced by an accepted gameplay command. */
   acceptProjectionResult(result: InvokeResult): void {
     if (result.recordedCommand !== undefined) this.recordUserInput(result.recordedCommand);
@@ -195,15 +200,13 @@ export class GameSessionWorker {
     this.finishIfTerminated();
   }
 
-  setTimeScale(scale: number): number {
+  setTimeScale(scale: number): GameDeltaMessage {
     if (this.lifecycleState !== 'active') throw new RangeError('Session is not active');
     if (!this.allowedTimeScales.has(scale)) {
       throw new RangeError(`Unsupported time scale ${scale}`);
     }
     this.simulationClock.setTimeScale(scale, this.simulationClock.wallTime);
-    const delta = this.options.projection.refresh(this.publicClock());
-    this.publishDelta(delta);
-    return this.options.projection.revision;
+    return this.options.projection.refresh(this.publicClock());
   }
 
   recordUserInput(command: RecordedGameplayCommand): void {
@@ -240,11 +243,9 @@ export class GameSessionWorker {
     }
     this.ensureTickScheduled();
 
-    const expiresAt =
-      this.clock.nowMs() + this.options.disconnectDebounceMs + this.options.reconnectGraceMs;
     return {
       attemptId: this.attemptId,
-      resumeToken: this.options.resumeTokens.issue(this.attemptId, expiresAt),
+      resumeToken: this.options.resumeTokens.issue(this.attemptId),
       lifecycle: this.lifecycleState,
     };
   }
@@ -254,6 +255,10 @@ export class GameSessionWorker {
     this.connectionId = null;
     this.connectionState = 'detached';
     if (this.lifecycleState !== 'active') return;
+    this.options.resumeTokens.expireAttemptAt(
+      this.attemptId,
+      this.clock.nowMs() + this.options.disconnectDebounceMs + this.options.reconnectGraceMs,
+    );
     this.pauseTimer = this.scheduler.after(this.options.disconnectDebounceMs, () =>
       this.pauseAfterDisconnect(),
     );
@@ -282,6 +287,7 @@ export class GameSessionWorker {
     this.cancelFinishRetry();
     const result = this.finishedResult();
     this.lifecycleState = 'finishing';
+    this.options.resumeTokens.revokeAttempt(this.attemptId);
     this.cancelDisconnectTimers();
     this.cancelTick();
     this.publishSessionState('finishing');

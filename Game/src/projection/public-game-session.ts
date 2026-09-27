@@ -40,6 +40,7 @@ import type { SimTimeUs } from '../simulation/sim-time';
 
 export type RecordedGameplayCommand =
   | { readonly kind: 'move'; readonly edgeId: string }
+  | { readonly kind: 'move-to'; readonly targetCellId: string }
   | { readonly kind: 'take-consumable'; readonly itemKind: ConsumableKind }
   | { readonly kind: 'give-held-item'; readonly targetId: EntityId }
   | { readonly kind: 'take-journal' }
@@ -176,21 +177,21 @@ export class PublicGameProjection {
         ),
       };
     }
-    const playerCellId = player.position.cellId;
-    const edge = this.attempt.level.grid.edges.find(
-      (candidate) => candidate.from === playerCellId && candidate.to === command.targetCellId,
-    );
-    if (edge === undefined) {
+    if (player.position.cellId === command.targetCellId) {
       return {
         result: rejected(
           command.requestId,
           this.revisionValue,
           'action-rejected',
-          'Target cell is not directly reachable',
+          'Player is already at the target cell',
         ),
       };
     }
-    return this.applyRecordedCommand(command.requestId, { kind: 'move', edgeId: edge.id }, clock);
+    return this.applyRecordedCommand(
+      command.requestId,
+      { kind: 'move-to', targetCellId: command.targetCellId },
+      clock,
+    );
   }
 
   queryActions(command: QueryActionsCommand): ActionOfferMessage {
@@ -329,6 +330,9 @@ export class PublicGameProjection {
     switch (operation.kind) {
       case 'move':
         this.attempt.movePlayer(operation.edgeId);
+        return;
+      case 'move-to':
+        this.attempt.movePlayerTo(operation.targetCellId);
         return;
       case 'take-consumable':
         if (operation.itemKind === 'drink') this.attempt.takeDrink();

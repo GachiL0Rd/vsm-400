@@ -218,9 +218,21 @@ Container orchestrators should send `SIGTERM` and allow at least the configured 
 
 ## 9. Logging
 
-Current logging uses process console output for startup/shutdown and errors. There is no structured production logging/metrics contract yet.
+The Game Server writes structured JSON logs through Pino to stdout. Startup,
+shutdown and shutdown errors include a stable `service: "vsm-game-server"` field
+plus an `event` name; error records use Pino's standard `err` field. Do not log
+Platform credentials, session tickets, resume tokens or complete protocol payloads.
 
-Containers should capture stdout/stderr. Do not require local log files or writable application directories for normal release operation.
+For readable local development output use:
+
+```bash
+npm run server:pretty
+```
+
+This pipes the same structured server output through the development-only
+`pino-pretty` formatter. Production containers should capture the JSON stdout
+stream directly. Do not require local log files or writable application
+directories for normal release operation.
 
 ## 10. Platform API behavior
 

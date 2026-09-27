@@ -130,19 +130,35 @@ class FailOncePlatformGateway implements PlatformGateway {
 }
 
 describe('GameSessionWorker', () => {
-  it('keeps only the latest resume token for an attempt and expires it at the deadline', () => {
+  it('keeps only the latest resume token and starts its expiry window on disconnect', () => {
     const registry = new InMemoryResumeTokenRegistry();
-    const first = registry.issue('attempt-1', 10);
+    const first = registry.issue('attempt-1');
 
-    expect(registry.validate(first, 'attempt-1', 10)).toBe(true);
-    expect(registry.resolve(first, 10)).toBe('attempt-1');
-    expect(registry.validate(first, 'another-attempt', 10)).toBe(false);
+    expect(registry.validate(first, 'attempt-1', 10_000)).toBe(true);
+    expect(registry.resolve(first, 10_000)).toBe('attempt-1');
+    expect(registry.validate(first, 'another-attempt', 10_000)).toBe(false);
 
-    const second = registry.issue('attempt-1', 20);
-    expect(registry.resolve(first, 10)).toBeNull();
-    expect(registry.resolve(second, 20)).toBe('attempt-1');
-    expect(registry.validate(second, 'attempt-1', 21)).toBe(false);
-    expect(registry.resolve(second, 21)).toBeNull();
+    const second = registry.issue('attempt-1');
+    expect(registry.resolve(first, 10_000)).toBeNull();
+    expect(registry.resolve(second, 20_000)).toBe('attempt-1');
+
+    registry.expireAttemptAt('attempt-1', 20_010);
+    expect(registry.validate(second, 'attempt-1', 20_010)).toBe(true);
+    expect(registry.validate(second, 'attempt-1', 20_011)).toBe(false);
+    expect(registry.resolve(second, 20_011)).toBeNull();
+  });
+
+  it('keeps the delivered resume token valid during a long active connection, then expires it after disconnect grace', () => {
+    const runtime = new FakeRuntime();
+    const { value, registry } = worker(runtime);
+    const attachment = value.attach('socket-1');
+
+    runtime.advanceBy(60_000);
+    expect(registry.resolve(attachment.resumeToken, runtime.nowMs())).toBe('attempt-1');
+
+    value.detach('socket-1');
+    expect(registry.resolve(attachment.resumeToken, runtime.nowMs() + 30)).toBe('attempt-1');
+    expect(registry.resolve(attachment.resumeToken, runtime.nowMs() + 31)).toBeNull();
   });
 
   it('pauses only after disconnect debounce and resumes before grace expires without wall catch-up', () => {
@@ -168,6 +184,48 @@ describe('GameSessionWorker', () => {
     expect(value.connectionLifecycle).toBe('attached');
     runtime.advanceBy(100);
     expect(value.projection.attempt.snapshot().time).toBe(pausedAt + 100_000);
+  });
+
+  it('publishes every authoritative edge while routing toward a remote move-to destination', () => {
+    const runtime = new FakeRuntime();
+    const attempt = new GameAttempt({ rootSeed: 6 });
+    const { value } = worker(runtime, attempt, { maxCatchUpMs: 10_000 });
+    value.attach('socket-1');
+    value.projection.snapshot(value.publicClock());
+    const publications: ServerMessage[] = [];
+    value.subscribePublications((message) => publications.push(message));
+
+    const moved = value.projection.moveTo(
+      {
+        protocolVersion: 1,
+        type: 'move-to',
+        requestId: 'move-remote',
+        knownRevision: 0,
+        targetCellId: 'carriage.service',
+      },
+      value.publicClock(),
+    );
+    expect(moved.result.status).toBe('accepted');
+    value.acceptProjectionResult(moved);
+
+    for (let elapsed = 0; elapsed < 5_000; elapsed += 50) runtime.advanceBy(50);
+
+    expect(attempt.playerPosition()).toEqual({ kind: 'cell', cellId: 'carriage.service' });
+    const edgeIds = publications
+      .filter(
+        (message): message is Extract<ServerMessage, { type: 'delta' }> => message.type === 'delta',
+      )
+      .flatMap((message) => message.changes.entities?.upsert ?? [])
+      .filter((entity) => entity.kind === 'player' && entity.position.kind === 'moving')
+      .map((entity) => (entity.position.kind === 'moving' ? entity.position.edgeId : ''));
+    expect(new Set(edgeIds)).toEqual(
+      new Set([
+        'origin-desk-door:forward',
+        'origin-door-entry:forward',
+        'entry-cabin:forward',
+        'cabin-service:forward',
+      ]),
+    );
   });
 
   it('freezes a running movement across disconnect pause and resumes from the same simulation instant', () => {
@@ -279,8 +337,14 @@ describe('GameSessionWorker', () => {
 
     runtime.advanceBy(100);
     expect(value.projection.attempt.snapshot().time).toBe(100_000);
-    value.setTimeScale(2);
+    const delta = value.setTimeScale(2);
     expect(value.publicClock()).toEqual({ timeScale: 2, paused: false });
+    expect(delta).toMatchObject({
+      type: 'delta',
+      changes: { clock: { timeScale: 2, paused: false } },
+    });
+    expect(publications).toEqual([]);
+    value.publishPublicDelta(delta);
     expect(publications.at(-1)).toMatchObject({
       type: 'delta',
       changes: { clock: { timeScale: 2, paused: false } },
@@ -344,6 +408,7 @@ describe('GameSessionWorker', () => {
     const attempt = new GameAttempt({ rootSeed: 13 });
     const gateway = new FailOncePlatformGateway();
     const content = new BaselineContentRegistry().resolve('vsm-baseline-01');
+    const registry = new InMemoryResumeTokenRegistry();
     const value = new GameSessionWorker({
       attemptId: 'attempt-1',
       mode: mockMode('live'),
@@ -351,7 +416,7 @@ describe('GameSessionWorker', () => {
       attempt,
       projection: new PublicGameProjection({ attemptId: 'attempt-1', attempt }),
       platformGateway: gateway,
-      resumeTokens: new InMemoryResumeTokenRegistry(),
+      resumeTokens: registry,
       disconnectDebounceMs: 10,
       reconnectGraceMs: 20,
       simulationStepMs: 50,
@@ -360,7 +425,7 @@ describe('GameSessionWorker', () => {
       clock: runtime,
       finishRetryDelaysMs: [100],
     });
-    value.attach('socket-1');
+    const attachment = value.attach('socket-1');
 
     attempt.signal('emergency-brake-used');
     value.synchronizeNow();
@@ -368,6 +433,7 @@ describe('GameSessionWorker', () => {
 
     expect(gateway.finishAttempts).toBe(1);
     expect(value.lifecycle).toBe('finishing');
+    expect(registry.resolve(attachment.resumeToken, runtime.nowMs())).toBeNull();
     const terminalTime = attempt.time;
 
     runtime.advanceBy(99);
