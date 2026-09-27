@@ -15,6 +15,7 @@
 | `Backend/` | API тренажёра (NestJS, Prisma, PostgreSQL); см. `Backend/README.md` |
 | `Frontend/` | React-клиент кабинета (React 19 + Vite); запуск описан в `Frontend/README.md` |
 | `docs/` | Кросс-проектный workflow, исследования и архив; карта — в `docs/README.md` |
+| `deploy/` | Продовый контур: Docker Compose, Caddy, первый запуск и обновление — `deploy/README.md` |
 
 Начните с [`docs/README.md`](docs/README.md), затем выберите модуль через
 [`AGENTS.md`](AGENTS.md). Для работы с Game продолжайте с

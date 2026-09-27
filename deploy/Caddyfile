@@ -1,0 +1,49 @@
+{
+	email {$ACME_EMAIL}
+}
+
+www.{$DOMAIN} {
+	redir https://{$DOMAIN}{uri} permanent
+}
+
+{$DOMAIN} {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "same-origin"
+		-Server
+	}
+
+	# Service-to-service контракт Game ↔ Platform ходит только внутри сети compose.
+	handle /api/internal/* {
+		respond 404
+	}
+
+	handle /api/game/* {
+		respond 404
+	}
+
+	handle /api/* {
+		reverse_proxy backend:3000
+	}
+
+	handle /game-ws* {
+		reverse_proxy game:4174
+	}
+
+	redir /game /game/ 308
+
+	# Game Server сам отдаёт свой браузерный клиент; относительные пути
+	# сборки (base './') работают под префиксом /game/.
+	handle_path /game/* {
+		reverse_proxy game:4174
+	}
+
+	handle {
+		root * /srv/spa
+		try_files {path} /index.html
+		file_server
+	}
+}
