@@ -16,7 +16,7 @@
 - [`client-server.md`](client-server.md) — Browser ↔ Game Server ↔ Platform Server;
 - [`../api/websocket-protocol.md`](../api/websocket-protocol.md) — wire protocol v1;
 - [`platform-contract.md`](platform-contract.md) — Platform API semantics;
-- [server logging](../deployment/server-configuration.md#9-logging) — structured diagnostics.
+- [`../deployment/server-logging.md`](../deployment/server-logging.md) — structured diagnostics.
 
 ## 2. System context
 
