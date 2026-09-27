@@ -109,6 +109,17 @@ function checkGradeStep(grades: GradeDraft[], index: number, ctx: IssueSink): vo
   }
 }
 
+export const LlmRulesSchema = z.strictObject({
+  autoApprove: z.boolean().describe('Валидный перефраз сразу APPROVED, без методиста'),
+  poolTarget: z.number().int().positive().describe('Сколько APPROVED держать на каждый узел'),
+  maxUses: z.number().int().positive().describe('После стольких выдач вариант становится RETIRED'),
+  liveTimeoutMs: z
+    .number()
+    .int()
+    .positive()
+    .describe('Сколько ждать live-вариант до показа узла, дальше пул или YAML'),
+});
+
 const GradesSchema = z.array(GradeStepSchema).superRefine((grades, ctx) => {
   if (grades.length !== GRADE_CHAIN.length) {
     ctx.addIssue('нужны три перехода TRAINEE → CONDUCTOR → CONDUCTOR_SENIOR → INSTRUCTOR');
@@ -130,6 +141,7 @@ export const RulesSchema = z
     failScore: z.number().min(0).max(100),
     /** Плоский бонус за рейс, в котором была компетенция недели депо. */
     challengePoints: z.number().int().positive(),
+    llm: LlmRulesSchema,
     grades: GradesSchema,
   })
   .superRefine((rules, ctx) => {
@@ -141,6 +153,7 @@ export const RulesSchema = z
     }
   });
 
+export type LlmRules = z.infer<typeof LlmRulesSchema>;
 export type ScoringParams = z.infer<typeof ScoringSchema>;
 export type GradeRule = z.infer<typeof GradeStepSchema>;
 export type Rules = z.infer<typeof RulesSchema>;

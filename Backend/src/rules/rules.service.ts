@@ -5,6 +5,7 @@ import { contentFile } from './content-file';
 import {
   type GradeRule,
   type LevelBand,
+  type LlmRules,
   parseRules,
   type Rules,
   type ScoringParams,
@@ -96,6 +97,10 @@ export class RulesService implements OnModuleInit {
 
   challengePoints(): number {
     return this.current().challengePoints;
+  }
+
+  llm(): LlmRules {
+    return { ...this.current().llm };
   }
 
   private current(): Rules {
