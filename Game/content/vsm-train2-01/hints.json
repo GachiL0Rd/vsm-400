@@ -81,7 +81,7 @@
       "trigger": "inactivity",
       "role": "suggestion",
       "presentation": "message",
-      "afterUs": 60000000,
+      "afterUs": 120000000,
       "repeatable": true
     }
   ]

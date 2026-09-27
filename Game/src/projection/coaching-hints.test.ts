@@ -265,7 +265,7 @@ describe('guided coaching hints', () => {
     const waiting = hintText('passenger-request-unhandled');
     const unsafe = hintText('feedback-unsafe-admit');
     const originAt = 300_000_000;
-    const idle = [60, 120, 180, 240].map((seconds) => secondsToSimTimeUs(seconds));
+    const idle = [120, 240].map((seconds) => secondsToSimTimeUs(seconds));
     expect(hints).toEqual([
       {
         hintId: 'attempt-start',

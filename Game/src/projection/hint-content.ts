@@ -166,7 +166,7 @@ export const BASELINE_HINT_CONTENT = {
       trigger: 'inactivity' as const,
       role: 'suggestion' as const,
       presentation: 'message' as const,
-      afterUs: 60_000_000,
+      afterUs: 120_000_000,
       repeatable: true,
     },
   ],
