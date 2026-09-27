@@ -7,6 +7,7 @@ import {
   Param,
   Post,
   Query,
+  Req,
   Sse,
 } from '@nestjs/common';
 import {
@@ -48,8 +49,11 @@ export class NotificationsController {
 
   @Sse('stream')
   @ApiOperation({ summary: 'Поток уведомлений: событие new-notification, heartbeat 25 с' })
-  stream(@CurrentUser() user: AuthUser): Observable<MessageEvent> {
-    return this.notifications.stream(user.id);
+  stream(
+    @CurrentUser() user: AuthUser,
+    @Req() request: { authSessionId?: string },
+  ): Observable<MessageEvent> {
+    return this.notifications.stream(user.id, request.authSessionId ?? '');
   }
 
   @Post('read-all')
