@@ -53,12 +53,21 @@ describe('loadConfig', () => {
     ).toBe('production');
   });
 
-  it('хранит число хопов, в Fastify заголовок не доверяет', () => {
-    expect(loadConfig(valid).trustProxy).toBe(0);
-    expect(fastifyTrustProxy(0)).toBe(false);
-    expect(loadConfig({ ...valid, TRUST_PROXY: '2' }).trustProxy).toBe(2);
-    expect(fastifyTrustProxy(2)).toBe(false);
-    expect(() => loadConfig({ ...valid, TRUST_PROXY: '-1' })).toThrow(/TRUST_PROXY/);
+  it('TRUST_PROXY — false или список адресов, не число хопов', () => {
+    expect(loadConfig(valid).trustProxy).toBe(false);
+    expect(fastifyTrustProxy(false)).toBe(false);
+    expect(loadConfig({ ...valid, TRUST_PROXY: '' }).trustProxy).toBe(false);
+    expect(loadConfig({ ...valid, TRUST_PROXY: 'false' }).trustProxy).toBe(false);
+    expect(loadConfig({ ...valid, TRUST_PROXY: '0' }).trustProxy).toBe(false);
+    const listed = loadConfig({ ...valid, TRUST_PROXY: '127.0.0.1, Loopback, 10.0.0.0/8' });
+    expect(listed.trustProxy).toBe('127.0.0.1,loopback,10.0.0.0/8');
+    expect(fastifyTrustProxy(listed.trustProxy)).toBe('127.0.0.1,loopback,10.0.0.0/8');
+    expect(loadConfig({ ...valid, TRUST_PROXY: 'fe80::/10' }).trustProxy).toBe('fe80::/10');
+    expect(() => loadConfig({ ...valid, TRUST_PROXY: '2' })).toThrow(/Некорректное окружение/);
+    expect(() => loadConfig({ ...valid, TRUST_PROXY: '2' })).toThrow(/TRUST_PROXY/);
+    expect(() => loadConfig({ ...valid, TRUST_PROXY: 'true' })).toThrow(/true и число хопов/);
+    expect(() => loadConfig({ ...valid, TRUST_PROXY: '10.0.0.0/33' })).toThrow(/TRUST_PROXY/);
+    expect(() => loadConfig({ ...valid, TRUST_PROXY: 'not-a-proxy' })).toThrow(/TRUST_PROXY/);
   });
 
   it('в production требует COOKIE_SECURE=true', () => {

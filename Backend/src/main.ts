@@ -7,7 +7,7 @@ import { configureApp } from './configure-app';
 
 export const BODY_LIMIT_BYTES = 1_048_576;
 
-export function createFastifyAdapter(trustProxy = 0): FastifyAdapter {
+export function createFastifyAdapter(trustProxy: false | string = false): FastifyAdapter {
   return new FastifyAdapter({
     bodyLimit: BODY_LIMIT_BYTES,
     trustProxy: fastifyTrustProxy(trustProxy),
@@ -25,8 +25,11 @@ async function bootstrap(): Promise<void> {
   await app.listen({ port: config.port, host: '0.0.0.0' });
 }
 
-bootstrap().catch((error: unknown) => {
-  const message = error instanceof Error ? error.message : String(error);
-  console.error(message);
-  process.exit(1);
-});
+// Импорт createFastifyAdapter из теста не должен слушать порт.
+if (process.env.NODE_ENV !== 'test') {
+  bootstrap().catch((error: unknown) => {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(message);
+    process.exit(1);
+  });
+}

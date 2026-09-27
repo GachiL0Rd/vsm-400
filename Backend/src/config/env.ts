@@ -1,3 +1,4 @@
+import { isIP } from 'node:net';
 import { z } from 'zod';
 import {
   GIGACHAT_DEFAULT_BASE_URL,
@@ -18,10 +19,113 @@ const nodeEnvSchema = z.preprocess(
   z.enum(['development', 'test', 'production']),
 );
 
-const trustProxySchema = z.preprocess(
-  (value: unknown) => (value === undefined || value === '' ? 0 : value),
-  z.coerce.number().int().min(0).max(32),
-);
+const proxyKeywords = new Set(['loopback', 'linklocal', 'uniquelocal']);
+
+function normalizeTrustProxyInput(value: unknown): unknown {
+  if (value === undefined || value === null || value === false) {
+    return false;
+  }
+  if (value === true) {
+    return 'true';
+  }
+  if (typeof value === 'number') {
+    return value === 0 ? false : String(value);
+  }
+  if (typeof value !== 'string') {
+    return value;
+  }
+  const trimmed = value.trim();
+  const lower = trimmed.toLowerCase();
+  if (trimmed === '' || lower === 'false' || trimmed === '0') {
+    return false;
+  }
+  if (lower === 'true') {
+    return 'true';
+  }
+  return trimmed;
+}
+
+const hopCountMessage =
+  'true и число хопов запрещены: укажите IP, CIDR или loopback, linklocal, uniquelocal';
+
+/**
+ * Пусто, false и 0 — не доверять X-Forwarded-For.
+ * Иначе список IP, CIDR или ключевых слов proxy-addr.
+ * true и число хопов Fastify 5.12 закрывает: заголовок тогда не читается.
+ * Текст ошибки вешаем после union: иначе Zod оставляет «Invalid input».
+ */
+const trustProxySchema = z
+  .preprocess(normalizeTrustProxyInput, z.union([z.literal(false), z.string()]))
+  .superRefine((value, ctx) => {
+    if (value === false) {
+      return;
+    }
+    if (value.toLowerCase() === 'true' || /^\d+$/.test(value)) {
+      ctx.addIssue({ code: 'custom', message: hopCountMessage });
+      return;
+    }
+    const parts = value
+      .split(',')
+      .map((item) => item.trim())
+      .filter((item) => item.length > 0);
+    if (parts.length === 0) {
+      ctx.addIssue({ code: 'custom', message: 'пустой список' });
+      return;
+    }
+    for (const part of parts) {
+      if (!trustProxyToken(part)) {
+        ctx.addIssue({
+          code: 'custom',
+          message: `«${part}» не IP, не CIDR и не ключевое слово proxy-addr`,
+        });
+      }
+    }
+  })
+  .transform((value): false | string => {
+    if (value === false) {
+      return false;
+    }
+    return value
+      .split(',')
+      .map((item) => normalizeTrustToken(item.trim()))
+      .filter((item) => item.length > 0)
+      .join(',');
+  });
+
+function normalizeTrustToken(token: string): string {
+  const lower = token.toLowerCase();
+  return proxyKeywords.has(lower) ? lower : token;
+}
+
+function trustProxyToken(token: string): boolean {
+  if (proxyKeywords.has(token.toLowerCase())) {
+    return true;
+  }
+  if (isIP(token) !== 0) {
+    return true;
+  }
+  return cidrToken(token);
+}
+
+function cidrToken(token: string): boolean {
+  const slash = token.lastIndexOf('/');
+  if (slash <= 0) {
+    return false;
+  }
+  const addr = token.slice(0, slash);
+  const prefix = Number(token.slice(slash + 1));
+  const family = isIP(addr);
+  if (!Number.isInteger(prefix)) {
+    return false;
+  }
+  if (family === 4) {
+    return prefix >= 0 && prefix <= 32;
+  }
+  if (family === 6) {
+    return prefix >= 0 && prefix <= 128;
+  }
+  return false;
+}
 
 const cookieSecureSchema = z.preprocess(
   (value: unknown) => (value === undefined || value === '' ? 'false' : value),
@@ -433,13 +537,11 @@ function formatEnvError(error: z.ZodError): string {
 }
 
 /**
- * В адаптер всегда `false`. fastify 5.12.1 (GHSA-3m5p-2c4r-xxw2) убрал число
- * хопов из `trustProxy`: такое значение в рантайме не читает `X-Forwarded-*`.
- * Адреса прокси в env нет, подставлять hop-count обратно нельзя. Целое 0..32
- * остаётся в `AppConfig`, старый `TRUST_PROXY` не роняет старт.
+ * В адаптер — false или строка адресов. Число хопов fastify 5.12
+ * (getTrustProxyFn) не читает X-Forwarded-For, поэтому в конфиг не попадает.
  */
-export function fastifyTrustProxy(_hops: number): false {
-  return false;
+export function fastifyTrustProxy(value: false | string): false | string {
+  return value;
 }
 
 /**
