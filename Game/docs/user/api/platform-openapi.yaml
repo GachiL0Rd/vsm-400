@@ -1,0 +1,427 @@
+openapi: 3.1.0
+info:
+  title: VSM Platform ↔ Game Server API
+  version: 1.0.0
+  description: |
+    Service-to-service contract used by the Game Server to resolve a short-lived
+    launch key into a game attempt and to persist the terminal result of that attempt.
+
+    The Platform Server owns user authentication, attempt identity, persistent
+    results and result pages. The Game Server owns the authoritative simulation and
+    resolves gameLevelId against its local content.
+servers:
+  - url: https://platform.example
+    description: Example Platform Server base URL
+security:
+  - platformServiceBearer: []
+tags:
+  - name: Game sessions
+    description: Game Server integration endpoints.
+paths:
+  /api/game/sessions/resolve:
+    post:
+      tags: [Game sessions]
+      operationId: resolveGameSession
+      summary: Resolve a launch session key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResolveSessionRequest'
+            example:
+              key: opaque-session-key
+      responses:
+        '200':
+          description: Session key accepted and resolved.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResolveSessionResponse'
+              examples:
+                live:
+                  value:
+                    contractVersion: 1
+                    attemptId: attempt-123
+                    gameLevelId: vsm-baseline-01
+                    mode:
+                      kind: live
+                guided:
+                  value:
+                    contractVersion: 1
+                    attemptId: attempt-124
+                    gameLevelId: vsm-baseline-01
+                    mode:
+                      kind: guided
+                      hints:
+                        immediateFeedback: true
+                        suggestions: true
+                        highlights: true
+                        explanations: true
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/UnauthorizedService'
+        '403':
+          $ref: '#/components/responses/ForbiddenService'
+        '404':
+          description: Session key is unknown or invalid.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                contractVersion: 1
+                code: invalid-session
+                message: Session key is invalid or expired.
+        '409':
+          description: Attempt exists but cannot be started in its current state.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '410':
+          description: Session key was valid previously but is expired or permanently consumed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/game/sessions/{attemptId}/finish:
+    post:
+      tags: [Game sessions]
+      operationId: finishGameSession
+      summary: Persist the terminal game result
+      description: |
+        This operation MUST be idempotent by attemptId. Repeating the exact same
+        terminal result returns the same receipt. A conflicting terminal payload for
+        an already-finished attempt returns 409 and must not overwrite the result.
+      parameters:
+        - name: attemptId
+          in: path
+          required: true
+          description: Must equal attemptId in the request body.
+          schema:
+            type: string
+            minLength: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FinishedGameResult'
+            example:
+              attemptId: attempt-123
+              content:
+                gameLevelId: vsm-baseline-01
+                gameLevelVersion: '1'
+                simulationCompatibilityVersion: '1'
+              rootSeed: '8745983467598346759'
+              userInputs:
+                - at: 1200000
+                  sequence: 1
+                  command:
+                    type: move-to
+                    cellId: carriage-01/cell-10
+              achievements:
+                setVersion: '1'
+                ids: [inspected-extinguisher]
+              termination:
+                kind: route-completed
+                outcomeId: destination-arrived
+              scores:
+                safety: 96
+                customerSatisfaction: 84
+      responses:
+        '200':
+          description: Result persisted or an identical result was already persisted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FinishSessionResponse'
+              example:
+                contractVersion: 1
+                resultId: result-456
+                redirectUrl: https://platform.example/results/result-456
+        '400':
+          description: Invalid result or path/body attempt ID mismatch.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedService'
+        '403':
+          $ref: '#/components/responses/ForbiddenService'
+        '404':
+          description: Attempt ID does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: A different terminal result is already stored for this attempt.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                contractVersion: 1
+                code: result-conflict
+                message: A different terminal result is already stored for this attempt.
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+components:
+  securitySchemes:
+    platformServiceBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque-service-token
+      description: Service credential used by Game Server instances, not a user session key.
+  responses:
+    BadRequest:
+      description: Request body or parameters are invalid.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    UnauthorizedService:
+      description: Missing or invalid Game Server service credential.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    ForbiddenService:
+      description: Authenticated service is not permitted to call this API.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    InternalError:
+      description: Unexpected Platform Server failure.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    ServiceUnavailable:
+      description: Platform Server is temporarily unable to service the request.
+      headers:
+        Retry-After:
+          schema:
+            type: string
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+  schemas:
+    ContractVersion:
+      type: integer
+      const: 1
+      description: Platform ↔ Game Server HTTP contract version.
+    ResolveSessionRequest:
+      type: object
+      additionalProperties: false
+      required: [key]
+      properties:
+        key:
+          type: string
+          minLength: 1
+          description: Opaque short-lived launch key issued by Platform Server to the browser.
+    ResolveSessionResponse:
+      type: object
+      additionalProperties: false
+      required: [contractVersion, attemptId, gameLevelId, mode]
+      properties:
+        contractVersion:
+          $ref: '#/components/schemas/ContractVersion'
+        attemptId:
+          type: string
+          minLength: 1
+        gameLevelId:
+          type: string
+          minLength: 1
+          description: ID resolved by Game Server against its local versioned content.
+        mode:
+          $ref: '#/components/schemas/SessionMode'
+    SessionMode:
+      oneOf:
+        - $ref: '#/components/schemas/LiveMode'
+        - $ref: '#/components/schemas/GuidedMode'
+        - $ref: '#/components/schemas/ReplayMode'
+      discriminator:
+        propertyName: kind
+    LiveMode:
+      type: object
+      additionalProperties: false
+      required: [kind]
+      properties:
+        kind:
+          const: live
+    GuidedMode:
+      type: object
+      additionalProperties: false
+      required: [kind, hints]
+      properties:
+        kind:
+          const: guided
+        hints:
+          $ref: '#/components/schemas/HintPolicy'
+    HintPolicy:
+      type: object
+      additionalProperties: false
+      required: [immediateFeedback, suggestions, highlights, explanations]
+      properties:
+        immediateFeedback: { type: boolean }
+        suggestions: { type: boolean }
+        highlights: { type: boolean }
+        explanations: { type: boolean }
+    ReplayMode:
+      type: object
+      additionalProperties: false
+      required: [kind, source, reveal]
+      properties:
+        kind:
+          const: replay
+        source:
+          $ref: '#/components/schemas/ReplaySource'
+        reveal:
+          $ref: '#/components/schemas/ReplayRevealPolicy'
+    ReplaySource:
+      type: object
+      additionalProperties: false
+      required: [simulationCompatibilityVersion, gameLevelVersion, rootSeed, userInputs]
+      properties:
+        simulationCompatibilityVersion:
+          type: string
+          minLength: 1
+        gameLevelVersion:
+          type: string
+          minLength: 1
+        rootSeed:
+          type: string
+          minLength: 1
+        userInputs:
+          type: array
+          items: {}
+          description: Stored authoritative input log for replay.
+    ReplayRevealPolicy:
+      type: object
+      additionalProperties: false
+      required: [traits, actionLogits, hiddenObjectState, assessment, explanations]
+      properties:
+        traits: { type: boolean }
+        actionLogits: { type: boolean }
+        hiddenObjectState: { type: boolean }
+        assessment: { type: boolean }
+        explanations: { type: boolean }
+    FinishedGameResult:
+      type: object
+      additionalProperties: false
+      required: [attemptId, content, rootSeed, userInputs, achievements, termination, scores]
+      properties:
+        attemptId:
+          type: string
+          minLength: 1
+        content:
+          $ref: '#/components/schemas/FinishedContentVersion'
+        rootSeed:
+          type: string
+          minLength: 1
+        userInputs:
+          type: array
+          items: {}
+          description: Preserve this authoritative game-specific JSON log without interpreting it.
+        achievements:
+          $ref: '#/components/schemas/AchievementResult'
+        termination:
+          $ref: '#/components/schemas/TerminationResult'
+        scores:
+          $ref: '#/components/schemas/ScoreResult'
+    FinishedContentVersion:
+      type: object
+      additionalProperties: false
+      required: [gameLevelId, gameLevelVersion, simulationCompatibilityVersion]
+      properties:
+        gameLevelId:
+          type: string
+          minLength: 1
+        gameLevelVersion:
+          type: string
+          minLength: 1
+        simulationCompatibilityVersion:
+          type: string
+          minLength: 1
+    AchievementResult:
+      type: object
+      additionalProperties: false
+      required: [setVersion, ids]
+      properties:
+        setVersion:
+          type: string
+          minLength: 1
+        ids:
+          type: array
+          uniqueItems: true
+          items:
+            type: string
+            minLength: 1
+    TerminationResult:
+      type: object
+      additionalProperties: false
+      required: [kind, outcomeId]
+      properties:
+        kind:
+          type: string
+          enum: [route-completed, terminal-rule]
+        outcomeId:
+          type: string
+          minLength: 1
+          description: Stable outcome ID; this field is not itself a safety evaluation.
+    ScoreResult:
+      type: object
+      additionalProperties: false
+      required: [safety, customerSatisfaction]
+      properties:
+        safety:
+          type: number
+          minimum: 0
+          maximum: 100
+        customerSatisfaction:
+          type: number
+          minimum: 0
+          maximum: 100
+    FinishSessionResponse:
+      type: object
+      additionalProperties: false
+      required: [contractVersion, resultId, redirectUrl]
+      properties:
+        contractVersion:
+          $ref: '#/components/schemas/ContractVersion'
+        resultId:
+          type: string
+          minLength: 1
+        redirectUrl:
+          type: string
+          format: uri
+          description: Absolute URL the browser may navigate to after terminal confirmation.
+    ErrorResponse:
+      type: object
+      additionalProperties: true
+      required: [contractVersion, code, message]
+      properties:
+        contractVersion:
+          $ref: '#/components/schemas/ContractVersion'
+        code:
+          type: string
+          minLength: 1
+        message:
+          type: string
+          minLength: 1
+        requestId:
+          type: string
+          description: Optional Platform Server correlation ID.
