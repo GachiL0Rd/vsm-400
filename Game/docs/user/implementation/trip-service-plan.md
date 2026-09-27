@@ -1,12 +1,12 @@
 # План рейса и окна обслуживания
 
-**Версия документа:** 0.2.0  
+**Версия документа:** 0.3.0
 **Статус:** Draft / concrete demo implementation  
 **Дата редакции:** 2026-09-27
 
 ## 1. Назначение
 
-Этот документ фиксирует примерный ритм короткого demo-рейса и способ представить его в Scenario.
+Этот документ фиксирует примерный ритм короткого demo-рейса и способ представить его в Scenario. Это baseline/content design, а не перечень уже автоматически исполняемых server-side правил release `0.1.0`.
 
 Точные часы являются параметрами конкретного сценария. Общая архитектура не предполагает, что питание или подготовка к прибытию всегда происходят в одно и то же время.
 
@@ -77,11 +77,13 @@ ongoing-service
 arrival-preparation
 ```
 
-Окно является контекстом для candidate actions, assessment и coaching, но не собственной state machine.
+Окно является declarative scenario/content context для candidate actions, assessment и coaching, но не собственной state machine. Engine не должен содержать специальный scheduler, жёстко кодирующий перечисленные здесь услуги.
+
+В release `0.1.0` service interactions существуют, но полная orchestration `servicePlan.windows` ещё не подключена к runtime автоматически. Scenario должен управлять активацией типовых traits/actions/events; последующее развитие может использовать `servicePlan` как удобный declarative слой над этим механизмом.
 
 ## 5. Time anchors
 
-Для baseline достаточно относительных anchors:
+Для baseline design достаточно относительных anchors:
 
 ```text
 after departure

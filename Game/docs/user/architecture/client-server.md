@@ -1,12 +1,12 @@
 # Взаимодействие клиента, игрового сервера и Platform Server
 
-**Версия документа:** 0.4.0
+**Версия документа:** 0.5.0
 **Статус:** Draft
 **Дата редакции:** 2026-09-27
 
 ## 1. Область документа
 
-Документ определяет границу Browser Client, Game Server и внешнего Platform Server.
+Документ определяет границу Browser Client, Game Server и внешнего Platform Server. Он описывает архитектурную границу и baseline extension points; обязательные возможности конкретного выпуска определяются `../release-scope-0.1.0.md`.
 
 Детальный Browser ↔ Game Server wire contract зафиксирован в [`../api/websocket-protocol.md`](../api/websocket-protocol.md). HTTP/service contract Platform Server вынесен в `architecture/platform-contract.md` и [`../api/platform-openapi.yaml`](../api/platform-openapi.yaml). Режимы live/guided/replay — в `architecture/session-modes.md`.
 
@@ -36,7 +36,8 @@
 - WebSocket protocol;
 - public projection/serialization gate;
 - deterministic replay;
-- assessment, achievements и coaching;
+- assessment и achievements;
+- baseline coaching observers/presentation extensions;
 - финализацию результата через Platform Server.
 
 Game Server не реализует меню и постоянную профильную бизнес-логику.
@@ -49,7 +50,7 @@ Game Server не реализует меню и постоянную профи�
 - отображение public presentation state/events;
 - interpolation;
 - локальное UI-state;
-- mode-specific UI (guided hints/replay controls);
+- mode-specific UI для доступных session capabilities (в baseline — guided hints и расширенные replay controls);
 - reconnect.
 
 Client не содержит authoritative domain logic.
@@ -166,7 +167,7 @@ Server не должен отправлять императивное `move spr
 
 ```text
 speech bubble show/hide
-guided hint
+guided hint (baseline/deferred в release 0.1.0)
 notification
 short-lived visual/audio effect
 optional open/focus presentation request
