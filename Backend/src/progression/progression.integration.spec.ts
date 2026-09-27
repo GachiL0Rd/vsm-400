@@ -682,6 +682,37 @@ describe('прогрессия в базе', () => {
     expect(paths['/api/v1/promotions']).toBeDefined();
     expect(paths['/api/v1/promotions/{id}/decision']).toBeDefined();
   });
+  it('начальник не утверждает собственное повышение', async () => {
+    const { brigade, depot } = await createBrigade();
+    const chief = await createUser({ role: Role.CHIEF, brigadeId: brigade.id });
+    const own = await prisma.promotionRecommendation.create({
+      data: {
+        userId: chief.id,
+        fromGrade: 'TRAINEE',
+        toGrade: 'CONDUCTOR',
+        reasons: ['Уровень'],
+        status: 'PENDING',
+      },
+    });
+    const chiefView: AuthUser = {
+      id: chief.id,
+      role: Role.CHIEF,
+      brigadeId: brigade.id,
+      depotId: depot.id,
+    };
+    const denied = await inject(app, 'POST', `/api/v1/promotions/${own.id}/decision`, chiefView, {
+      approve: true,
+    });
+    expect(denied.statusCode).toBe(403);
+    expect(denied.json()).toMatchObject({ code: 'SELF_DECISION' });
+    expect(
+      (await prisma.promotionRecommendation.findUniqueOrThrow({ where: { id: own.id } })).status,
+    ).toBe('PENDING');
+    expect((await prisma.user.findUniqueOrThrow({ where: { id: chief.id } })).grade).toBe(
+      'TRAINEE',
+    );
+  });
+
 });
 
 type HttpResult = {

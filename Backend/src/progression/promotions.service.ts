@@ -127,6 +127,12 @@ export class PromotionsService {
       throw new NotFoundException({ message: 'Рекомендация не найдена', code: 'NOT_FOUND' });
     }
     this.assertBrigade(actor, current.user.brigadeId);
+    if (actor.id === current.userId) {
+      throw new ForbiddenException({
+        message: 'Нельзя решить по собственному повышению',
+        code: 'SELF_DECISION',
+      });
+    }
     if (current.status !== PromotionStatus.PENDING) {
       throw new ConflictException({
         message: 'Рекомендация уже рассмотрена',
