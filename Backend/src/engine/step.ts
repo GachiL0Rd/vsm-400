@@ -14,7 +14,8 @@ import {
 } from './schema';
 import { addSkills, copySkills } from './skills';
 import { politenessOf } from './summarize';
-import type { EngineState, JournalEntry, ShiftPlan, StepInput } from './types';
+import { applyTextVariant } from './text';
+import type { EngineState, JournalEntry, ShiftPlan, StepInput, TextVariant } from './types';
 import { resolveText } from './view';
 import { countIncidents, hasAllFlags } from './walk';
 
@@ -30,6 +31,11 @@ export type StepContext = {
    * в EngineState нет отдельного поля «уже был срыв».
    */
   scenarios?: readonly ScenarioGraph[];
+  /**
+   * Тот же перефраз, что у view. Журнал пишет показанный текст:
+   * без варианта situation и action останутся из YAML.
+   */
+  textVariant?: TextVariant;
 };
 
 type RawAction = {
@@ -90,7 +96,7 @@ export function step(
   input: StepInput,
   ctx: StepContext,
 ): { state: EngineState; entry: JournalEntry } {
-  const node = openNode(state, scenario);
+  const node = applyTextVariant(openNode(state, scenario), ctx.textVariant);
   const action = resolveAction(node, input, state.flags);
   const played = applyResolved(state, scenario, node, action, input, ctx);
   if (gateTripped(scenario, played.state)) {

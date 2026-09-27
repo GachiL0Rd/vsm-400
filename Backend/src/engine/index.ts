@@ -13,6 +13,7 @@ export {
 } from './schema';
 export { createState, type StepContext, step, TIMEOUT_ACTION } from './step';
 export { politenessOf, summarize } from './summarize';
+export { applyTextVariant, orderChoices } from './text';
 export type {
   EngineState,
   JournalEntry,
@@ -21,6 +22,7 @@ export type {
   RunSummary,
   ShiftPlan,
   StepInput,
+  TextVariant,
 } from './types';
 export { type ValidationIssue, type ValidationResult, validateScenario } from './validate';
-export { resolveText, view } from './view';
+export { resolveText, type ViewOptions, view } from './view';
