@@ -546,7 +546,6 @@ describe('прогрессия в базе', () => {
       points: 0,
       outcome: 'completed',
       suspicious: false,
-      finishedAt: new Date().toISOString(),
     });
     const after = await achievements.listForUser(user.id);
     const streak = after.find((card) => card.code === 'streak');
@@ -565,7 +564,6 @@ describe('прогрессия в базе', () => {
       points: 0,
       outcome: 'completed',
       suspicious: false,
-      finishedAt: new Date().toISOString(),
     });
     expect(
       await prisma.pointLedger.count({

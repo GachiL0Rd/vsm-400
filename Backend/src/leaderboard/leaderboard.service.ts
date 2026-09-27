@@ -217,10 +217,9 @@ export class LeaderboardService {
   }
 
   private async applyRecorded(payload: RunRecordedPayload): Promise<void> {
-    const season = await this.seasonFor(payload);
-    if (!season) {
-      return;
-    }
+    // Сезон учёта, не недели finishedAt: рейс, закрытый в воскресенье 23:59 и
+    // учтённый в понедельник, не теряется. Одобренный разбор идёт в неделю одобрения.
+    const season = await this.seasons.current();
     const brigadeKey = payload.brigadeId ? brigadeBoardKey(season.id, payload.brigadeId) : null;
     const before = brigadeKey
       ? await this.readBoard(brigadeKey, season.id, { brigadeId: payload.brigadeId ?? undefined })
@@ -245,23 +244,6 @@ export class LeaderboardService {
     } catch (error) {
       this.logger.error(error instanceof Error ? error.message : String(error));
     }
-  }
-
-  /**
-   * Сезон недели finishedAt. Если неделя уже сменилась, в текущий ZSET не пишем:
-   * закрытый сезон не пересчитывается, леджер при этом уже хранит очки.
-   */
-  private async seasonFor(payload: RunRecordedPayload): Promise<Season | null> {
-    const finishedAt = payload.finishedAt ? new Date(payload.finishedAt) : this.clock.now();
-    if (Number.isNaN(finishedAt.getTime())) {
-      return null;
-    }
-    const current = seasonWindow(this.clock.now());
-    const run = seasonWindow(finishedAt);
-    if (run.startsAt.getTime() !== current.startsAt.getTime()) {
-      return null;
-    }
-    return this.seasons.current(finishedAt);
   }
 
   private async bumpBoards(payload: RunRecordedPayload, seasonId: string): Promise<string[]> {

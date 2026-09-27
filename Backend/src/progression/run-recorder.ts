@@ -209,7 +209,6 @@ export class RunRecorder {
         points: true,
         outcome: true,
         suspicious: true,
-        finishedAt: true,
         user: { select: { brigadeId: true, brigade: { select: { depotId: true } } } },
       },
     });
@@ -224,7 +223,6 @@ export class RunRecorder {
       points: run.points,
       outcome: run.outcome,
       suspicious: run.suspicious,
-      finishedAt: run.finishedAt.toISOString(),
     };
   }
 
@@ -415,7 +413,6 @@ export class RunRecorder {
       points,
       outcome,
       suspicious,
-      finishedAt: finishedAt.toISOString(),
     };
   }
 }

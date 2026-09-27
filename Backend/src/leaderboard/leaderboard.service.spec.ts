@@ -329,7 +329,6 @@ function recorded(
     outcome: 'completed' as RunOutcome,
     suspicious: false,
     ...partial,
-    finishedAt: partial.finishedAt ?? '2026-09-26T12:00:00.000+03:00',
   };
 }
 
@@ -457,28 +456,15 @@ describe('рейтинг', () => {
     expect(await db.redis.zscore('lb:season-39:company', 'a')).toBe('40');
   });
 
-  it('рейс прошлой недели не дописывается в текущий сезон', async () => {
+  it('одобренный подозрительный рейс идёт в сезон учёта один раз', async () => {
     const db = new Harness();
     db.users.push(user('a', 'AAAA'));
-    await db.service.onRunRecorded(
-      recorded({
-        runId: 'old',
-        userId: 'a',
-        points: 40,
-        suspicious: true,
-        finishedAt: '2026-08-01T12:00:00+03:00',
-      }),
-    );
-    await db.service.onRunRecorded(
-      recorded({
-        runId: 'old',
-        userId: 'a',
-        points: 40,
-        finishedAt: '2026-08-01T12:00:00+03:00',
-      }),
-    );
-    expect(db.scores).toHaveLength(0);
-    expect(await db.redis.zcard('lb:season-39:company')).toBe(0);
+    const old = { runId: 'old', userId: 'a', points: 40 };
+    await db.service.onRunRecorded(recorded({ ...old, suspicious: true }));
+    await db.service.onRunRecorded(recorded(old));
+    await db.service.onRunRecorded(recorded(old));
+    expect(db.scores).toEqual([{ seasonId: 'season-39', userId: 'a', points: 40 }]);
+    expect(await db.redis.zscore('lb:season-39:company', 'a')).toBe('40');
   });
 
   it('место бригады в депо и закрытие сезона топ-3', async () => {

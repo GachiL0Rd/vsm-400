@@ -55,7 +55,6 @@ function recorded(partial: Partial<RunRecordedPayload> = {}): RunRecordedPayload
     outcome: 'completed',
     suspicious: false,
     ...partial,
-    finishedAt: partial.finishedAt ?? '2026-09-21T12:00:00+03:00',
   };
 }
 
