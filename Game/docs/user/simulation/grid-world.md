@@ -206,6 +206,8 @@ Field step может породить discrete event при достижени�
 
 ## 12. Санитарное состояние как overlay
 
+> **Baseline/deferred:** spatial contamination overlay не входит в release `0.1.0`. Раздел фиксирует целевую модель, совместимую с текущим grid/runtime design.
+
 Для baseline санитарная обстановка не является отдельной непрерывной simulation field.
 
 Загрязнение — дискретное runtime state клетки/локальной области:
@@ -220,7 +222,7 @@ interface ContaminationOverlay {
 
 Scenario/initial state определяет, где загрязнение существует. Level может ограничивать допустимые cells/anchors.
 
-Client получает только публичный overlay ID и накладывает соответствующий локальный tile/asset поверх базовой карты.
+После реализации projection этого состояния Client должен получать только публичный overlay ID и накладывать соответствующий локальный tile/asset поверх базовой карты.
 
 В baseline уборка не моделируется, поэтому contamination может оставаться статичным всю попытку. Если позднее появится `clean` action, он просто удаляет/изменяет этот runtime state entry.
 

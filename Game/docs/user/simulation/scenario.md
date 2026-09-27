@@ -130,7 +130,7 @@ originStop:
       populationPreset: demo-origin
 ```
 
-В текущем baseline конкретные passenger definitions также содержат `boardingCellId`, public ticket/identity data и server-only `expectedBoardingDecision`, который нужен будущему assessment и не сериализуется клиенту.
+В текущем baseline конкретные passenger definitions также содержат `boardingCellId`, public ticket/identity data и server-only `expectedBoardingDecision`, который используется assessment и не сериализуется клиенту.
 
 Конкретное расписание может дополнительно задавать display-clock начала посадки и отправления. Simulation semantics остаётся основана на `SimTimeUs`.
 
@@ -326,7 +326,7 @@ fire-unsalvageable
 2. считаться корректным и безопасным решением;
 3. привести к высокому `safety`, хотя маршрут физически не завершён.
 
-Сорванная пломба без активации остаётся отдельным наблюдаемым фактом для будущего assessment.
+Сорванная пломба без активации остаётся отдельным наблюдаемым фактом для assessment.
 
 Assessment отдельно определяет качество действий и итоговые `safety`/`customerSatisfaction`.
 
@@ -412,7 +412,7 @@ servicePlan:
       start: { beforeFinalArrival: 15m }
 ```
 
-Service window является context для actions/traits/assessment/coaching, а не собственной state machine.
+Service window является declarative context для actions/traits/assessment/coaching, а не собственной state machine. В release `0.1.0` schema и validation `servicePlan.windows` уже существуют, но автоматическая runtime orchestration этих окон остаётся baseline/deferred: конкретный Scenario должен активировать типовые traits/actions/events обычными scenario operations.
 
 Примерный конкретный график текущего demo вынесен в `implementation/trip-service-plan.md`.
 

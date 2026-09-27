@@ -162,11 +162,13 @@ Scenario определяет, возникает ли она в конкрет�
 
 ## 10. Санитарные overlay locations
 
+> **Baseline/deferred:** этот spatial contract предназначен для будущего contamination projection; release `0.1.0` его ещё не использует.
+
 Загрязнения относятся к runtime world state, но Level может задавать cells/anchors, где допустимы санитарные overlays.
 
 Само загрязнение не запекается в background tile и не требует отдельной геометрии Level.
 
-Client получает stable visual ID и отображает overlay поверх базового пространства.
+После реализации публичной projection Client получает stable visual ID и отображает overlay поверх базового пространства.
 
 ## 11. Простые material parameters
 
@@ -204,7 +206,7 @@ Server-side logical grid и public presentation coordinates разделены p
 
 Client может получить публичную геометрию активных regions/объектов, необходимую для рендера, но не получает скрытые navigation/field coefficients.
 
-Для baseline каждый region может ссылаться на крупный background visual asset, выровненный по grid origin. Декоративный интерьер не обязан быть тайловым; поверх background отдельно отображаются интерактивные объекты, загрязнения и сущности.
+Для baseline каждый region может ссылаться на крупный background visual asset, выровненный по grid origin. Декоративный интерьер не обязан быть тайловым; поверх background отдельно отображаются интерактивные объекты и сущности, а после реализации sanitation projection — также загрязнения.
 
 ## 14. Совместимость со Scenario
 
