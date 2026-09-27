@@ -84,12 +84,12 @@ Document the actual protocol implemented by `src/common` and the server adapter:
 
 The document must follow schemas/tests; it must not become a second manually maintained protocol definition.
 
-### D2 — Platform Server OpenAPI/Swagger: in progress
+### D2 — Platform Server OpenAPI/Swagger: complete
 
-Targets:
+Implemented as:
 
 - `docs/user/api/platform-openapi.yaml` — machine-readable OpenAPI contract;
-- `docs/user/api/platform-contract.md` — lifecycle/semantic notes that are awkward to express in OpenAPI alone.
+- `docs/user/architecture/platform-contract.md` — lifecycle/semantic notes that are awkward to express in OpenAPI alone.
 
 At minimum cover:
 
@@ -104,9 +104,9 @@ At minimum cover:
 
 This contract is intended to let the Platform Server developer work in a separate Git branch/repository without importing Game Server implementation code.
 
-### D3 — Server configuration and container/deployment guide
+### D3 — Server configuration and container/deployment guide: complete
 
-Targets:
+Implemented targets:
 
 - `docs/user/deployment/server-configuration.md`;
 - `docs/user/deployment/container-layout.md`;

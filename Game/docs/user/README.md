@@ -22,7 +22,9 @@
 10. [`architecture/replay.md`](architecture/replay.md) — deterministic replay, seek и checkpoints.
 11. [`simulation/README.md`](simulation/README.md) — карта документов движка, включая минимальную Entity/Traits/Actions модель.
 12. [`implementation/README.md`](implementation/README.md) — конкретная реализация текущего demo: объекты, модалки, held-items, ассеты, environment-state, уровни обслуживания и план рейса.
-13. [`engineering/library-candidates.md`](engineering/library-candidates.md) — ненормативные dependency candidates.
+13. [`deployment/server-configuration.md`](deployment/server-configuration.md) — запуск и environment configuration Game Server.
+14. [`deployment/container-layout.md`](deployment/container-layout.md) — контейнерные/service boundaries и reference topology.
+15. [`engineering/library-candidates.md`](engineering/library-candidates.md) — ненормативные dependency candidates.
 
 ## Нормативная граница
 
