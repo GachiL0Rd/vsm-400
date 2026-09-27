@@ -238,7 +238,7 @@ ride→enroute). Повтор отчёта — 200 и тот же `runId`. От�
 ### Перефразы LLM
 
 Пул формулировок для сценариев с блоком `llm`. Провайдер `LLM_PROVIDER`:
-`none` (по умолчанию, очередь не пополняется), `openai-compatible` или `gigachat`.
+`none` (по умолчанию, очередь не пополняется), `openai-compatible`, `gigachat` или `yandex`.
 Методист и администратор: `GET /api/v1/admin/scenarios/:id/variants`,
 `POST .../variants/:variantId/approve`, `POST .../variants/:variantId/reject`,
 `POST .../variants/generate`, `GET /api/v1/admin/llm/status`.

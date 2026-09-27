@@ -15,42 +15,104 @@
 пользовательское сообщение было списком реплик, и модель его копировала.
 `2026-09-27.3` отдаёт исходник одним JSON, как в бенче, и прямо запрещает
 совпавший `text`.
-Сэмплинг из бенча 2026-09-27, пустые env берут эти дефолты: `LLM_TEMPERATURE=0.7`,
-`LLM_TOP_P=0.8`, `LLM_TOP_K=20`, `max_tokens` 256. У OpenAI-совместимого запроса
-ещё `reasoning_effort=none` и `chat_template_kwargs.enable_thinking=false`, иначе
-Qwen3 уходит в thinking и ломает JSON.
+Пустые `LLM_TEMPERATURE` зависят от провайдера. GigaChat и Yandex — 1.0:
+у GigaChat-2-Max на 0.4 и 0.7 Jaccard 0.84, у Alice Flash пары 0.74 / 0.48 / 0.45,
+а потолок temperature в API Яндекса — 1. Qwen3-8B и профиль `llama-cpp` — 0.7:
+0.4 и 0.7 дали один текст, выше 0.7 смысл плывёт. `LLM_TOP_P=0.8`, `LLM_TOP_K=20`,
+`max_tokens` 256. Оценки смысла ниже сняты при 0.7; на 1.0 заново по всем узлам
+их не мерили. Профиль `llama-cpp` ещё шлёт `reasoning_effort=none` и
+`chat_template_kwargs.enable_thinking=false`, иначе Qwen3 уходит в thinking.
+Профили `vllm` и `yandex` не шлют `repeat_penalty` и `thinking`: Яндекс отвечает
+400. У `yandex` остаётся `reasoning_effort=none` — DeepSeek так выключает рассуждения,
+Alice поле `thinking` отвергает.
 
 ## Выбор модели
 
-Замер 2026-09-27, MacBook Air M4 (10 CPU, GPU 10 ядер, 16 ГБ). 10 узлов сценариев,
-один и тот же промпт. Схема — strict JSON. Оценка 1–5 вручную, один проход.
-Сырые ответы лежат в `/Users/airman66/llm-bench/results-bonsai.json` и
-`results-qwen.json`. Повторного замера с двумя правилами про подмену действия
-и должности не было: они добавлены в промпт после прогона.
+Замер 2026-09-27, одни и те же 10 узлов. Схема — strict JSON. Смысл и русский —
+1–5, один проход. У Bonsai и Qwen это было одно число (в таблице оно стоит в
+«смысле», русский пустой). Пул — 352 генерации (11 сценариев × 4 узла × 8).
+У GigaChat в топе пять моделей; [остальные слабее](#остальные-gigachat-слабее).
 
-| | Bonsai 2 27B PTQ1_0, ternary | Qwen3-8B Q4_K_M |
-| --- | --- | --- |
-| Файл | 5.95 ГБ, 1.75 bpw, форк PrismML | 4.7 ГБ, stock-совместимый GGUF |
-| Metal, генерация | 6.8 tok/s, к концу около 5.4 | 19.0 tok/s, к концу 12–14 |
-| Metal, промпт | 31 tok/s | 152 tok/s |
-| CPU, 4 потока, `-ngl 0` | 2.83 tok/s, RSS 6.2 ГБ, ответ обрезан | не мерили |
-| Время узла | среднее 20.2 с | около 6.4 с |
-| JSON, id, длина ≤160 | 10/10 | 10/10 |
-| Якоря ситуации | 35/52 (67%) | 47/52 (90%) |
-| Оценка schema / без схемы | 2.7 / 3.2 | 3.6 / 3.9 |
+| Модель | смысл | русский | JSON | якоря | с/узел | ₽ пул | судья |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Bonsai 2 27B PTQ1_0 | 2.7 | — | 10/10 | 35/52 | 20.2 | 0 | не мерили |
+| Qwen3-8B Q4_K_M | 3.6 | — | 10/10 | 47/52 | 6.4 | 0 | не мерили |
+| GigaChat-Max-preview | 3.9 | 4.6 | 10/10 | 42/52 | 1.82 | 66 | пропускает пункты |
+| GigaChat-Max | 3.9 | 4.4 | 9/10 | 35/46 | 1.71 | — | не мерили |
+| GigaChat-2-Max | 3.8 | 4.3 | 10/10 | 43/52 | 2.40 | 82 | ловит порчи, верный перефраз не бракует |
+| GigaChat-3-Ultra | 3.7 | 4.7 | 10/10 | 37/52 | 2.12 | freemium | не мерили |
+| GigaChat-2-Pro | 3.6 | 4.5 | 10/10 | 39/52 | 2.16 | 68 | не мерили |
+| DeepSeek V4.1 Flash | 3.6 | 4.4 | 10/10 | 50/52 | 0.90 | 90 | не мерили |
+| Alice AI LLM | 3.1 | 3.9 | 8/10 | 38/52 | 0.96 | 119 | не мерили |
+| Alice AI LLM Flash | 3.6 | 4.4 | 10/10 | 51/52 | 0.85 | 20 | ловит подмену; на «пилке» отказ; верную медицинскую пару бракует |
 
-Дрейф Bonsai, schema: «таблетка уже во рту» стало «пилка уже в рот»; «советовать
-зевать» стало «предложить потоптаться»; «пьёт из фляги» стало «мужик в фляге»;
-узел с кошкой скопировал три выбора дословно. Qwen3-8B держит якоря лучше, но
-не идеально: schema на медицинском узле перенесла таблетку «уже в руку», на
-створке — «держать, пока не закроется». На temperature 0.4 и 0.7 Qwen отдал один
-и тот же текст (Jaccard 1.0). Автоаппрув без судьи нельзя ни там, ни там.
+GigaChat-Max: смысл 3.9 посчитан по сырому тексту сломанного smoke, в пул узел
+не попал бы. Якоря 35/46 — знаменатель без этого узла. Промпт бэкенда на 2-Max
+короче стендового: около 72 ₽ вместо 82 ₽, но 2 поля из 10 дословные, валидатор
+их выкинет. Ultra в freemium только для личного некоммерческого использования.
+Цены Яндекса — aistudio на 2026-09-27, кеш в прогоне был 0. Зарубежные API не используем.
 
-Локально на этом Mac — Qwen3-8B Q4_K_M или крупнее, если влезает в память.
-На GPU-сервере имеет смысл модель больше 8B: у 8B мало разнообразия при 0.7.
-Обычный VPS без GPU для live не подходит: даже Bonsai на P-ядрах M4 дал 2.83 tok/s,
-на x86 будет медленнее. Облако в РФ — GigaChat (`LLM_PROVIDER=gigachat`).
-Зарубежные API не используем.
+### Остальные GigaChat слабее
+
+| Модель | смысл | русский | JSON | якоря | с/узел | ₽ пул | судья |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| GigaChat-Pro-preview | 3.6 | 3.9 | 10/10 | 35/52 | 1.86 | — | не мерили |
+| GigaChat-3-Pro | 3.5 | 4.1 | 10/10 | 45/52 | 1.58 | 64 | не мерили |
+| GigaChat-Pro | 3.3 | 4.1 | 10/10 | 39/52 | 1.75 | — | не мерили |
+| GigaChat-2 | 3.2 | 4.1 | 10/10 | 44/52 | 0.98 | 9 | не мерили |
+| GigaChat | 3.1 | 3.9 | 10/10 | 31/52 | 0.74 | — | не мерили |
+| GigaChat-preview | 3.1 | 3.7 | 9/10 | 29/46 | 0.75 | — | не мерили |
+| GigaChat-Plus | 2.8 | 3.9 | 9/10 | 31/46 | 0.75 | — | не мерили |
+| GigaChat-3-Lightning | 2.6 | 3.4 | 10/10 | 40/52 | 0.76 | 8 | не мерили |
+
+Pro-preview по смыслу как 2-Pro, русский и якоря хуже. Lightning путает порядок id
+и раздувает текст. Старые id на старом хосте часто копируют исходник.
+
+### Конфигурации
+
+(A) Облако РФ, качество. Генерация и судья — GigaChat-2-Max. Смысл 3.8 на стенде,
+на промпте бэкенда 4.3, судья годится на медицину. Пул около 82 ₽ плюс вызовы судьи.
+
+```
+LLM_PROVIDER=gigachat
+LLM_MODEL=GigaChat-2-Max
+GIGACHAT_AUTH_KEY=<ключ>
+GIGACHAT_SCOPE=GIGACHAT_API_PERS
+GIGACHAT_CA_FILE=<путь к корню НУЦ>
+LLM_JUDGE=true
+```
+
+(B) Облако, дешевле. Генерация — Alice AI LLM Flash, судья — GigaChat-2-Max.
+Пул генерации около 20 ₽. Свой судья Flash верную медицинскую пару бракует,
+поэтому судья не Flash. Автоаппрув только вместе с судьёй 2-Max.
+
+```
+LLM_PROVIDER=yandex
+LLM_MODEL=aliceai-llm-flash
+LLM_API_KEY=<ключ>
+LLM_PROJECT=<folder>
+LLM_JUDGE=true
+LLM_JUDGE_PROVIDER=gigachat
+LLM_JUDGE_MODEL=GigaChat-2-Max
+GIGACHAT_AUTH_KEY=<ключ>
+GIGACHAT_SCOPE=GIGACHAT_API_PERS
+GIGACHAT_CA_FILE=<путь к корню НУЦ>
+```
+
+(C) Закрытый контур. Генерация и судья — Qwen3-8B или крупнее на GPU.
+На этом Mac 8B: 19 tok/s, якоря 47/52, смысл 3.6. На 0.4 и 0.7 текст один
+и тот же, разнообразие пула слабое; на GPU брать модель больше 8B.
+Bonsai 2 27B медленнее (6.8 tok/s, узел 20 с) и по смыслу хуже (2.7), таблетку
+превращает в пилку. VPS без GPU для live не подходит.
+
+```
+LLM_PROVIDER=openai-compatible
+LLM_PROFILE=llama-cpp
+LLM_BASE_URL=http://127.0.0.1:8081
+LLM_MODEL=qwen3-8b
+LLM_TEMPERATURE=0.7
+LLM_JUDGE=true
+```
 
 Пул с ротацией и опция live защищают от заучивания формулировки, не от смысла
 правильного действия. Порядок выборов на экране — `rng.fork('order:'+сценарий+узел+визит)`,
@@ -83,13 +145,17 @@ Bonsai 2 этим бинарником stock llama.cpp не запускаетс
 | `LLM_PROVIDER` | Куда ходит | Что ещё нужно |
 | --- | --- | --- |
 | `none` | никуда | — |
-| `openai-compatible` | `{LLM_BASE_URL}/v1/chat/completions` | `LLM_MODEL`. База — origin без `/v1` |
+| `openai-compatible` | `{LLM_BASE_URL}/v1/chat/completions` | `LLM_MODEL`. База — origin без `/v1`. Профиль `LLM_PROFILE`: `llama-cpp` (дефолт), `vllm`, `yandex` |
+| `yandex` | `https://ai.api.cloud.yandex.net/v1`, если база не задана | `LLM_MODEL`, `LLM_API_KEY`. Короткое имя модели собирается в `gpt://<LLM_PROJECT>/<модель>/latest` |
 | `gigachat` | OAuth и chat, адреса ниже | `GIGACHAT_AUTH_KEY`, `GIGACHAT_CA_FILE`, `LLM_MODEL` |
 
-`LLM_API_KEY` необязателен: уходит как `Authorization: Bearer`, если задан.
-`LLM_TIMEOUT_MS` по умолчанию 90 с. `LLM_CONCURRENCY` читается при старте
-процесса, по умолчанию 2. `LLM_JUDGE=false` (также `off` / `0`) выключает
-второй вызов.
+`LLM_API_KEY` необязателен у `openai-compatible`: уходит как `Authorization: Bearer`,
+если задан. `LLM_PROJECT` уходит заголовком `OpenAI-Project`. `LLM_EXTRA_HEADERS` —
+JSON-объект дополнительных заголовков. Для профиля `yandex` заголовок
+`x-data-logging-enabled: false` ставится всегда, даже если в доп. заголовках он другой.
+`LLM_TIMEOUT_MS` по умолчанию 90 с. Если API прислал `usage`, `complete()` возвращает
+`prompt_tokens`, `completion_tokens` и `total_tokens`. В строку пула usage не пишется.
+`LLM_JUDGE=false` (также `off` / `0`) выключает второй вызов.
 
 OpenAI-совместимый запрос ставит `response_format.type = json_schema` и кладёт
 схему в `json_schema.schema` (`strict: true`). Так отвечает `llama-server`.
@@ -105,17 +171,18 @@ OpenAI-совместимый запрос ставит `response_format.type = 
 - Ответ: [POST /chat/completions](https://developers.sber.ru/docs/ru/gigachat/api/reference/rest/post-chat)
   и [структурированный вывод](https://developers.sber.ru/docs/ru/gigachat/guides/structured-output).
   У GigaChat схема лежит рядом с `type`: `{ type: json_schema, schema, strict }`,
-  не внутри `json_schema`, как у OpenAI. `top_k` и `reasoning_effort` туда не шлём.
+  не внутри `json_schema`, как у OpenAI. `top_p`, `top_k` и `reasoning_effort` не шлём.
+  В тело добавляется `repetition_penalty: 1`: дефолт модели съедает якоря.
 - Сертификат НУЦ Минцифры: [certificates](https://developers.sber.ru/docs/ru/gigachat/certificates).
   Файл `https://gu-st.ru/content/lending/russian_trusted_root_ca_pem.crt`
   кладётся в `GIGACHAT_CA_FILE`. TLS идёт через `undici` `Agent({ connect: { ca } })`,
   не через отключение проверки.
 - С 17 июля 2026 целевой хост API — `https://api.giga.chat`
   ([обзор REST](https://developers.sber.ru/docs/ru/gigachat/api/reference/rest/gigachat-api)).
-  OAuth в той же справке остаётся `https://ngw.devices.sberbank.ru:9443/api/v2/oauth`.
-  Chat в этом модуле — `https://gigachat.devices.sberbank.ru/api/v1/chat/completions`:
-  так зафиксирован приказ. Если хост переедет, менять константы
-  `GIGACHAT_OAUTH_URL` и `GIGACHAT_CHAT_URL`.
+  OAuth остаётся `https://ngw.devices.sberbank.ru:9443/api/v2/oauth`.
+  Chat по умолчанию — `https://api.giga.chat/v1/chat/completions`.
+  `GIGACHAT_BASE_URL` меняет только базу chat, не OAuth. Корень НУЦ в
+  `GIGACHAT_CA_FILE` достаточен, проверку TLS не отключаем.
 
 Токен живёт ~30 минут. В Redis он лежит как `llm:gigachat:token:<scope>`
 до `expires_at − 60 с`. Ключ авторизации — уже Base64, второй раз не кодируется.
@@ -127,7 +194,9 @@ BullMQ, очередь `llm-variants`, Redis из `REDIS_URL`.
 `reason`: `seed` (добить пул), `refill` (после ротации), `live`, `manual`.
 В строке пула то же самое enum-ом: `SEED | REFILL | LIVE | MANUAL`, плюс
 `sessionId` у живого варианта. Три попытки, exponential backoff 2 с.
-Лимит воркера — 20 задач за 10 с. Приоритет BullMQ (меньше — раньше): live 1,
+Лимит воркера — 20 задач за 10 с. Для `GIGACHAT_API_PERS` concurrency воркера
+всегда 1: второй поток ловит 429. `GIGACHAT_API_B2B` и `CORP` берут `LLM_CONCURRENCY`
+(по умолчанию 2). Приоритет BullMQ (меньше — раньше): live 1,
 manual 5, seed/refill 10.
 
 `SESSION_TEXT_REQUESTED` слушает `LlmSessionListener` и зовёт `enqueueLive`:
@@ -179,16 +248,22 @@ abort и expire вызывают `releaseSession`: у `APPROVED` этой сес
 
 ## Судья и сходство
 
-После валидатора, если `LLM_JUDGE` не выключен, тот же провайдер вызывается
-второй раз. Температура этого вызова 0. На вход — исходные тексты ситуации и
-каждого выбора и перефраз. На выход JSON по схеме `scenario_text_judge`:
+После валидатора, если `LLM_JUDGE` не выключен, судья вызывается отдельно от
+генератора. `LLM_JUDGE_PROVIDER`, `LLM_JUDGE_MODEL`, `LLM_JUDGE_BASE_URL`,
+`LLM_JUDGE_API_KEY`, `LLM_JUDGE_PROJECT`, `LLM_JUDGE_PROFILE` и
+`LLM_JUDGE_EXTRA_HEADERS` по умолчанию повторяют генератор. Температура этого
+вызова всегда 0. На вход — исходные тексты и перефраз. На выход JSON по схеме
+`scenario_text_judge`: массив `checks` длиной 1 + число выборов, `id` только из
+enum `text` и id выборов. Без enum модель пропускает испорченный выбор.
 
 ```json
-{"situation":{"same":true,"reason":"..."},"choices":[{"id":"...","same":true,"reason":"..."}]}
+{"checks":[{"id":"text","same":true,"reason":"..."},{"id":"radio","same":true,"reason":"..."}]}
 ```
 
-Хотя бы один `same: false` — строка сохраняется как `REJECTED`, причина в
-`rejectReason`. Кривой JSON судьи тоже `REJECTED`, без ретрая. Сетевая ошибка
+`same=true`, если действие и адресат те же и отличаются только слова, в том
+числе на медицинском узле. Хотя бы один `same: false` — строка `REJECTED`,
+причина в `rejectReason`. Кривой JSON судьи тоже `REJECTED`, без ретрая.
+Старый объект `situation` + `choices` парсер ещё принимает. Сетевая ошибка
 судьи ретраит всю задачу.
 
 Отдельно Jaccard по нормализованным словам (регистр, `ё`, пунктуация сняты).
