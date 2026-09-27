@@ -216,6 +216,20 @@ export class PublicGameProjection {
     };
   }
 
+  applyReplayCommand(
+    operation: RecordedGameplayCommand,
+    clock: PublicClockView = DEFAULT_CLOCK,
+  ): GameDeltaMessage {
+    const before = this.lastState ?? this.project(clock);
+    this.applyOperation(operation);
+    const baseRevision = this.revisionValue;
+    this.bumpRevision();
+    const after = this.project(clock);
+    const delta = createDelta(before, after, baseRevision, this.revisionValue);
+    this.lastState = after;
+    return delta;
+  }
+
   invoke(command: InvokeActionCommand, clock: PublicClockView = DEFAULT_CLOCK): InvokeResult {
     if (command.knownRevision !== this.revisionValue) {
       return { result: rejected(command.requestId, this.revisionValue, 'stale-revision') };

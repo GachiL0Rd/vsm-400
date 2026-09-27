@@ -118,6 +118,26 @@ entities
 
 The baseline worker accepts time scales `1`, `2`, and `4`.
 
+### Replay capabilities
+
+For baseline forward replay, `mode.kind = "replay"` advertises only capabilities that the current server actually implements:
+
+```json
+{
+  "kind": "replay",
+  "capabilities": {
+    "seek": false,
+    "speeds": [1, 2, 4],
+    "entityInspection": false,
+    "revealTraits": false,
+    "revealActionScores": false,
+    "revealAssessment": false
+  }
+}
+```
+
+The server recreates the recorded content version/root seed and replays the authoritative `userInputs` in `(at, sequence)` order. Replay authentication fails if the recorded `gameLevelVersion` or `simulationCompatibilityVersion` does not match the selected local content bundle. When the replayed simulation reaches a terminal state, playback stops locally and **does not** call Platform `finishSession` or create another official result. Seek/checkpoints and hidden-state inspection remain future protocol extensions.
+
 ### Attempt phase
 
 Current public phases are:

@@ -4,8 +4,7 @@
 
 `Backend/` — API тренажёра «Перегон»: сценарии, сессии, прогрессия, кабинет.
 Игра ходит в GameServer по WebSocket, GameServer — в этот API. GameServer в
-репозитории ещё нет. `Game/`, `Frontend/`, `Server/` и `Client/` отсюда не
-импортируются.
+репозитории ещё нет. `Game/` и `Frontend/` отсюда не импортируются.
 
 Доменные модули лежат в `src/`: `auth`, `users`, `org`, `scenarios`,
 `sessions`, `progression`, `achievements`, `leaderboard`, `notifications`,

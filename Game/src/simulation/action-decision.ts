@@ -408,15 +408,36 @@ function validateTrait(
   trait: TraitDefinition,
   actions: ReadonlyMap<string, ActionDefinition>,
 ): void {
+  validateAddedActions(trait, actions);
+  validateTraitActionSelectors(trait, actions);
+  validateTraitWhitelist(trait);
+  validateTraitModifiers(trait, actions);
+  for (const selector of trait.rejectIf ?? []) validateEntitySelector(selector);
+}
+
+function validateAddedActions(
+  trait: TraitDefinition,
+  actions: ReadonlyMap<string, ActionDefinition>,
+): void {
   const added = new Set<string>();
   for (const actionId of trait.addActions ?? []) {
     if (added.has(actionId)) throw new RangeError(`Trait ${trait.id} lists ${actionId} twice`);
     added.add(actionId);
-    if (!actions.has(actionId))
+    if (!actions.has(actionId)) {
       throw new RangeError(`Trait ${trait.id} references unknown action ${actionId}`);
+    }
   }
+}
+
+function validateTraitActionSelectors(
+  trait: TraitDefinition,
+  actions: ReadonlyMap<string, ActionDefinition>,
+): void {
   for (const selector of trait.whitelistActions ?? []) validateActionSelector(selector, actions);
   for (const selector of trait.blacklistActions ?? []) validateActionSelector(selector, actions);
+}
+
+function validateTraitWhitelist(trait: TraitDefinition): void {
   const whitelist = trait.whitelistActions ?? [];
   const blacklistIds = new Set(
     (trait.blacklistActions ?? [])
@@ -429,13 +450,18 @@ function validateTrait(
   ) {
     throw new RangeError(`Trait ${trait.id} blocks its entire whitelist`);
   }
+}
+
+function validateTraitModifiers(
+  trait: TraitDefinition,
+  actions: ReadonlyMap<string, ActionDefinition>,
+): void {
   for (const modifier of trait.logitModifiers ?? []) {
     if (!actions.has(modifier.actionId)) {
       throw new RangeError(`Trait ${trait.id} modifies unknown action ${modifier.actionId}`);
     }
     validateCurve(modifier.curve);
   }
-  for (const selector of trait.rejectIf ?? []) validateEntitySelector(selector);
 }
 
 function validateActionSelector(

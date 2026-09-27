@@ -61,6 +61,8 @@ interface HintPolicy {
 
 Конкретные пресеты интерфейса могут быть сформированы Platform Server без появления новых simulation modes.
 
+В release `0.1.0` guided-session использует ту же authoritative simulation/input policy, что live, и передаёт hint policy клиенту, но Game Server ещё не генерирует coaching/hint events. Это ограничение presentation/coaching слоя, а не отдельная simulation semantics.
+
 ## 4. Replay
 
 ```ts
@@ -88,16 +90,7 @@ interface ReplayModeConfig {
 
 Replay восстанавливает simulation из сохранённых версий, root seed и user input log.
 
-Gameplay commands запрещены. Разрешены только playback/navigation/inspection commands, например:
-
-```text
-play
-pause
-set replay speed
-seek
-step/next marker
-inspect replay entity/event
-```
+Gameplay commands запрещены. В baseline `0.1.0` реализованы forward playback, `resync` и смена скорости `1x/2x/4x`. `seek`, step/markers и replay inspection остаются расширениями следующего этапа и поэтому возвращаются клиенту как недоступные capabilities.
 
 Replay никогда не формирует новый официальный GameResult для исходной попытки.
 

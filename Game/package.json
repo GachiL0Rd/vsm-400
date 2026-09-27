@@ -18,7 +18,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "check:bundle": "node scripts/check-bundle.mjs",
-    "verify": "npm run check:biome && npm run typecheck && npm run test && npm run build && npm run test:production && npm run check:bundle",
+    "verify": "npm run check:biome && npm run typecheck && npm run test && npm run audit:dead-code && npm run build && npm run test:production && npm run check:bundle",
     "audit:dead-code": "node scripts/check-dead-code.mjs",
     "start:server": "node dist/server/main.mjs",
     "test:production": "node scripts/test-production-server.mjs"
@@ -26,7 +26,6 @@
   "dependencies": {
     "graphology": "0.26.0",
     "graphology-shortest-path": "2.1.0",
-    "heap-js": "2.7.1",
     "phaser": "4.2.1",
     "pure-rand": "8.4.2",
     "ws": "8.21.3",
@@ -36,7 +35,6 @@
     "@biomejs/biome": "2.5.14",
     "@types/ws": "8.18.1",
     "knip": "6.38.0",
-    "playwright": "1.63.0",
     "tsx": "4.23.15",
     "typescript": "5.9.3",
     "vite": "8.3.1",

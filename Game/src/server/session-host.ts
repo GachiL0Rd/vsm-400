@@ -39,6 +39,7 @@ export class GameSessionHost {
     let worker = this.workers.get(resolved.attemptId);
     if (worker === undefined) {
       const content = this.options.contentRegistry.resolve(resolved.gameLevelId);
+      assertReplayCompatible(resolved.mode, content);
       const seed = rootSeed(
         resolved.mode.kind === 'replay' ? resolved.mode.source.rootSeed : undefined,
       );
@@ -125,13 +126,33 @@ function publicMode(mode: SessionMode): SessionModeView {
       return {
         kind: 'replay',
         capabilities: {
-          seek: true,
-          speeds: [0.25, 0.5, 1, 2, 4, 8],
-          entityInspection: true,
-          revealTraits: mode.reveal.traits,
-          revealActionScores: mode.reveal.actionLogits,
-          revealAssessment: mode.reveal.assessment,
+          seek: false,
+          speeds: [1, 2, 4],
+          entityInspection: false,
+          revealTraits: false,
+          revealActionScores: false,
+          revealAssessment: false,
         },
       };
+  }
+}
+
+function assertReplayCompatible(
+  mode: SessionMode,
+  content: {
+    readonly gameLevelVersion: string;
+    readonly simulationCompatibilityVersion: string;
+  },
+): void {
+  if (mode.kind !== 'replay') return;
+  if (mode.source.gameLevelVersion !== content.gameLevelVersion) {
+    throw new RangeError(
+      `Replay game level version ${mode.source.gameLevelVersion} does not match ${content.gameLevelVersion}`,
+    );
+  }
+  if (mode.source.simulationCompatibilityVersion !== content.simulationCompatibilityVersion) {
+    throw new RangeError(
+      `Replay simulation compatibility version ${mode.source.simulationCompatibilityVersion} does not match ${content.simulationCompatibilityVersion}`,
+    );
   }
 }

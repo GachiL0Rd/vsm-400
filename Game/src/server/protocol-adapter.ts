@@ -180,7 +180,7 @@ export class CommonGameProtocolAdapter implements GameProtocolAdapter {
     if (projection.mode.kind === 'replay' && isGameplayCommand(command)) {
       send(
         connection,
-        rejected(
+        unsupported(
           command.requestId,
           projection.revision,
           'Gameplay input is disabled in replay mode',
@@ -291,6 +291,18 @@ function stale(requestId: string, revision: number): CommandResultMessage {
     revision,
     code: 'stale-revision',
     message: 'stale-revision',
+  };
+}
+
+function unsupported(requestId: string, revision: number, message: string): CommandResultMessage {
+  return {
+    protocolVersion: GAME_PROTOCOL_VERSION,
+    type: 'command-result',
+    requestId,
+    status: 'rejected',
+    revision,
+    code: 'unsupported-command',
+    message,
   };
 }
 

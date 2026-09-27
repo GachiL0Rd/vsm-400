@@ -1,8 +1,8 @@
 # VSM Moscow
 
 Многомодульный проект обучающего симулятора проводника высокоскоростного
-поезда. Пользователь входит в личный кабинет (`Client/` + `Server/`), видит
-профиль, статистику и достижения и оттуда запускает игру. Модуль `Game/`
+поезда. Пользователь работает с личным кабинетом (`Frontend/` + `Backend/`),
+видит профиль, статистику и достижения и оттуда запускает игру. Модуль `Game/`
 объединяет Browser Game Client и authoritative Game Server. Platform Server
 остаётся внешней сервисной границей.
 
@@ -14,8 +14,6 @@
 | `Game/docs/` | Нормативные требования, рабочие guide и архив только модуля Game |
 | `Backend/` | API тренажёра (NestJS, Prisma, PostgreSQL); см. `Backend/README.md` |
 | `Frontend/` | React-клиент кабинета (React 19 + Vite); запуск описан в `Frontend/README.md` |
-| `Server/` | Тестовый backend кабинета и раздача `Client/`; см. `Server/README.md` |
-| `Client/` | Статический личный кабинет; см. `Client/README.md` |
 | `docs/` | Кросс-проектный workflow, исследования и архив; карта — в `docs/README.md` |
 
 Начните с [`docs/README.md`](docs/README.md), затем выберите модуль через
