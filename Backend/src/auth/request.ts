@@ -1,4 +1,5 @@
 import { isIP } from 'node:net';
+import { ipv6Hextets } from '../common/ipv6';
 
 export function requestPath(url: string): string {
   const path = url.split('?')[0] ?? url;
@@ -39,7 +40,12 @@ export function throttleIp(ip: string | undefined): string {
     return mapped;
   }
   if (isIP(ip) === 6) {
-    return `${expandIpv6(ip).slice(0, 4).join(':')}::/64`;
+    const hextets = ipv6Hextets(ip);
+    if (!hextets) {
+      return 'unknown';
+    }
+    const prefix = hextets.slice(0, 4).map((part) => part.toString(16).padStart(4, '0'));
+    return `${prefix.join(':')}::/64`;
   }
   return 'unknown';
 }
@@ -62,31 +68,6 @@ export function passwordRateKey(req: { user?: { id?: string }; ip?: string }): s
     return id;
   }
   return throttleIp(req.ip);
-}
-
-function expandIpv6(address: string): string[] {
-  let input = address.toLowerCase();
-  const zone = input.indexOf('%');
-  if (zone !== -1) {
-    input = input.slice(0, zone);
-  }
-  if (input.includes('.')) {
-    const last = input.lastIndexOf(':');
-    const octets = input
-      .slice(last + 1)
-      .split('.')
-      .map((part) => Number(part));
-    const hi = (((octets[0] ?? 0) << 8) | (octets[1] ?? 0)).toString(16);
-    const lo = (((octets[2] ?? 0) << 8) | (octets[3] ?? 0)).toString(16);
-    input = `${input.slice(0, last)}:${hi}:${lo}`;
-  }
-  const halves = input.split('::');
-  const head = halves[0] ? halves[0].split(':').filter((part) => part.length > 0) : [];
-  const tail =
-    halves.length === 2 && halves[1] ? halves[1].split(':').filter((part) => part.length > 0) : [];
-  const missing = halves.length === 2 ? 8 - head.length - tail.length : 0;
-  const full = [...head, ...Array.from({ length: Math.max(missing, 0) }, () => '0'), ...tail];
-  return full.slice(0, 8).map((part) => part.padStart(4, '0'));
 }
 
 type HeaderMap = Record<string, string | string[] | undefined>;
