@@ -123,7 +123,7 @@ describe('слушатели уведомлений', () => {
     const payload = {
       userId: 'conductor',
       code: 'before-boarding',
-      title: 'До посадки',
+      title: 'Журнал без ошибки',
       bonusPoints: 40,
     };
     await listener.onAchievement(payload);
@@ -131,7 +131,7 @@ describe('слушатели уведомлений', () => {
     expect(notes).toHaveLength(1);
     expect(notes[0]).toMatchObject({
       kind: NotificationKind.achievement,
-      title: 'Получен знак «До посадки»',
+      title: 'Получен знак «Журнал без ошибки»',
       text: 'Начислено 40 баллов.',
       link: '/runs/run-9',
     });
@@ -161,7 +161,7 @@ describe('слушатели уведомлений', () => {
     });
     expect(notes[0]).toMatchObject({
       kind: NotificationKind.assignment,
-      title: 'Назначен сценарий',
+      title: 'Назначена смена',
       text: 'Пассажиру плохо',
     });
   });

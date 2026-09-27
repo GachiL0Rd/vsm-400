@@ -20,6 +20,8 @@ const WhereSchema = z
     lucky: z.boolean().optional(),
     deviation: z.boolean().optional(),
     choiceIncludes: z.string().min(1).optional(),
+    /** choiceId равен одному из значений. У факта игры это kind. */
+    choices: z.array(z.string().min(1)).min(1).optional(),
     /** Подстрока situation, без учёта регистра. */
     situationIncludes: z.string().min(1).optional(),
     minSafetyDelta: z.number().optional(),
@@ -52,6 +54,7 @@ const DECISION_KEYS = [
   'lucky',
   'deviation',
   'choiceIncludes',
+  'choices',
   'situationIncludes',
   'minSafetyDelta',
 ] as const satisfies readonly (keyof Where)[];

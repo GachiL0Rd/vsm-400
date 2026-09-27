@@ -164,16 +164,16 @@ function StatsBlock({ stats }: { stats: Stats }) {
         <div className="ledger__row">
           <dt>
             Пройдено рейсов
-            <span className="label ledger__note">{stats.completed} без происшествий</span>
+            <span className="label ledger__note">{stats.completed} завершено</span>
           </dt>
           <dd>{stats.runs}</dd>
         </div>
         <div className="ledger__row">
-          <dt>Верные приёмки</dt>
+          <dt>Верные журналы приёмки</dt>
           <dd>{stats.defectsFound}</dd>
         </div>
         <div className="ledger__row">
-          <dt>Пропущено обязательных проверок</dt>
+          <dt>Пропущенные решения</dt>
           <dd className="down">{stats.missedChecks}</dd>
         </div>
         <div className="ledger__row">
@@ -182,7 +182,7 @@ function StatsBlock({ stats }: { stats: Stats }) {
         </div>
         <div className="ledger__row">
           <dt>
-            Верные эскалации
+            Верные по давлению и стоп-крану
             <span className="label ledger__note">
               {stats.escalationsCorrect} из {stats.escalationsTotal}
             </span>

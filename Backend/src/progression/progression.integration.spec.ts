@@ -333,7 +333,14 @@ describe('прогрессия в базе', () => {
         loyalty: 90,
         safety: 90,
         competencyDelta: { service: 1 },
-        decisions: [decision({ scenarioId, verdict: 'best', stage: 'acceptance' })],
+        decisions: [
+          decision({
+            scenarioId,
+            verdict: 'best',
+            stage: 'acceptance',
+            choiceId: 'journal-submission',
+          }),
+        ],
       }),
       true,
     );
@@ -498,7 +505,14 @@ describe('прогрессия в базе', () => {
       summary({
         loyalty: 0,
         safety: 30,
-        decisions: [decision({ scenarioId: technicalId, verdict: 'best', stage: 'acceptance' })],
+        decisions: [
+          decision({
+            scenarioId: technicalId,
+            verdict: 'best',
+            stage: 'acceptance',
+            choiceId: 'journal-submission',
+          }),
+        ],
       }),
     );
     await recorder.onRunCompleted(payload);

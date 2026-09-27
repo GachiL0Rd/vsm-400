@@ -61,14 +61,14 @@ function weakText(
 ): string {
   const window = runIds.length;
   if (window === 0) {
-    return `${COMPETENCY_TITLES[competency]} ниже порога ${weakScore}: рейсов для разбора ещё нет.`;
+    return `${COMPETENCY_TITLES[competency]} ниже порога ${weakScore}: ${EMPTY_SUBJECT[competency]} в рейсах ещё нет.`;
   }
   if (competency === 'escalation') {
     return escalationText(runIds, decisions);
   }
   const bad = runsMatching(runIds, decisions, competency, isMissOrWorse);
   if (bad === 0) {
-    return `${COMPETENCY_TITLES[competency]} ниже порога ${weakScore}, в последних рейсах грубых ошибок по ней нет.`;
+    return CLEAN_WEAK[competency](weakScore);
   }
   return failureSentence(competency, bad, window);
 }
@@ -81,9 +81,9 @@ function escalationText(runIds: readonly string[], decisions: readonly TaggedDec
     (decision) => decision.verdict !== 'best',
   );
   if (bad === 0) {
-    return 'Доклады в последних рейсах своевременны, но эскалация всё ещё ниже порога.';
+    return 'Давление и стоп-кран в последних рейсах без ошибки, но эскалация всё ещё ниже порога.';
   }
-  return `В ${bad} из ${runIds.length} последних рейсов доклад ушёл позже жалобы.`;
+  return `В ${bad} из ${runIds.length} последних рейсов давление стало критическим или стоп-кран применён не при опасности.`;
 }
 
 function growthText(
@@ -100,11 +100,10 @@ function growthText(
     competency,
     (decision) => decision.verdict === 'best',
   );
-  const title = COMPETENCY_TITLES[competency];
   if (runIds.length === 0 || good === 0) {
-    return `${title} растёт по сумме последних рейсов.`;
+    return GROWTH_BARE[competency];
   }
-  return `Растёт: в ${good} из ${runIds.length} последних рейсов решения по «${title}» были верными.`;
+  return `Растёт: в ${good} из ${runIds.length} последних рейсов ${GROWTH_HIT[competency]}.`;
 }
 
 function detectionGrowth(decisions: readonly TaggedDecision[]): string {
@@ -114,32 +113,71 @@ function detectionGrowth(decisions: readonly TaggedDecision[]): string {
     (decision) => decision.verdict === 'best' && decision.stage === 'acceptance',
   );
   if (found === 0) {
-    return 'Растёт: осмотр на приёмке стал находить больше неисправностей.';
+    return 'Растёт: журнал приёмки в последних рейсах без пропуска неисправности.';
   }
   const noun = plural(found, [
-    'неисправность найдена',
-    'неисправности найдены',
-    'неисправностей найдено',
+    'журнал приёмки сдан без пропуска и без ложной отметки',
+    'журнала приёмки сданы без пропуска и без ложной отметки',
+    'журналов приёмки сдано без пропуска и без ложной отметки',
   ]);
-  return `Растёт: ${found} ${noun} детальным осмотром на приёмке.`;
+  return `Растёт: ${found} ${noun}.`;
 }
 
 function failureSentence(competency: Competency, bad: number, window: number): string {
   const tail = `В ${bad} из ${window} последних рейсов`;
   if (competency === 'detection') {
-    return `${tail} неисправность на осмотре пропущена.`;
+    return `${tail} журнал приёмки сдан с пропуском неисправности или с ложной отметкой.`;
   }
   if (competency === 'safety') {
-    return `${tail} по безопасности было ошибочное или пропущенное решение.`;
+    return `${tail} ошибка или пропуск в посадке, пожаре, давлении или стоп-кране.`;
   }
   if (competency === 'procedure') {
-    return `${tail} процедура выполнена с ошибкой или пропущена.`;
+    return `${tail} ошибка или пропуск в журнале приёмки или в посадке.`;
   }
   if (competency === 'reaction') {
-    return `${tail} реакция запоздала.`;
+    return `${tail} пожар не потушен или давление дошло до критического.`;
   }
-  return `${tail} сервис разобран с ошибкой.`;
+  return `${tail} запрос пассажира остался без ответа.`;
 }
+
+/** Факты, которые двигают компетенцию. См. FACT_COMPETENCIES в finish-facts.ts. */
+const EMPTY_SUBJECT: Record<Competency, string> = {
+  safety: 'посадки, пожара, давления и стоп-крана',
+  procedure: 'журнала приёмки и посадки',
+  detection: 'журнала приёмки',
+  reaction: 'пожара и давления',
+  service: 'запросов пассажира',
+  escalation: 'давления и стоп-крана',
+};
+
+const CLEAN_WEAK: Record<Exclude<Competency, 'escalation'>, (weakScore: number) => string> = {
+  safety: (weakScore) =>
+    `Безопасность ниже порога ${weakScore}, в последних рейсах посадка, пожар, давление и стоп-кран без ошибки и без пропуска.`,
+  procedure: (weakScore) =>
+    `Процедуры ниже порога ${weakScore}, в последних рейсах журнал приёмки и посадка без ошибки и без пропуска.`,
+  detection: (weakScore) =>
+    `Обнаружение ниже порога ${weakScore}, в последних рейсах журнал приёмки без пропуска неисправности и без ложной отметки.`,
+  reaction: (weakScore) =>
+    `Реакция ниже порога ${weakScore}, в последних рейсах пожар и давление не пропущены.`,
+  service: (weakScore) =>
+    `Сервис ниже порога ${weakScore}, в последних рейсах запросы пассажира не остались без ответа.`,
+};
+
+const GROWTH_BARE: Record<Exclude<Competency, 'detection'>, string> = {
+  safety: 'Растёт: посадка, пожар, давление и стоп-кран по сумме последних рейсов.',
+  procedure: 'Растёт: журнал приёмки и посадка по сумме последних рейсов.',
+  reaction: 'Растёт: тушение пожара и удержание давления по сумме последних рейсов.',
+  service: 'Растёт: запросы пассажира по сумме последних рейсов.',
+  escalation: 'Растёт: давление и стоп-кран по сумме последних рейсов.',
+};
+
+const GROWTH_HIT: Record<Exclude<Competency, 'detection'>, string> = {
+  safety: 'верное решение по посадке, пожару, давлению или стоп-крану',
+  procedure: 'верно сдан журнал приёмки или верно решена посадка',
+  reaction: 'пожар потушен до критического или давление удержано',
+  service: 'запрос пассажира обслужен в срок',
+  escalation: 'давление удержано или стоп-кран приведён при опасности',
+};
 
 function isMissOrWorse(decision: TaggedDecision): boolean {
   return decision.verdict === 'worse' || decision.verdict === 'missed';

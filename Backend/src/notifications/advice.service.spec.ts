@@ -5,7 +5,7 @@ import { NotificationKind } from '../generated/prisma/client';
 import { seasonWindow } from '../leaderboard/season-window';
 import type { PrismaService } from '../prisma/prisma.service';
 import type { RulesService } from '../rules/rules.service';
-import { adviceText, recommendScenario } from './advice';
+import { adviceText } from './advice';
 import { AdviceService } from './advice.service';
 import type { NotificationsService } from './notifications.service';
 
@@ -20,30 +20,10 @@ class FixedClock extends Clock {
 }
 
 describe('текст совета', () => {
-  it('называет компетенцию, балл и сценарий', () => {
-    expect(adviceText('escalation', 43, 61, 'Пассажиру плохо')).toBe(
-      'Эскалация ниже среднего по депо — 43 из 100 при среднем 61. Потренируйте «Пассажиру плохо».',
+  it('называет компетенцию, балл и факт рейса', () => {
+    expect(adviceText('escalation', 43, 61)).toBe(
+      'Эскалация ниже среднего по депо — 43 из 100 при среднем 61. На рейсе это удержание давления и стоп-кран только при опасности.',
     );
-  });
-
-  it('предпочитает сценарий класса вагона проводника', () => {
-    const title = recommendScenario(
-      [
-        {
-          title: 'Эконом',
-          carClasses: ['ECONOMY'],
-          competencies: ['escalation'],
-        },
-        {
-          title: 'Бизнес',
-          carClasses: ['BUSINESS'],
-          competencies: ['escalation'],
-        },
-      ],
-      'escalation',
-      ['BUSINESS'],
-    );
-    expect(title).toBe('Бизнес');
   });
 });
 
@@ -52,26 +32,11 @@ describe('AdviceService', () => {
     const now = new Date('2026-09-26T09:00:00+03:00');
     const notes: { userId: string; text: string; dedupKey?: string; kind: string }[] = [];
     const users = [
-      person('weak', 'escalation', 43.2, 'BUSINESS'),
-      person('peer', 'escalation', 78.6, 'BUSINESS'),
-      person('ok', 'safety', 80, 'ECONOMY'),
-    ];
-    const scenarios = [
-      {
-        id: 'econ',
-        title: 'Чужой поезд',
-        carClasses: ['ECONOMY'],
-        competencies: ['escalation'] as Competency[],
-      },
-      {
-        id: 'biz',
-        title: 'Пассажиру плохо',
-        carClasses: ['BUSINESS'],
-        competencies: ['escalation'] as Competency[],
-      },
+      person('weak', 'escalation', 43.2),
+      person('peer', 'escalation', 78.6),
+      person('ok', 'safety', 80),
     ];
     const prisma = {
-      scenario: { findMany: async () => scenarios },
       user: { findMany: async () => users },
     };
     const notifications = {
@@ -95,24 +60,17 @@ describe('AdviceService', () => {
         userId: 'weak',
         kind: NotificationKind.advice,
         title: 'Эскалация ниже среднего по депо',
-        text: 'Эскалация ниже среднего по депо — 43 из 100 при среднем 61. Потренируйте «Пассажиру плохо».',
+        text: 'Эскалация ниже среднего по депо — 43 из 100 при среднем 61. На рейсе это удержание давления и стоп-кран только при опасности.',
         dedupKey: `advice:${week}:weak:escalation`,
       },
     ]);
   });
 });
 
-function person(
-  id: string,
-  competency: Competency,
-  value: number,
-  carClass: 'BUSINESS' | 'ECONOMY',
-) {
+function person(id: string, competency: Competency, value: number) {
   return {
     id,
     brigade: { depotId: 'depot-1' },
     competencyScores: [{ competency, value }],
-    runs: [{ carClass }],
-    assignedShifts: [],
   };
 }

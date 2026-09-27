@@ -53,6 +53,19 @@ export function readThemeCompetency(meta: unknown): Competency | null {
   return isCompetency(value) ? value : null;
 }
 
+const THEME: Record<string, string> = {
+  Безопасность: 'посадка, пожар, давление и стоп-кран',
+  Процедуры: 'журнал приёмки и решение о посадке',
+  Обнаружение: 'журнал приёмки без пропуска и без ложной отметки',
+  Реакция: 'тушение пожара до критического и удержание давления',
+  Сервис: 'запросы еды и воды в срок',
+  Эскалация: 'удержание давления и стоп-кран только при опасности',
+};
+
 export function challengeText(title: string): string {
-  return `Неделя ${title} — бригады депо соревнуются до воскресенья`;
+  const theme = THEME[title];
+  if (!theme) {
+    return `Неделя ${title}. Бригады депо соревнуются до воскресенья.`;
+  }
+  return `Неделя ${title}: ${theme}. Бригады депо соревнуются до воскресенья.`;
 }

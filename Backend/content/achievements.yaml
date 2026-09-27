@@ -1,13 +1,33 @@
-# Знаки кабинета. Тексты десяти первых совпадают с Frontend demo.ts.
-# Интерпретатор: condition — рейс совпал, count — число решений, streak — streakDays.
-# withinHalfTimer — реакция не дольше половины timerSec узла.
-# «full» в choiceId — команда игры inspect full, детальный осмотр.
-# «уши» — формулировка ситуации из демо («закладывает уши»).
+# Знаки кабинета. Условие оставлено, если его закрывают факты vsm-train2-01.
+# Факт игры: choiceId = kind, timerSec всегда null, deviation всегда false,
+# stage только acceptance, boarding или enroute. scenarioId — gameLevelId,
+# категории каталога у решения нет.
+#
+# Сняты: фактами уровня не выполняются.
+# - first-aid: медицинского факта нет.
+# - rare: deviation в фактах всегда false, отдельного «редкого» флага нет.
+# - handover: стадии сдачи вагона нет.
+# - seal: situation не содержит «пломб». Пломба стоп-крана снимается в пути,
+#   это не верная приёмка.
+#
+# Условия переписаны на существующие факты:
+# - before-boarding: верный journal-submission (нет ложной отметки и пропуска).
+# - before-complaint: верный service-request и ноль пропущенных запросов.
+# - cold-head: пять верных fire, pressure или emergency-brake. Половины таймера
+#   нет: timerSec у факта всегда null.
+# - pressure: верный pressure, давление не стало критическим.
+# - detail: пять верных journal-submission. choiceId «full» игра не пишет.
+# - three-calls: три верных service-request по истории. В одном рейсе уровня
+#   не больше двух верных запросов: еда голодного и вода жаждущего.
+# - report-in-time: три верных emergency-brake, кран при активной опасности.
+# - prevented: порог 2. В уровне один пожар и одна утечка, prevented не бывает 3.
+# - no-delay: условие прежнее. choiceId timeout из игры не приходит, поэтому
+#   знак — любой завершённый рейс хотя бы с одним решением.
 
 achievements:
   - code: before-boarding
-    title: До посадки
-    description: Найти неисправность на приёмке, до начала посадки
+    title: Журнал без ошибки
+    description: Сдать журнал приёмки без ложной отметки и без пропуска реальной неисправности
     bonusPoints: 50
     rule:
       on: run.recorded
@@ -15,23 +35,23 @@ achievements:
       where:
         stage: acceptance
         verdict: best
-        category: technical
+        choiceIncludes: journal-submission
 
   - code: before-complaint
-    title: Раньше жалобы
-    description: Заметить проблему до того, как о ней скажет пассажир
+    title: Запрос в срок
+    description: Обслужить запрос пассажира в срок и не оставить в этом рейсе запрос без ответа
     bonusPoints: 40
     rule:
       on: run.recorded
       type: condition
       where:
         verdict: best
-        categories: [service, conflict]
+        choiceIncludes: service-request
         complaintsMax: 0
 
   - code: clean-sweep
-    title: Чистый обход
-    description: Завершить рейс без пропущенных обязательных проверок
+    title: Чистый рейс
+    description: Завершить рейс без пропущенных решений и без критического пожара и давления
     bonusPoints: 30
     rule:
       on: run.recorded
@@ -42,30 +62,17 @@ achievements:
         incidentsMax: 0
         minDecisions: 1
 
-  - code: first-aid
-    title: Первая помощь
-    description: Помочь пассажиру и доложить, не отходя от регламента
-    bonusPoints: 40
-    rule:
-      on: run.recorded
-      type: condition
-      where:
-        category: medical
-        verdict: best
-        minSafetyDelta: 0
-
   - code: cold-head
-    title: Холодная голова
-    description: Пять критических решений быстрее половины отведённого времени
+    title: Пять угроз
+    description: Пять раз потушить пожар до критического, удержать давление или привести стоп-кран при опасности
     bonusPoints: 60
     rule:
       on: run.recorded
       type: count
       total: 5
       where:
-        categories: [safety, medical, security]
         verdict: best
-        withinHalfTimer: true
+        choices: [fire, pressure, emergency-brake]
 
   - code: streak
     title: Неделя в строю
@@ -77,20 +84,19 @@ achievements:
       total: 7
 
   - code: pressure
-    title: Уши заложило
-    description: Распознать признаки нарушения герметичности и доложить сразу
+    title: Давление удержано
+    description: Не дать отклонению давления дойти до критического уровня
     bonusPoints: 50
     rule:
       on: run.recorded
       type: condition
       where:
-        situationIncludes: уши
         verdict: best
-        withinHalfTimer: true
+        choiceIncludes: pressure
 
   - code: detail
-    title: Под лупой
-    description: Найти пять неисправностей, видных только при детальном осмотре
+    title: Пять журналов
+    description: Пять раз сдать журнал приёмки без ложной отметки и без пропуска неисправности
     bonusPoints: 40
     rule:
       on: run.recorded
@@ -99,34 +105,23 @@ achievements:
       where:
         stage: acceptance
         verdict: best
-        choiceIncludes: full
+        choiceIncludes: journal-submission
 
   - code: three-calls
-    title: Три обращения
-    description: Правильно разобрать три одновременных обращения пассажиров
+    title: Три запроса
+    description: Три раза обслужить запрос еды или воды в срок
     bonusPoints: 45
     rule:
       on: run.recorded
-      type: condition
+      type: count
+      total: 3
       where:
-        categories: [service, conflict]
         verdict: best
-        minMatches: 3
-
-  - code: rare
-    title: Редкий случай
-    description: Справиться с событием, которое большинство проводников пропускает
-    bonusPoints: 80
-    rule:
-      on: run.recorded
-      type: condition
-      where:
-        deviation: true
-        verdict: best
+        choiceIncludes: service-request
 
   - code: no-delay
-    title: Без просрочки
-    description: Закрыть рейс, не отдав ни одного решения таймеру
+    title: Рейс с решением
+    description: Завершить рейс, в котором зафиксировано хотя бы одно решение
     bonusPoints: 25
     rule:
       on: run.recorded
@@ -147,50 +142,25 @@ achievements:
         outcome: completed
         minSafety: 80
 
-  - code: handover
-    title: Сдал вагон
-    description: Закрыть сдачу вагона лучшим решением
-    bonusPoints: 20
-    rule:
-      on: run.recorded
-      type: condition
-      where:
-        stage: handover
-        verdict: best
-
   - code: report-in-time
-    title: Доклад вовремя
-    description: Три лучших доклада по конфликту быстрее половины таймера
+    title: Стоп-кран по делу
+    description: Три раза привести стоп-кран, когда на маршруте есть опасность
     bonusPoints: 35
     rule:
       on: run.recorded
       type: count
       total: 3
       where:
-        category: conflict
         verdict: best
-        withinHalfTimer: true
+        choiceIncludes: emergency-brake
 
   - code: prevented
-    title: Не дошло
-    description: В одном рейсе предупредить не меньше трёх рисков
+    title: Оба под контролем
+    description: В одном завершённом рейсе потушить пожар до критического и не дать давлению стать критическим
     bonusPoints: 35
     rule:
       on: run.recorded
       type: condition
       where:
         outcome: completed
-        preventedMin: 3
-
-  - code: seal
-    title: Пломба на месте
-    description: Заметить сорванную пломбу на приёмке
-    hidden: true
-    bonusPoints: 40
-    rule:
-      on: run.recorded
-      type: condition
-      where:
-        situationIncludes: пломб
-        stage: acceptance
-        verdict: best
+        preventedMin: 2

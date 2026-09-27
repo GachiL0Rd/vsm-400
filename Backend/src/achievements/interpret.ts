@@ -58,6 +58,9 @@ function matchesIdentity(decision: DecisionView, where: Where): boolean {
       return false;
     }
   }
+  if (where.choices !== undefined && !where.choices.includes(decision.choiceId)) {
+    return false;
+  }
   return true;
 }
 

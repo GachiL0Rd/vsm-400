@@ -31,7 +31,7 @@ describe('summarizeStats', () => {
 
   const stats = summarizeStats(runs, decisions);
 
-  it('считает исходы, находки, пропуски, доклады и везение', () => {
+  it('считает исходы, журналы, пропуски, давление со стоп-краном и везение', () => {
     expect(stats).toMatchObject({
       runs: 4,
       completed: 2,
