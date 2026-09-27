@@ -212,9 +212,10 @@ npm run build && node dist/server/main.mjs
   компетенции смены не двигаются. Следующий шаг — `assessment.facts` со
   стороны Game, не разбор `userInputs` на Backend.
 - Id ачивок Game в каталог Backend не входят. Они остаются в сыром `result`.
-- TTL смены `SESSION_TTL_MS` — 2 часа. Полный демонстрационный маршрут может
-  быть длиннее: крон переведёт `PENDING`/`ACTIVE` в `EXPIRED`, finish после
-  этого — `404`.
+- `resolve` продлевает попытку до `GAME_ATTEMPT_TTL_MS` (3 часа от запуска):
+  `expiresAt` становится `now + 3 ч`, только если новый срок позже текущего.
+  Повторный resolve `ACTIVE` продлевает снова. Крон по-прежнему переводит в
+  `EXPIRED` попытки, которые Game не завершил; finish после этого — `404`.
 - Legacy `/api/internal/v1/*` (`X-Service-Token`, verify / decisions / events
   / report) оставлен для старого протокола и не заменяет эти две ручки.
 - Прокси снаружи не публикует `/api/game/*`, так же как `/api/internal/*`.

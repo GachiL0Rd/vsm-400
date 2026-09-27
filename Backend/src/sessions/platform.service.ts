@@ -10,6 +10,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { isSuspicious } from './anti-cheat';
 import { payloadSha256 } from './canonical-json';
 import { finishToSummary } from './finish-map';
+import { GAME_ATTEMPT_TTL_MS } from './game-cookie';
 import {
   attemptMismatch,
   attemptNotFound,
@@ -53,7 +54,9 @@ export class PlatformSessionService {
     if (session.transport === 'REST' || !isOpen(session.status)) {
       throw sessionUnavailable();
     }
-    await this.sessions.activatePendingSession(session, this.clock.now());
+    const now = this.clock.now();
+    await this.sessions.activatePendingSession(session, now);
+    await this.extendAttempt(session.id, now);
     return {
       contractVersion: 1,
       attemptId: session.id,
@@ -75,6 +78,19 @@ export class PlatformSessionService {
       throw attemptNotFound();
     }
     return this.complete(session, body, hash);
+  }
+
+  /** Срок попытки от запуска. Короче текущего `expiresAt` не ставим. */
+  private async extendAttempt(id: string, now: Date): Promise<void> {
+    const expiresAt = new Date(now.getTime() + GAME_ATTEMPT_TTL_MS);
+    await this.prisma.gameSession.updateMany({
+      where: {
+        id,
+        status: { in: ['PENDING', 'ACTIVE'] },
+        expiresAt: { lt: expiresAt },
+      },
+      data: { expiresAt },
+    });
   }
 
   private async freshClaims(key: string): Promise<TicketClaims> {
