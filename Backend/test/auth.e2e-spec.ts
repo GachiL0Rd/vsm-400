@@ -5,11 +5,14 @@ import { AppModule } from '../src/app.module';
 import { AuditService } from '../src/audit/audit.service';
 import { BootstrapService } from '../src/auth/bootstrap.service';
 import { PasswordService } from '../src/auth/password.service';
+import { REFRESH_RACE_WINDOW_MS } from '../src/auth/refresh';
 import { APP_CONFIG, type AppConfig } from '../src/config/env';
 import { configureApp } from '../src/configure-app';
 import { Grade, Role } from '../src/generated/prisma/client';
+import { createFastifyAdapter } from '../src/main';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { RedisService } from '../src/redis/redis.service';
+import { UsersService } from '../src/users/users.service';
 import { redisDbFor, testDatabaseUrl, testRedisUrl } from './databases';
 
 type CookieBag = Map<string, { value: string; attrs: Record<string, string | true> }>;
@@ -243,6 +246,10 @@ describe('auth e2e', () => {
       cookie: cookieHeader(rotatedCookies),
     });
     expect(again.statusCode).toBe(200);
+    await prisma.authSession.updateMany({
+      where: { replacedById: { not: null } },
+      data: { revokedAt: new Date(Date.now() - REFRESH_RACE_WINDOW_MS - 1_000) },
+    });
     const reuse = await inject('POST', '/api/v1/auth/refresh', {
       cookie: `vsm_refresh=${first.cookies.get('vsm_refresh')?.value ?? ''}`,
     });
@@ -257,6 +264,31 @@ describe('auth e2e', () => {
     expect(live).toBe(0);
     const audit = await prisma.auditLog.findFirst({ where: { action: 'auth.refresh.reuse' } });
     expect(audit?.actorType).toBe('USER');
+  });
+
+  it('параллельный refresh одним токеном оставляет живую сессию', async () => {
+    const { user, password } = await makeUser({
+      login: 'racer',
+      role: Role.CONDUCTOR,
+      callsign: 'RACE',
+    });
+    const first = await login('racer', password);
+    const cookie = `vsm_refresh=${first.cookies.get('vsm_refresh')?.value ?? ''}`;
+    const [left, right] = await Promise.all([
+      inject('POST', '/api/v1/auth/refresh', { cookie }),
+      inject('POST', '/api/v1/auth/refresh', { cookie }),
+    ]);
+    const codes = [left.statusCode, right.statusCode].sort((a, b) => a - b);
+    expect(codes).toEqual([200, 409]);
+    const lost = left.statusCode === 409 ? left : right;
+    expect(problem(lost).code).toBe('REFRESH_RACE');
+    expect(lost.headers['set-cookie']).toBeUndefined();
+    const live = await prisma.authSession.count({
+      where: { userId: user.id, revokedAt: null },
+    });
+    expect(live).toBe(1);
+    const reuse = await prisma.auditLog.count({ where: { action: 'auth.refresh.reuse' } });
+    expect(reuse).toBe(0);
   });
 
   it('logout отзывает refresh и чистит cookies', async () => {
@@ -472,6 +504,60 @@ describe('auth e2e', () => {
     expect(auditHttp.statusCode).toBe(200);
   });
 
+  it('админ не снимает себя, последний администратор остаётся', async () => {
+    const depot = await prisma.depot.create({
+      data: { code: 'LCK', name: 'Depot', city: 'Moscow' },
+    });
+    const brigade = await prisma.brigade.create({
+      data: { code: '1', name: 'Бригада 1', depotId: depot.id },
+    });
+    const root = await makeUser({
+      login: 'root-lock',
+      role: Role.ADMIN,
+      callsign: 'RLCK',
+      grade: Grade.INSTRUCTOR,
+      position: 'Администратор',
+    });
+    const second = await makeUser({
+      login: 'admin-two',
+      role: Role.ADMIN,
+      callsign: 'AD2X',
+      grade: Grade.INSTRUCTOR,
+      position: 'Администратор',
+    });
+    const session = await login(root.user.login, root.password);
+    const cookie = cookieHeader(session.cookies);
+    const selfOff = await inject('PATCH', `/api/v1/admin/users/${root.user.id}`, {
+      cookie,
+      payload: { disabled: true },
+    });
+    expect(selfOff.statusCode).toBe(409);
+    expect(problem(selfOff).code).toBe('SELF_LOCKOUT');
+    const selfRole = await inject('PATCH', `/api/v1/admin/users/${root.user.id}`, {
+      cookie,
+      payload: { role: Role.CONDUCTOR },
+    });
+    expect(problem(selfRole).code).toBe('SELF_LOCKOUT');
+    const moved = await inject('PATCH', `/api/v1/admin/users/${root.user.id}`, {
+      cookie,
+      payload: { brigadeId: brigade.id },
+    });
+    expect(moved.statusCode).toBe(200);
+    const demoted = await inject('PATCH', `/api/v1/admin/users/${second.user.id}`, {
+      cookie,
+      payload: { role: Role.CONDUCTOR },
+    });
+    expect(demoted.statusCode).toBe(200);
+    const users = app.get(UsersService);
+    await expect(
+      users.update(root.user.id, { disabled: true }, { id: second.user.id }),
+    ).rejects.toMatchObject({ response: { code: 'LAST_ADMIN' } });
+    const still = await prisma.user.findUniqueOrThrow({ where: { id: root.user.id } });
+    expect(still.role).toBe(Role.ADMIN);
+    expect(still.disabledAt).toBeNull();
+    expect(still.brigadeId).toBe(brigade.id);
+  });
+
   it('шестая попытка логина с того же IP и логина — 429', async () => {
     for (let attempt = 0; attempt < 5; attempt += 1) {
       const response = await login('throttle-user', 'wrong-password-1');
@@ -482,4 +568,32 @@ describe('auth e2e', () => {
     const other = await login('throttle-other', 'wrong-password-1');
     expect(other.response.statusCode).toBe(401);
   }, 30_000);
+});
+
+describe('TRUST_PROXY и X-Forwarded-For', () => {
+  async function clientIp(trust: false | string, forwarded: string): Promise<string> {
+    const adapter = createFastifyAdapter(trust);
+    const app = adapter.getInstance();
+    app.get('/who', (request, reply) => {
+      void reply.send({ ip: request.ip });
+    });
+    await app.ready();
+    try {
+      const response = await app.inject({
+        method: 'GET',
+        url: '/who',
+        remoteAddress: '127.0.0.1',
+        headers: { 'x-forwarded-for': forwarded },
+      });
+      return (response.json() as { ip: string }).ip;
+    } finally {
+      await app.close();
+    }
+  }
+
+  it('берёт ip из заголовка только если сокет в списке', async () => {
+    const forwarded = '203.0.114.10';
+    expect(await clientIp('127.0.0.1', forwarded)).toBe(forwarded);
+    expect(await clientIp(false, forwarded)).toBe('127.0.0.1');
+  });
 });
