@@ -186,6 +186,48 @@ describe('GameSessionWorker', () => {
     expect(value.projection.attempt.snapshot().time).toBe(pausedAt + 100_000);
   });
 
+  it('publishes every authoritative edge while routing toward a remote move-to destination', () => {
+    const runtime = new FakeRuntime();
+    const attempt = new GameAttempt({ rootSeed: 6 });
+    const { value } = worker(runtime, attempt, { maxCatchUpMs: 10_000 });
+    value.attach('socket-1');
+    value.projection.snapshot(value.publicClock());
+    const publications: ServerMessage[] = [];
+    value.subscribePublications((message) => publications.push(message));
+
+    const moved = value.projection.moveTo(
+      {
+        protocolVersion: 1,
+        type: 'move-to',
+        requestId: 'move-remote',
+        knownRevision: 0,
+        targetCellId: 'carriage.service',
+      },
+      value.publicClock(),
+    );
+    expect(moved.result.status).toBe('accepted');
+    value.acceptProjectionResult(moved);
+
+    for (let elapsed = 0; elapsed < 5_000; elapsed += 50) runtime.advanceBy(50);
+
+    expect(attempt.playerPosition()).toEqual({ kind: 'cell', cellId: 'carriage.service' });
+    const edgeIds = publications
+      .filter(
+        (message): message is Extract<ServerMessage, { type: 'delta' }> => message.type === 'delta',
+      )
+      .flatMap((message) => message.changes.entities?.upsert ?? [])
+      .filter((entity) => entity.kind === 'player' && entity.position.kind === 'moving')
+      .map((entity) => (entity.position.kind === 'moving' ? entity.position.edgeId : ''));
+    expect(new Set(edgeIds)).toEqual(
+      new Set([
+        'origin-desk-door:forward',
+        'origin-door-entry:forward',
+        'entry-cabin:forward',
+        'cabin-service:forward',
+      ]),
+    );
+  });
+
   it('freezes a running movement across disconnect pause and resumes from the same simulation instant', () => {
     const runtime = new FakeRuntime();
     const attempt = new GameAttempt({ rootSeed: 6 });

@@ -248,7 +248,9 @@ Except `hello` and `resync`, current commands include `knownRevision`. Before in
 }
 ```
 
-The server validates movement. The client does not update authoritative position locally.
+`targetCellId` is the requested final destination, not necessarily an adjacent cell. The server resolves an authoritative route over the currently active grid, starts the first edge, and continues/re-routes at cell boundaries until the destination is reached or becomes unreachable. The client does not synthesize intermediate movement commands or update authoritative position locally.
+
+While the route is active, ordinary unsolicited `delta` messages carry the player's successive `moving` positions (`edgeId`, `fromCellId`, `toCellId`, `startedAt`, `arrivesAt`, `progress`). On an edge boundary the next authoritative edge may start at the same simulation timestamp, so clients should render the sequence from public position updates rather than assume a mandatory stationary-cell frame between edges.
 
 ### `query-actions`
 

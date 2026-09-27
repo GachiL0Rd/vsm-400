@@ -1,4 +1,4 @@
-import type { EdgeDefinition, GridRoute, GridWorld } from './grid-world';
+import type { EdgeDefinition, GridRoute, GridWorld, RouteConstraints } from './grid-world';
 import { assertSimTimeUs, type SimTimeUs } from './sim-time';
 
 export type EntityId = string;
@@ -57,7 +57,11 @@ export interface SpatialWorld {
   entitiesAt(cellId: string): readonly EntityId[];
   entitiesOnEdge(edgeId: string): readonly EntityId[];
   entitiesAttachedTo(anchorId: string): readonly EntityId[];
-  route(from: string, to: string): GridRoute | null;
+  route(
+    from: string,
+    to: string,
+    constraints?: Pick<RouteConstraints, 'blockedCellIds' | 'blockedEdgeIds'>,
+  ): GridRoute | null;
 }
 
 interface CellPlace {
@@ -292,8 +296,13 @@ class SpatialRuntime implements SpatialWorld {
     return sortedIds(this.attachmentIndex.get(anchor));
   }
 
-  route(from: string, to: string): GridRoute | null {
+  route(
+    from: string,
+    to: string,
+    constraints?: Pick<RouteConstraints, 'blockedCellIds' | 'blockedEdgeIds'>,
+  ): GridRoute | null {
     return this.grid.route(from, to, {
+      ...constraints,
       cellOccupancy: countsRecord(this.cells.keys(), (cellId) => this.cellCount(cellId)),
       edgeOccupancy: countsRecord(this.edges.keys(), (edgeId) => this.edgeCount(edgeId)),
     });

@@ -224,7 +224,7 @@ Client разрешает эти IDs через локальный asset registr
 Release `0.1.0` client input сводится к небольшому набору intent/request сообщений:
 
 ```text
-move-to(target cell)
+move-to(final target cell; Server owns pathfinding and intermediate edge traversal)
 query-actions(target)
 invoke-action(actionHandle, optionalInput)
 set-time-scale(requestedScale)

@@ -135,6 +135,7 @@ export class GameAttempt {
   readonly random: SimulationRandom;
 
   private readonly assessmentRuntime: AssessmentRuntime;
+  private playerMoveTargetCellId: string | null = null;
 
   private readonly queue = new EventQueue<AttemptEvent>();
   private readonly activeRegions = new Set<string>();
@@ -282,22 +283,24 @@ export class GameAttempt {
 
   movePlayer(edgeId: string): MovementReservation {
     this.requireRunning();
-    const blocked = new Set(
-      this.level.constraintsFor([...this.activeRegions]).blockedEdgeIds ?? [],
-    );
-    if (blocked.has(edgeId)) throw new RangeError(`Edge ${edgeId} belongs to an inactive region`);
-    const reservation = this.spatial.startMovement(this.playerId, edgeId, this.time);
-    this.entities.setPosition(this.playerId, {
-      kind: 'edge',
-      edgeId: reservation.edgeId,
-      fromCellId: reservation.fromCellId,
-      toCellId: reservation.toCellId,
-    });
-    this.queue.schedule(reservation.arrivesAt, {
-      kind: 'movement-complete',
-      entityId: this.playerId,
-    });
-    return reservation;
+    this.playerMoveTargetCellId = null;
+    return this.startPlayerEdge(edgeId, this.time);
+  }
+
+  /** Starts an authoritative route toward a final cell and chains its edges in simulation time. */
+  movePlayerTo(targetCellId: string): MovementReservation {
+    this.requireRunning();
+    const player = this.spatial.positionAt(this.playerId, this.time);
+    if (player.kind !== 'cell') throw new RangeError('Player is moving');
+    if (player.cellId === targetCellId)
+      throw new RangeError('Player is already at the target cell');
+    const route = this.playerRoute(player.cellId, targetCellId);
+    const firstEdgeId = route?.edgeIds[0];
+    if (firstEdgeId === undefined) {
+      throw new RangeError(`Target cell ${targetCellId} is not reachable`);
+    }
+    this.playerMoveTargetCellId = targetCellId;
+    return this.startPlayerEdge(firstEdgeId, this.time);
   }
 
   playerPosition(): SpatialSample {
@@ -897,6 +900,50 @@ export class GameAttempt {
     if (position.kind !== 'cell') throw new RangeError('Movement did not materialize to a cell');
     this.entities.setPosition(entityId, { kind: 'cell', cellId: position.cellId });
     this.refreshPressureExposure(this.time);
+
+    if (entityId !== this.playerId || this.playerMoveTargetCellId === null) return;
+    if (position.cellId === this.playerMoveTargetCellId) {
+      this.playerMoveTargetCellId = null;
+      return;
+    }
+
+    // Occupancy and active regions may have changed while the previous edge was in flight.
+    // Re-route at every cell boundary rather than trusting a stale path. If the destination
+    // became unreachable, stop safely in the materialized cell instead of crashing the tick.
+    const route = this.playerRoute(position.cellId, this.playerMoveTargetCellId);
+    const nextEdgeId = route?.edgeIds[0];
+    if (nextEdgeId === undefined) {
+      this.playerMoveTargetCellId = null;
+      return;
+    }
+    this.startPlayerEdge(nextEdgeId, at);
+  }
+
+  private playerRoute(fromCellId: string, toCellId: string) {
+    return this.spatial.route(
+      fromCellId,
+      toCellId,
+      this.level.constraintsFor([...this.activeRegions]),
+    );
+  }
+
+  private startPlayerEdge(edgeId: string, at: SimTimeUs): MovementReservation {
+    const blocked = new Set(
+      this.level.constraintsFor([...this.activeRegions]).blockedEdgeIds ?? [],
+    );
+    if (blocked.has(edgeId)) throw new RangeError(`Edge ${edgeId} belongs to an inactive region`);
+    const reservation = this.spatial.startMovement(this.playerId, edgeId, at);
+    this.entities.setPosition(this.playerId, {
+      kind: 'edge',
+      edgeId: reservation.edgeId,
+      fromCellId: reservation.fromCellId,
+      toCellId: reservation.toCellId,
+    });
+    this.queue.schedule(reservation.arrivesAt, {
+      kind: 'movement-complete',
+      entityId: this.playerId,
+    });
+    return reservation;
   }
 
   private hasActiveSafetyIncident(): boolean {
