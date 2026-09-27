@@ -105,7 +105,7 @@ export class PublicGameProjection {
 
   private revisionValue = 0;
   private lastState: PublicGameState | null = null;
-  private actionTable = new Map<string, RuntimeOperation>();
+  private actionTable = new Map<string, RuntimeAction>();
   private offerSequence = 0;
 
   constructor(options: PublicGameProjectionOptions) {
@@ -203,7 +203,7 @@ export class PublicGameProjection {
     this.offerSequence += 1;
     const actions = runtime.map((action, index) => {
       const handle = `action/${this.revisionValue}/${offerId}/${index}`;
-      this.actionTable.set(handle, action.operation);
+      this.actionTable.set(handle, action);
       return { handle, ...action.view };
     });
     return {
@@ -234,13 +234,29 @@ export class PublicGameProjection {
     if (command.knownRevision !== this.revisionValue) {
       return { result: rejected(command.requestId, this.revisionValue, 'stale-revision') };
     }
-    const template = this.actionTable.get(command.actionHandle);
-    if (template === undefined) {
+    const offered = this.actionTable.get(command.actionHandle);
+    if (offered === undefined) {
       return { result: rejected(command.requestId, this.revisionValue, 'unknown-action') };
+    }
+    const snapshot = this.attempt.snapshot();
+    const stillAvailable = collectActionsForTarget(
+      this.attempt,
+      snapshot,
+      offered.view.target,
+    ).some((candidate) => sameRuntimeAction(candidate, offered));
+    if (!stillAvailable) {
+      return {
+        result: rejected(
+          command.requestId,
+          this.revisionValue,
+          'action-rejected',
+          'Action is no longer available',
+        ),
+      };
     }
     let operation: RecordedGameplayCommand;
     try {
-      operation = resolveOperation(template, command.input);
+      operation = resolveOperation(offered.operation, command.input);
     } catch (error) {
       return {
         result: rejected(
@@ -889,6 +905,14 @@ function sameStateIgnoringRevisionAndTime(left: PublicGameState, right: PublicGa
 
 function sameJson(left: unknown, right: unknown): boolean {
   return JSON.stringify(left) === JSON.stringify(right);
+}
+
+function sameRuntimeAction(left: RuntimeAction, right: RuntimeAction): boolean {
+  return (
+    left.sortKey === right.sortKey &&
+    sameJson(left.view, right.view) &&
+    sameJson(left.operation, right.operation)
+  );
 }
 
 function compareRuntimeActions(left: RuntimeAction, right: RuntimeAction): number {

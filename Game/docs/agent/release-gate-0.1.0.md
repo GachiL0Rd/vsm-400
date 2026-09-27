@@ -64,7 +64,7 @@ These do **not** block the current `0.1.0` release scope, but should not be desc
 - Driver communication is not yet a gameplay interaction.
 - Sanitation is represented in acceptance-journal state/assessment context, not as a separate spatial sanitation gameplay system.
 - Attempts and resume tokens are in-memory. Process restart/live failover cannot preserve an active attempt.
-- A transient Platform failure after terminal simulation leaves the worker safely frozen in `finishing`; automatic retry/backoff is intentionally not part of protocol v1.
+- A transient Platform `unavailable`/`timeout` failure after terminal simulation leaves the worker frozen in `finishing` and receives a bounded in-memory retry sequence. Durable retry/outbox persistence across process restarts is not part of release `0.1.0`.
 - `move-to` remains an adjacent-cell command; client-side multi-cell path intent is not a server protocol feature in 0.1.0.
 
 ## Verification environment

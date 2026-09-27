@@ -17,6 +17,7 @@ import type {
   PlatformGateway,
   SessionMode,
 } from './types.ts';
+import { PlatformGatewayError } from './types.ts';
 
 class FakeRuntime implements WorkerScheduler, WorkerClock {
   private now = 0;
@@ -50,7 +51,12 @@ class FakeRuntime implements WorkerScheduler, WorkerClock {
 function worker(
   runtime: FakeRuntime,
   attempt = new GameAttempt({ rootSeed: 5 }),
-  options: { simulationStepMs?: number; maxCatchUpMs?: number; reconnectGraceMs?: number } = {},
+  options: {
+    simulationStepMs?: number;
+    maxCatchUpMs?: number;
+    reconnectGraceMs?: number;
+    finishRetryDelaysMs?: readonly number[];
+  } = {},
 ) {
   const registry = new InMemoryResumeTokenRegistry();
   const gateway = new MockPlatformGateway({
@@ -73,6 +79,9 @@ function worker(
       reconnectGraceMs: options.reconnectGraceMs ?? 20,
       simulationStepMs: options.simulationStepMs ?? 50,
       maxCatchUpMs: options.maxCatchUpMs ?? 1_000,
+      ...(options.finishRetryDelaysMs === undefined
+        ? {}
+        : { finishRetryDelaysMs: options.finishRetryDelaysMs }),
       scheduler: runtime,
       clock: runtime,
     }),
@@ -113,7 +122,9 @@ class FailOncePlatformGateway implements PlatformGateway {
 
   async finishSession(_result: FinishedGameResult): Promise<FinishSessionResponse> {
     this.finishAttempts += 1;
-    if (this.finishAttempts === 1) throw new Error('platform unavailable');
+    if (this.finishAttempts === 1) {
+      throw new PlatformGatewayError('unavailable', 'platform unavailable');
+    }
     return { resultId: 'result-1', redirectUrl: 'http://localhost/results/attempt-1' };
   }
 }
@@ -328,7 +339,7 @@ describe('GameSessionWorker', () => {
     expect(gateway.finished).toHaveLength(1);
   });
 
-  it('keeps a terminal attempt frozen when platform finalization fails and allows an explicit retry', async () => {
+  it('keeps a terminal attempt frozen and automatically retries a transient platform finalization failure', async () => {
     const runtime = new FakeRuntime();
     const attempt = new GameAttempt({ rootSeed: 13 });
     const gateway = new FailOncePlatformGateway();
@@ -347,6 +358,7 @@ describe('GameSessionWorker', () => {
       maxCatchUpMs: 10_000,
       scheduler: runtime,
       clock: runtime,
+      finishRetryDelaysMs: [100],
     });
     value.attach('socket-1');
 
@@ -358,11 +370,13 @@ describe('GameSessionWorker', () => {
     expect(value.lifecycle).toBe('finishing');
     const terminalTime = attempt.time;
 
-    runtime.advanceBy(10_000);
+    runtime.advanceBy(99);
     expect(attempt.time).toBe(terminalTime);
     expect(value.lifecycle).toBe('finishing');
+    expect(gateway.finishAttempts).toBe(1);
 
-    await value.finish();
+    runtime.advanceBy(1);
+    await flush();
     expect(gateway.finishAttempts).toBe(2);
     expect(value.lifecycle).toBe('finished');
   });

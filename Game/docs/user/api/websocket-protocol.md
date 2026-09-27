@@ -116,11 +116,11 @@ entities
 }
 ```
 
-The baseline worker accepts time scales `1`, `2`, and `4`.
+The current release worker accepts time scales `1`, `2`, and `4`.
 
 ### Replay capabilities
 
-For baseline forward replay, `mode.kind = "replay"` advertises only capabilities that the current server actually implements:
+For release `0.1.0` forward replay, `mode.kind = "replay"` advertises only capabilities that the current server actually implements:
 
 ```json
 {
@@ -279,7 +279,7 @@ Targets can be `cell`, `entity`, or `object`. A stale revision is rejected inste
 }
 ```
 
-`input` is optional JSON. Its semantic shape is action-specific and validated server-side. For form actions the current baseline contracts are listed in section 8. A client MUST submit a fresh action handle from the current revision; mutating a previously received form descriptor locally does not mutate server state.
+`input` is optional JSON. Its semantic shape is action-specific and validated server-side. For form actions the current release contracts are listed in section 8. A client MUST submit an action handle from the current revision. The server revalidates the offered action against current simulation state at invoke time; a handle can therefore be rejected even when the public revision has not changed. Mutating a previously received form descriptor locally does not mutate server state.
 
 In `replay` mode, gameplay-affecting commands are rejected with `unsupported-command`. This currently applies to `move-to`, `query-actions`, and `invoke-action`. `resync` remains available, and `set-time-scale` is treated as playback control rather than gameplay input.
 
@@ -295,7 +295,7 @@ In `replay` mode, gameplay-affecting commands are rejected with `unsupported-com
 }
 ```
 
-Current baseline scales are `1`, `2`, and `4`. Unsupported scales are rejected.
+Release `0.1.0` scales are `1`, `2`, and `4`. Unsupported scales are rejected.
 
 ### `resync`
 
@@ -533,7 +533,7 @@ An offer is bound to its `revision`. Any revision change invalidates it, and inv
 
 ## 9. Presentation events
 
-Transient presentation effects use `presentation-event` and do not by themselves define durable authoritative state:
+Protocol v1 reserves `presentation-event` for transient presentation effects that do not by themselves define durable authoritative state. The release `0.1.0` server does not currently emit this message type; the client may support the envelope ahead of server-side producers:
 
 ```json
 {
@@ -598,7 +598,7 @@ Successful Platform finalization publishes `finished` with a redirect URL:
 
 `finishing` means simulation has terminated and the Game Server is finalizing the result with Platform Server.
 
-If Platform finalization fails, the worker does not invent a successful result and does not resume terminal simulation. It remains in `finishing`; an explicit/idempotent finalization retry may later transition it to `finished`. Automatic retry timing is not part of protocol v1.
+If Platform finalization fails, the worker does not invent a successful result and does not resume terminal simulation. It remains in `finishing`. Transient `unavailable`/`timeout` failures receive a small bounded server-side retry sequence; non-transient failures remain frozen for diagnosis or an explicit idempotent retry. Retry timing is an implementation detail, not part of protocol v1.
 
 ## 11. Server errors
 

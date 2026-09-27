@@ -157,12 +157,12 @@ Replay получает сохранённый seed из `ReplaySource`.
 
 ## 8. Что считается user event log
 
-Для воспроизведения хранится последовательность пользовательских команд, которым Game Server назначил authoritative simulation timestamp/order.
+Для воспроизведения хранится последовательность пользовательских команд, которым Game Server назначил authoritative simulation timestamp/sequence.
 
 ```ts
 interface RecordedUserInput {
   at: SimTimeUs;
-  order: number;
+  sequence: number;
   command: RecordedGameplayCommand;
 }
 ```

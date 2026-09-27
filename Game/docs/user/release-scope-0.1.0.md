@@ -52,7 +52,7 @@ Release candidate должен обеспечивать следующий ра�
 - multi-cell destination/path intent на уровне server protocol; в `0.1.0` `move-to` остаётся adjacent-cell command;
 - автоматическое исполнение сервисного расписания как специальной server-side подсистемы;
 - persistence/migration активной попытки между процессами;
-- автоматический retry/backoff Platform finish после внешней ошибки.
+- durable outbox/persistent retry policy для Platform finish между рестартами процесса; release использует только ограниченный in-memory retry для transient ошибок.
 
 Наличие schema/config/protocol extension point или простого тестового контура для такой возможности не означает, что она входит в release acceptance.
 

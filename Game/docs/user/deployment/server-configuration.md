@@ -220,7 +220,7 @@ Container orchestrators should send `SIGTERM` and allow at least the configured 
 
 Current logging uses process console output for startup/shutdown and errors. There is no structured production logging/metrics contract yet.
 
-Containers should capture stdout/stderr. Do not require local log files or writable application directories for baseline operation.
+Containers should capture stdout/stderr. Do not require local log files or writable application directories for normal release operation.
 
 ## 10. Platform API behavior
 
@@ -240,7 +240,7 @@ POST /api/game/sessions/{attemptId}/finish
 
 See [`../api/platform-openapi.yaml`](../api/platform-openapi.yaml).
 
-There is currently no automatic retry loop at the PlatformGateway boundary. `finishSession` is designed to be idempotent at the contract level, but retry/outbox policy is intentionally deferred.
+`finishSession` is idempotent at the contract level. The worker performs a bounded in-memory retry sequence for transient Platform `unavailable`/`timeout` failures while keeping the terminal attempt frozen in `finishing`. Durable retry/outbox persistence across process restarts remains deferred.
 
 ## 11. Current runtime state boundary
 
