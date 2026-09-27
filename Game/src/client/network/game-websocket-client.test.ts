@@ -73,4 +73,86 @@ describe('browser transport', () => {
     expect(store.snapshot.connection).toBe('error');
     expect(sockets).toHaveLength(1);
   });
+
+  it('traces movement results without recording session credentials', () => {
+    const store = new PresentationStore({ send: () => undefined, nextRequestId: () => 'r1' });
+    const socket = new FakeSocket();
+    const entries: Record<string, unknown>[] = [];
+    const client = new GameWebSocketClient({
+      url: 'ws://test',
+      store,
+      createSocket: () => socket,
+      initialCommands: () => [
+        {
+          protocolVersion: GAME_PROTOCOL_VERSION,
+          type: 'hello',
+          requestId: 'hello-1',
+          sessionKey: 'secret-session-key',
+        },
+      ],
+      trace: (entry) => entries.push(entry),
+    });
+    client.connect();
+    socket.onopen?.(new Event('open'));
+    socket.onmessage?.({
+      data: JSON.stringify({
+        protocolVersion: GAME_PROTOCOL_VERSION,
+        type: 'session-ready',
+        attemptId: 'a1',
+        resumeToken: 'secret-resume-token',
+        snapshot: {
+          protocolVersion: GAME_PROTOCOL_VERSION,
+          type: 'snapshot',
+          state: {
+            attemptId: 'a1',
+            revision: 0,
+            timeUs: 0,
+            clock: { timeScale: 1, paused: false },
+            mode: { kind: 'live' },
+            phase: { kind: 'pre-departure' },
+            termination: null,
+            activeRegionIds: [],
+            world: { regions: [], cells: [], edges: [], objects: [] },
+            entities: [],
+          },
+        },
+      }),
+    } as MessageEvent<unknown>);
+    client.send({
+      protocolVersion: GAME_PROTOCOL_VERSION,
+      type: 'move-to',
+      requestId: 'move-1',
+      knownRevision: 0,
+      targetCellId: 'door',
+    });
+    socket.onmessage?.({
+      data: JSON.stringify({
+        protocolVersion: GAME_PROTOCOL_VERSION,
+        type: 'command-result',
+        requestId: 'move-1',
+        status: 'rejected',
+        code: 'action-rejected',
+        message: 'Target cell is not directly reachable',
+        revision: 0,
+      }),
+    } as MessageEvent<unknown>);
+
+    expect(entries).toContainEqual({
+      direction: 'out',
+      type: 'move-to',
+      requestId: 'move-1',
+      knownRevision: 0,
+      targetCellId: 'door',
+    });
+    expect(entries).toContainEqual({
+      direction: 'in',
+      type: 'command-result',
+      requestId: 'move-1',
+      status: 'rejected',
+      code: 'action-rejected',
+      message: 'Target cell is not directly reachable',
+      revision: 0,
+    });
+    expect(JSON.stringify(entries)).not.toContain('secret-');
+  });
 });

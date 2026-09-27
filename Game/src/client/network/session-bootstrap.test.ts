@@ -79,4 +79,24 @@ describe('browser session bootstrap', () => {
 
     expect(reloaded.helloCommand('hello-reload')).toMatchObject({ sessionKey: 'platform-key' });
   });
+
+  it('uses a demo session key when the local game is opened directly', () => {
+    const bootstrap = createBrowserSessionBootstrap({
+      href: 'http://127.0.0.1:4174/',
+      storage: new MemoryStorage(),
+      replaceUrl: () => undefined,
+    });
+
+    expect(bootstrap.helloCommand('hello-local')).toMatchObject({ sessionKey: 'local-demo' });
+  });
+
+  it('still requires an explicit credential outside the local game', () => {
+    const bootstrap = createBrowserSessionBootstrap({
+      href: 'https://game.test/',
+      storage: new MemoryStorage(),
+      replaceUrl: () => undefined,
+    });
+
+    expect(bootstrap.hasCredential).toBe(false);
+  });
 });

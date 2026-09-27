@@ -17,6 +17,7 @@ Thumbs.db
 # Local tool state
 .pueue/
 node_modules/
+*.tiled-session
 
 # Local review / transfer artifacts
 *.patch

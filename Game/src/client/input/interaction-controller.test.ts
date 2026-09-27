@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { type ClientCommand, GAME_PROTOCOL_VERSION, gameSnapshotSchema } from '../../common';
+import {
+  type ClientCommand,
+  GAME_PROTOCOL_VERSION,
+  gameDeltaSchema,
+  gameSnapshotSchema,
+} from '../../common';
 import { PresentationStore } from '../presentation/presentation-store';
 import { InteractionController } from './interaction-controller';
 
@@ -20,8 +25,23 @@ describe('InteractionController', () => {
           phase: { kind: 'pre-departure' },
           termination: null,
           activeRegionIds: [],
-          world: { regions: [], cells: [], edges: [], objects: [] },
-          entities: [],
+          world: {
+            regions: [],
+            cells: [
+              { id: 'c1', x: 0, y: 0, regionId: 'r1' },
+              { id: 'c2', x: 1, y: 0, regionId: 'r1' },
+            ],
+            edges: [{ id: 'c1-c2', fromCellId: 'c1', toCellId: 'c2' }],
+            objects: [],
+          },
+          entities: [
+            {
+              id: 'player',
+              kind: 'player',
+              appearanceId: 'conductor',
+              position: { kind: 'cell', cellId: 'c1' },
+            },
+          ],
         },
       }),
     );
@@ -40,6 +60,7 @@ describe('InteractionController', () => {
         },
       ],
     });
+    store.setConnection('connected');
     const interactions = new InteractionController(store, (command) => sent.push(command));
     interactions.invokeAction('a1');
     interactions.queryActions({ kind: 'object', objectId: 'o1' });
@@ -115,5 +136,118 @@ describe('InteractionController', () => {
     interactions.invokeAction('journal-form', input);
 
     expect(sent[0]).toMatchObject({ type: 'invoke-action', actionHandle: 'journal-form', input });
+  });
+
+  it('moves to a distant destination one server edge at a time after each arrival', () => {
+    const sent: ClientCommand[] = [];
+    const store = new PresentationStore({ send: () => undefined, nextRequestId: () => 'unused' });
+    const cells = ['desk', 'door', 'entry', 'seat'].map((id, x) => ({
+      id,
+      x,
+      y: 0,
+      regionId: 'r1',
+    }));
+    store.apply(
+      gameSnapshotSchema.parse({
+        protocolVersion: GAME_PROTOCOL_VERSION,
+        type: 'snapshot',
+        state: {
+          attemptId: 'a1',
+          revision: 0,
+          timeUs: 0,
+          clock: { timeScale: 1, paused: false },
+          mode: { kind: 'live' },
+          phase: { kind: 'pre-departure' },
+          termination: null,
+          activeRegionIds: [],
+          world: {
+            regions: [],
+            cells,
+            edges: [
+              { id: 'desk-door', fromCellId: 'desk', toCellId: 'door' },
+              { id: 'door-entry', fromCellId: 'door', toCellId: 'entry' },
+              { id: 'entry-seat', fromCellId: 'entry', toCellId: 'seat' },
+            ],
+            objects: [],
+          },
+          entities: [
+            {
+              id: 'player',
+              kind: 'player',
+              appearanceId: 'conductor',
+              position: { kind: 'cell', cellId: 'desk' },
+            },
+          ],
+        },
+      }),
+    );
+    store.setConnection('connected');
+    const interactions = new InteractionController(store, (command) => sent.push(command));
+    interactions.moveTo('seat');
+    expect(sent).toMatchObject([{ type: 'move-to', knownRevision: 0, targetCellId: 'door' }]);
+
+    const first = sent[0];
+    if (first?.type !== 'move-to') throw new Error('Expected first movement');
+    store.apply({
+      protocolVersion: GAME_PROTOCOL_VERSION,
+      type: 'command-result',
+      requestId: first.requestId,
+      status: 'accepted',
+      revision: 1,
+    });
+    store.apply(
+      gameDeltaSchema.parse({
+        protocolVersion: GAME_PROTOCOL_VERSION,
+        type: 'delta',
+        attemptId: 'a1',
+        baseRevision: 0,
+        revision: 1,
+        changes: {
+          entities: {
+            removeIds: [],
+            upsert: [
+              {
+                id: 'player',
+                kind: 'player',
+                appearanceId: 'conductor',
+                position: {
+                  kind: 'moving',
+                  edgeId: 'desk-door',
+                  fromCellId: 'desk',
+                  toCellId: 'door',
+                  startedAt: 0,
+                  arrivesAt: 1_000_000,
+                  progress: 0,
+                },
+              },
+            ],
+          },
+        },
+      }),
+    );
+    expect(sent).toHaveLength(1);
+    store.apply(
+      gameDeltaSchema.parse({
+        protocolVersion: GAME_PROTOCOL_VERSION,
+        type: 'delta',
+        attemptId: 'a1',
+        baseRevision: 1,
+        revision: 2,
+        changes: {
+          entities: {
+            removeIds: [],
+            upsert: [
+              {
+                id: 'player',
+                kind: 'player',
+                appearanceId: 'conductor',
+                position: { kind: 'cell', cellId: 'door' },
+              },
+            ],
+          },
+        },
+      }),
+    );
+    expect(sent[1]).toMatchObject({ type: 'move-to', knownRevision: 2, targetCellId: 'entry' });
   });
 });

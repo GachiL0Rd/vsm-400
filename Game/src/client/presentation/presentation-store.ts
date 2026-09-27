@@ -64,7 +64,7 @@ export class PresentationStore {
   }
 
   setConnection(connection: ConnectionState): void {
-    this.update({ connection });
+    this.update({ connection, ...(connection === 'connected' ? {} : { currentOffer: null }) });
   }
 
   apply(message: ServerMessage): void {
@@ -106,6 +106,9 @@ export class PresentationStore {
       revision: message.state.revision,
       simTimeUs: message.state.timeUs,
       currentOffer: null,
+      lastError: null,
+      lastCommandResult: null,
+      lastPresentationEvent: null,
     });
   }
 

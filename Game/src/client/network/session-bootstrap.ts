@@ -2,6 +2,7 @@ import { type ClientCommand, GAME_PROTOCOL_VERSION, type ServerMessage } from '.
 
 const RESUME_TOKEN_STORAGE_KEY = 'vsm-game.resume-token';
 const SESSION_KEY_STORAGE_KEY = 'vsm-game.session-key';
+const LOCAL_DEMO_SESSION_KEY = 'local-demo';
 
 export interface BrowserSessionBootstrapOptions {
   href: string;
@@ -31,7 +32,10 @@ export function createBrowserSessionBootstrap(
     options.replaceUrl(`${launchUrl.pathname}${launchUrl.search}${launchUrl.hash}`);
   }
 
-  let sessionKey = launchSessionKey ?? credential(options.storage.getItem(SESSION_KEY_STORAGE_KEY));
+  let sessionKey =
+    launchSessionKey ??
+    credential(options.storage.getItem(SESSION_KEY_STORAGE_KEY)) ??
+    (isLocalHost(launchUrl.hostname) ? LOCAL_DEMO_SESSION_KEY : null);
   const resumeToken = (): string | null =>
     credential(options.storage.getItem(RESUME_TOKEN_STORAGE_KEY));
 
@@ -71,4 +75,8 @@ export function createBrowserSessionBootstrap(
 function credential(value: string | null): string | null {
   const normalized = value?.trim() ?? '';
   return normalized === '' ? null : normalized;
+}
+
+function isLocalHost(hostname: string): boolean {
+  return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]';
 }

@@ -21,7 +21,10 @@ export class ActionOfferOverlay {
     this.unsubscribe = store.subscribe((state) => {
       this.root.replaceChildren();
       const offer = state.currentOffer;
-      if (offer === null || offer.revision !== state.revision) return;
+      if (offer === null || offer.revision !== state.revision || state.connection !== 'connected') {
+        if (this.openDialog?.open) this.openDialog.close();
+        return;
+      }
       for (const action of offer.actions) {
         const button = document.createElement('button');
         button.type = 'button';

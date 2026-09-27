@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="384" height="640" viewBox="0 0 384 640">
+  <defs>
+    <linearGradient id="steel" x1="0" y1="0" x2="0.65" y2="1">
+      <stop offset="0" stop-color="#d0d7d4"/>
+      <stop offset="0.25" stop-color="#7c8991"/>
+      <stop offset="0.63" stop-color="#495968"/>
+      <stop offset="1" stop-color="#202e3b"/>
+    </linearGradient>
+    <linearGradient id="glass" x1="0" y1="0" x2="1" y2="0.7">
+      <stop offset="0" stop-color="#6c8692"/>
+      <stop offset="0.45" stop-color="#263f50"/>
+      <stop offset="1" stop-color="#142431"/>
+    </linearGradient>
+    <linearGradient id="red" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#bd3b47"/>
+      <stop offset="1" stop-color="#6e202d"/>
+    </linearGradient>
+    <linearGradient id="blue" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#49c9f9" stop-opacity="0.72"/>
+      <stop offset="1" stop-color="#2073bd" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+
+  <!-- One continuous aerodynamic silhouette, divided into 64 px map tiles. -->
+  <path d="M383 2 C349 12 316 48 288 96 C244 166 215 239 170 304 C126 367 86 404 36 449 C16 468 4 487 2 519 L2 574 C31 612 81 630 154 638 L384 638 Z" fill="url(#steel)" stroke="#dce3dd" stroke-width="4"/>
+  <path d="M383 39 C338 56 309 112 282 170 C254 229 215 289 161 347" fill="none" stroke="#f1efdf" stroke-width="6" opacity="0.62"/>
+  <path d="M315 119 C338 78 360 58 383 50 L383 300 C318 306 261 317 206 339 C250 260 280 189 315 119 Z" fill="url(#glass)" stroke="#192b37" stroke-width="5"/>
+  <path d="M350 79 C361 65 372 57 382 53 L382 124 C367 150 352 172 336 187 Z" fill="#9fb4b6" opacity="0.34"/>
+  <path d="M218 325 C269 309 324 300 383 298" fill="none" stroke="#cad5d0" stroke-width="4"/>
+
+  <path d="M12 496 C70 448 126 405 171 350 C205 309 230 279 254 250" fill="none" stroke="#fcf5dc" stroke-width="13" stroke-linecap="round"/>
+  <path d="M21 508 C81 465 144 414 182 372" fill="none" stroke="#afc8d0" stroke-width="4" opacity="0.78"/>
+  <path d="M0 518 C52 474 130 430 180 430 C224 435 267 460 314 503 L383 511 L383 574 L125 614 C62 609 18 587 1 564 Z" fill="url(#red)" stroke="#842836" stroke-width="3"/>
+  <path d="M12 539 C71 507 139 481 191 482 C228 485 274 505 316 532" fill="none" stroke="#e15a63" stroke-width="6" opacity="0.7"/>
+  <path d="M2 574 C42 599 89 614 151 620 L383 589 L383 638 L153 638 C78 631 31 613 2 579 Z" fill="#1c2834"/>
+  <path d="M154 618 L383 586 L383 600 L157 631 Z" fill="#3f9ecb"/>
+  <path d="M146 632 L383 609 L383 639 L155 639 Z" fill="#17232f"/>
+  <path d="M145 617 L383 587 L383 628 L158 635 Z" fill="url(#blue)" opacity="0.8"/>
+
+  <path d="M257 346 C299 321 343 312 383 315" fill="none" stroke="#3b4c57" stroke-width="3"/>
+  <path d="M274 370 C313 345 347 338 383 338" fill="none" stroke="#bbc7c4" stroke-width="2" opacity="0.65"/>
+  <path d="M245 397 C289 384 338 375 383 371" fill="none" stroke="#263848" stroke-width="3"/>
+  <path d="M318 418 L382 414 L382 452 L313 452 Z" fill="#324c5b" stroke="#98a9ab" stroke-width="2"/>
+  <path d="M332 428 L371 426 L371 436 L329 439 Z" fill="#a8d7e2" opacity="0.78"/>
+  <path d="M304 470 L362 466" stroke="#dce3df" stroke-width="5" stroke-linecap="round"/>
+  <path d="M306 480 L365 476" stroke="#4389b2" stroke-width="3" stroke-linecap="round"/>
+  <text x="347" y="492" fill="#d9e5e1" font-family="Arial,sans-serif" font-size="18" font-weight="700" text-anchor="middle">ВСМ</text>
+
+  <path d="M24 497 L73 464 C89 456 107 448 121 448 L103 467 L40 511 Z" fill="#f4f5e9" opacity="0.89"/>
+  <path d="M31 512 L86 475 L96 478 L45 516 Z" fill="#93dff2" opacity="0.56"/>
+  <circle cx="37" cy="550" r="5" fill="#f1b4a0"/>
+  <path d="M79 584 Q109 598 145 601" fill="none" stroke="#621824" stroke-width="4"/>
+</svg>

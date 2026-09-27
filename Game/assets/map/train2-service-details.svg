@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="64" viewBox="0 0 512 64">
+  <g transform="translate(0 0)">
+    <rect width="64" height="64" fill="#1d2e3b"/>
+    <rect x="5" y="7" width="54" height="50" rx="8" fill="#c3a87d" stroke="#e8decf" stroke-width="3"/>
+    <text x="32" y="40" text-anchor="middle" font-family="Arial,DejaVu Sans,sans-serif" font-size="24" font-weight="bold" fill="#f7efe3">01</text>
+   </g><g transform="translate(64 0)">
+    <rect width="64" height="64" fill="#1d2e3b"/>
+    <rect x="5" y="7" width="54" height="50" rx="8" fill="#9bb7bd" stroke="#e8decf" stroke-width="3"/>
+    <text x="32" y="40" text-anchor="middle" font-family="Arial,DejaVu Sans,sans-serif" font-size="24" font-weight="bold" fill="#f7efe3">02</text>
+   </g><g transform="translate(128 0)">
+    <rect width="64" height="64" fill="#1d2e3b"/>
+    <rect x="5" y="7" width="54" height="50" rx="8" fill="#71b8c2" stroke="#e8decf" stroke-width="3"/>
+    <text x="32" y="40" text-anchor="middle" font-family="Arial,DejaVu Sans,sans-serif" font-size="24" font-weight="bold" fill="#f7efe3">03</text>
+   </g><g transform="translate(192 0)">
+    <rect width="64" height="64" fill="#1d2e3b"/>
+    <rect x="5" y="7" width="54" height="50" rx="8" fill="#cc8e79" stroke="#e8decf" stroke-width="3"/>
+    <text x="32" y="40" text-anchor="middle" font-family="Arial,DejaVu Sans,sans-serif" font-size="24" font-weight="bold" fill="#f7efe3">04</text>
+   </g><g transform="translate(256 0)">
+    <rect width="64" height="64" fill="#1d2e3b"/>
+    <rect x="5" y="7" width="54" height="50" rx="8" fill="#508d8c" stroke="#e8decf" stroke-width="3"/>
+    <text x="32" y="40" text-anchor="middle" font-family="Arial,DejaVu Sans,sans-serif" font-size="24" font-weight="bold" fill="#f7efe3">★</text>
+   </g><g transform="translate(320 0)">
+    <rect width="64" height="64" fill="#1d2e3b"/>
+    <rect x="5" y="7" width="54" height="50" rx="8" fill="#895d50" stroke="#e8decf" stroke-width="3"/>
+    <text x="32" y="40" text-anchor="middle" font-family="Arial,DejaVu Sans,sans-serif" font-size="24" font-weight="bold" fill="#f7efe3">☕</text>
+   </g><g transform="translate(384 0)">
+    <rect width="64" height="64" fill="#1d2e3b"/>
+    <rect x="5" y="7" width="54" height="50" rx="8" fill="#4c7c83" stroke="#e8decf" stroke-width="3"/>
+    <text x="32" y="40" text-anchor="middle" font-family="Arial,DejaVu Sans,sans-serif" font-size="18" font-weight="bold" fill="#f7efe3">WC+</text>
+   </g><g transform="translate(448 0)">
+    <rect width="64" height="64" fill="#1d2e3b"/>
+    <rect x="5" y="7" width="54" height="50" rx="8" fill="#86775f" stroke="#e8decf" stroke-width="3"/>
+    <text x="32" y="40" text-anchor="middle" font-family="Arial,DejaVu Sans,sans-serif" font-size="24" font-weight="bold" fill="#f7efe3">▤</text>
+   </g>
+ </svg>

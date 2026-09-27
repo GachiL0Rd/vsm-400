@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "skills": {
+    "tiled-ai": {
+      "source": "rpgjs/tiled-ai",
+      "sourceType": "github",
+      "skillPath": "skills/tiled-ai/SKILL.md",
+      "computedHash": "9949c7216270a859127780066734735380a0742dc160c9937a09eebf4bcfe529"
+    }
+  }
+}
