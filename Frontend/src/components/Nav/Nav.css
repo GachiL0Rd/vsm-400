@@ -1,0 +1,126 @@
+/* Мобильная раскладка: нижняя панель */
+.nav {
+  position: fixed;
+  inset: auto 0 0;
+  z-index: 10;
+  border-top: 1px solid var(--line);
+  background: var(--white);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.nav__brand,
+.nav__me {
+  display: none;
+}
+
+.nav__list {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.nav__item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 10px 0;
+  color: var(--iron);
+  font-size: 12px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.nav__item:hover {
+  color: var(--ink);
+}
+
+.nav__item--active {
+  color: var(--ink);
+  font-weight: 800;
+}
+
+/* Кольцо внутрь: бренд и пункты прижаты к краю окна, внешний offset обрезается. */
+.nav :focus-visible {
+  outline-offset: -3px;
+}
+
+.nav__icon {
+  position: relative;
+  display: grid;
+}
+
+.nav__count {
+  position: absolute;
+  top: -6px;
+  right: -12px;
+  min-width: 18px;
+  padding: 0 4px;
+  background: var(--signal);
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 16px;
+  text-align: center;
+}
+
+/* Десктоп: боковая панель */
+@media (min-width: 900px) {
+  .nav {
+    inset: 0 auto 0 0;
+    display: flex;
+    flex-direction: column;
+    gap: 32px;
+    /* Порог 900px парный с отступом .app__main. */
+    width: var(--nav-width);
+    padding: 32px 0 24px;
+    border-top: 0;
+    border-right: 1px solid var(--line);
+    background: var(--white);
+  }
+
+  .nav__brand {
+    display: block;
+    padding: 0 24px;
+    color: var(--ink);
+    font-size: 26px;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    text-decoration: none;
+  }
+
+  .nav__list {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .nav__item {
+    flex-direction: row;
+    gap: 14px;
+    padding: 12px 24px;
+    font-size: 16px;
+  }
+
+  .nav__me {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: auto;
+    padding: 12px 24px;
+    color: var(--ink);
+    line-height: 1.25;
+    text-decoration: none;
+  }
+
+  .nav__me:hover b {
+    text-decoration: underline;
+  }
+
+  .nav__level {
+    display: block;
+    color: var(--iron);
+    font-size: 13px;
+  }
+}

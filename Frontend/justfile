@@ -1,0 +1,20 @@
+set windows-shell := ["powershell.exe", "-NoLogo", "-NoProfile", "-Command"]
+
+default:
+    @just --list
+
+# Install dependencies exactly from package-lock.json.
+setup:
+    npm ci --include=dev
+
+# Run every non-mutating module check.
+check:
+    npm run verify
+
+# Start the local development server.
+dev:
+    npm run dev
+
+# Format supported files in place.
+format:
+    npm run format

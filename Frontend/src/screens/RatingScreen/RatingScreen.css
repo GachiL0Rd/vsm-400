@@ -1,0 +1,105 @@
+.segmented {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  max-width: 480px;
+  margin: 0;
+  padding: 0;
+  border: 2px solid var(--ink);
+}
+
+.segmented__item {
+  padding: 10px 0;
+  border: 0;
+  background: var(--white);
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.segmented__item + .segmented__item {
+  border-left: 2px solid var(--ink);
+}
+
+.segmented__item:hover {
+  text-decoration: underline;
+}
+
+.segmented__item--on,
+.segmented__item--on:hover {
+  background: var(--ink);
+  color: var(--white);
+}
+
+.rating__me {
+  margin-bottom: calc(var(--stack) * -1);
+  color: var(--iron);
+}
+
+.rating__me b {
+  color: var(--ink);
+}
+
+.board {
+  display: flex;
+  flex-direction: column;
+  max-width: var(--measure);
+  margin: 0;
+  padding: 0;
+  border-top: 2px solid var(--ink);
+  list-style: none;
+}
+
+.board__row {
+  position: relative;
+  display: grid;
+  grid-template-columns: 36px 36px 1fr auto;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 12px 10px 8px;
+  border-bottom: 1px solid var(--line);
+}
+
+/* Разрыв между топом и своей позицией */
+.board__row--gap {
+  margin-top: 12px;
+  border-top: 1px dashed var(--smoke);
+}
+
+.board__rank {
+  font-weight: 800;
+  text-align: center;
+}
+
+.board__name {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.board__move {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.board__points {
+  font-weight: 700;
+}
+
+/* «Вы здесь» — тот же оранжевый маркер, что в навигации */
+.board__row--me {
+  font-weight: 800;
+}
+
+.board__row--me::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: var(--signal);
+}
+
+.rating__brigade {
+  max-width: var(--measure);
+}

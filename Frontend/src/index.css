@@ -1,0 +1,227 @@
+@font-face {
+  font-family: "Moscow Sans";
+  src: url("./assets/fonts/MoscowSans-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Moscow Sans";
+  src: url("./assets/fonts/MoscowSans-Medium.woff2") format("woff2");
+  font-weight: 500;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Moscow Sans";
+  src: url("./assets/fonts/MoscowSans-Bold.woff2") format("woff2");
+  font-weight: 700;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Moscow Sans";
+  src: url("./assets/fonts/MoscowSans-ExtraBold.woff2") format("woff2");
+  font-weight: 800;
+  font-display: swap;
+}
+
+:root {
+  /* Нейтральная шкала: основа интерфейса. */
+  --white: #ffffff;
+  --cloud: #e8e8e6;
+  --line: #dcdcd9;
+  --smoke: #a3a5a8;
+  --iron: #6b6e73;
+  /* Основной цвет текста и контуров — графит, как ливрея поездов ВСМ. */
+  --ink: #25282c;
+  --ink-08: rgb(37 40 44 / 8%);
+
+  /* Единственный акцент — сигнальный оранжевый. Только действие и «вы здесь». */
+  --signal: #ff6700;
+  --signal-hover: #ff7a1f;
+  --signal-press: #e65c00;
+
+  /* Статусы по логике светофора */
+  --ok: #1f7a34;
+  --warn: #7a5900;
+  --warn-line: #f0cf5a;
+  --stop: #c62828;
+
+  --font: "Moscow Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+
+  /* 232px при min-width: 900px — порог парный в Nav.css и App.css. */
+  --nav-width: 232px;
+  --stack: 16px;
+  --measure: 640px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  background: var(--white);
+  color: var(--ink);
+  font-family: var(--font);
+  font-size: 16px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3,
+p {
+  margin: 0;
+}
+
+a {
+  color: inherit;
+}
+
+button {
+  font: inherit;
+}
+
+:focus-visible {
+  outline: 3px solid var(--signal);
+  outline-offset: 2px;
+}
+
+/* ---------- Общие элементы ---------- */
+
+.label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--iron);
+}
+
+.row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.num {
+  font-variant-numeric: tabular-nums;
+}
+
+.btn {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  padding: 13px 24px;
+  border: 0;
+  border-bottom: 3px solid var(--signal-press);
+  background: var(--signal);
+  color: var(--ink);
+  font-size: 17px;
+  font-weight: 700;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.btn:hover {
+  background: var(--signal-hover);
+}
+
+.btn:active {
+  border-bottom-width: 1px;
+  margin-top: 2px;
+}
+
+.btn--ghost {
+  border: 2px solid var(--ink);
+  background: var(--white);
+}
+
+.btn--ghost:hover {
+  background: var(--ink);
+  color: var(--white);
+}
+
+.btn--ghost:active {
+  border-bottom-width: 2px;
+  margin-top: 0;
+}
+
+.btn[aria-disabled="true"] {
+  border-color: var(--cloud);
+  background: var(--cloud);
+  color: var(--iron);
+  cursor: not-allowed;
+}
+
+/* pointer-events: none убрал бы cursor: not-allowed, поэтому гасим только сдвиг :active. */
+.btn[aria-disabled="true"]:active {
+  border-bottom-width: 3px;
+  margin-top: 0;
+}
+
+/* Пары «подпись — значение» в строку */
+.facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 12px 20px;
+  margin: 0;
+}
+
+.facts dd {
+  margin: 0;
+  font-weight: 700;
+}
+
+/* Пары «подпись — значение» списком, с линейками */
+.ledger {
+  margin: 0;
+}
+
+.ledger__row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 16px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.ledger__row dt {
+  color: var(--iron);
+}
+
+.ledger__row dd {
+  margin: 0;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.ledger__note {
+  display: block;
+}
+
+.up {
+  color: var(--ok);
+}
+
+.down {
+  color: var(--stop);
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
