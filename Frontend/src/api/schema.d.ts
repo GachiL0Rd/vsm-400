@@ -515,6 +515,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/game/sessions/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Разрешить билет запуска в попытку. Bearer Game Server */
+        post: operations["PlatformController_resolve"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/game/sessions/{attemptId}/finish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Принять итог попытки. Повтор того же тела отдаёт тот же resultId */
+        post: operations["PlatformController_finish"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/promotions": {
         parameters: {
             query?: never;
@@ -1221,11 +1255,7 @@ export interface components {
             sessionId: string;
             ticket: string;
             wsUrl: string;
-            /**
-             * Абсолютный URL игрового клиента с `?sessionKey=`.
-             * Вписано вручную, пока Backend не отдаёт поле в OpenAPI.
-             * После мержа той ветки: `npm run api:types`.
-             */
+            /** @description Абсолютный URL клиента Game с query sessionKey */
             launchUrl: string;
             seedCommit: string;
             plan: {
@@ -1410,6 +1440,49 @@ export interface components {
         ReportResultDto: {
             /** Format: uuid */
             runId: string;
+        };
+        ResolveSessionDto: {
+            key: string;
+        };
+        ResolveResponseDto: {
+            /** @enum {number} */
+            contractVersion: 1;
+            attemptId: string;
+            gameLevelId: string;
+            mode: {
+                /** @enum {string} */
+                kind: "live";
+            };
+        };
+        FinishedGameResultDto: {
+            attemptId: string;
+            content: {
+                gameLevelId: string;
+                gameLevelVersion: string;
+                simulationCompatibilityVersion: string;
+            };
+            rootSeed: string;
+            userInputs: unknown[];
+            achievements: {
+                setVersion: string;
+                ids: string[];
+            };
+            termination: {
+                /** @enum {string} */
+                kind: "route-completed" | "terminal-rule";
+                outcomeId: string;
+            };
+            scores: {
+                safety: number;
+                customerSatisfaction: number;
+            };
+        };
+        FinishResponseDto: {
+            /** @enum {number} */
+            contractVersion: 1;
+            resultId: string;
+            /** Format: uri */
+            redirectUrl: string;
         };
         Profile_Output: {
             callsign: string;
@@ -2736,6 +2809,117 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ReportResultDto"];
                 };
+            };
+        };
+    };
+    PlatformController_resolve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResolveSessionDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResolveResponseDto"];
+                };
+            };
+            /** @description Тело не по схеме, код invalid-body */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Нет или неверный Bearer, код INVALID_PLATFORM_TOKEN */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Билет недействителен, код invalid-session */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Смена недоступна для запуска, код session-unavailable */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Билет истёк (session-expired) или уже погашен (session-consumed) */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    PlatformController_finish: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                attemptId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FinishedGameResultDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FinishResponseDto"];
+                };
+            };
+            /** @description Тело не по схеме или attemptId пути не совпал с телом */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Нет или неверный Bearer, код INVALID_PLATFORM_TOKEN */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Попытки нет, транспорт REST или смена не ACTIVE */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Уже сохранён другой итог, код result-conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
