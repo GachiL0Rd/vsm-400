@@ -142,8 +142,8 @@ export class WorldRenderer {
     y: number,
     visualTimeUs: number,
   ): PublicTargetRef | null {
-    const entity = this.entityAt(state, x, y, visualTimeUs);
-    if (entity !== null) return entity;
+    // Object markers win over actors: the 1.5-tile conductor sprite covers nearby
+    // markers (the player starts on the journal cell), which swallowed object clicks.
     for (const object of [...state.world.objects].reverse()) {
       const box = this.markerBoxes.get(object.id);
       if (box === undefined) continue;
@@ -151,7 +151,7 @@ export class WorldRenderer {
         return { kind: 'object', objectId: object.id };
       }
     }
-    return null;
+    return this.entityAt(state, x, y, visualTimeUs);
   }
 
   playerPoint(state: PublicGameState, visualTimeUs: number): { x: number; y: number } | null {
