@@ -8,6 +8,7 @@ import { ActorType, type GameSession } from '../generated/prisma/client';
 import type { PrismaService } from '../prisma/prisma.service';
 import { payloadSha256 } from './canonical-json';
 import { finishToSummary } from './finish-map';
+import { GAME_ATTEMPT_TTL_MS } from './game-cookie';
 import type { FinishedGameResult } from './platform.dto';
 import { PlatformSessionService } from './platform.service';
 import type { SessionsService } from './sessions.service';
@@ -31,6 +32,7 @@ type Row = {
   transport: GameSession['transport'];
   flags: string[];
   result: unknown;
+  expiresAt: Date;
 };
 
 function row(patch: Partial<Row> = {}): Row {
@@ -41,6 +43,7 @@ function row(patch: Partial<Row> = {}): Row {
     transport: 'WS',
     flags: [],
     result: null,
+    expiresAt: new Date(now.getTime() + 2 * 60 * 60 * 1000),
     ...patch,
   };
 }
@@ -87,22 +90,59 @@ function codeOf(error: HttpException): string {
   return '';
 }
 
-function resolveHarness(verdict: TicketVerdict, current: Row | null, fresh = true) {
+function resolveHarness(
+  verdict: TicketVerdict,
+  current: Row | null,
+  fresh = true,
+  at: Clock = clock,
+) {
   const state = { row: current };
   const classify = vi.fn(async () => verdict);
   const consume = vi.fn(async () => fresh);
   const flagTicketReuse = vi.fn(async () => undefined);
   const activatePendingSession = vi.fn(async () => 'ACTIVE' as const);
   const findUnique = vi.fn(async () => state.row);
+  const updateMany = vi.fn(
+    async (args: {
+      where: {
+        id: string;
+        status: { in: ReadonlyArray<GameSession['status']> };
+        expiresAt: { lt: Date };
+      };
+      data: { expiresAt: Date };
+    }) => {
+      const target = state.row;
+      const boundary = args.where.expiresAt.lt;
+      if (
+        !target ||
+        target.id !== args.where.id ||
+        !args.where.status.in.includes(target.status) ||
+        !(target.expiresAt.getTime() < boundary.getTime())
+      ) {
+        return { count: 0 };
+      }
+      target.expiresAt = args.data.expiresAt;
+      return { count: 1 };
+    },
+  );
   const service = new PlatformSessionService(
-    { gameSession: { findUnique } } as unknown as PrismaService,
+    { gameSession: { findUnique, updateMany } } as unknown as PrismaService,
     { classify, consume } as unknown as TicketService,
     { flagTicketReuse, activatePendingSession } as unknown as SessionsService,
     { emitAsync: vi.fn() } as unknown as EventEmitter2,
     config,
-    clock,
+    at,
   );
-  return { service, classify, consume, flagTicketReuse, activatePendingSession, findUnique };
+  return {
+    service,
+    classify,
+    consume,
+    flagTicketReuse,
+    activatePendingSession,
+    findUnique,
+    updateMany,
+    state,
+  };
 }
 
 describe('PlatformSessionService.resolve', () => {
@@ -131,18 +171,20 @@ describe('PlatformSessionService.resolve', () => {
     expect(harness.findUnique).not.toHaveBeenCalled();
   });
 
-  it('REST и уже закрытая смена — 409, активации нет', async () => {
+  it('REST и уже закрытая смена — 409, без активации и продления', async () => {
     const rest = resolveHarness({ status: 'ok', claims: claims() }, row({ transport: 'REST' }));
     const restError = await rejection(() => rest.service.resolve('key'));
     expect(restError.getStatus()).toBe(409);
     expect(codeOf(restError)).toBe('session-unavailable');
     expect(rest.activatePendingSession).not.toHaveBeenCalled();
+    expect(rest.updateMany).not.toHaveBeenCalled();
 
     const done = resolveHarness({ status: 'ok', claims: claims() }, row({ status: 'COMPLETED' }));
     const doneError = await rejection(() => done.service.resolve('key'));
     expect(doneError.getStatus()).toBe(409);
     expect(codeOf(doneError)).toBe('session-unavailable');
     expect(done.activatePendingSession).not.toHaveBeenCalled();
+    expect(done.updateMany).not.toHaveBeenCalled();
   });
 
   it('чужой sub и пустая сессия — 404', async () => {
@@ -173,6 +215,57 @@ describe('PlatformSessionService.resolve', () => {
         now,
       );
     }
+  });
+
+  it('resolve ставит expiresAt на now + 3 часа', async () => {
+    const harness = resolveHarness({ status: 'ok', claims: claims() }, row({ status: 'PENDING' }));
+    await harness.service.resolve('key');
+    const extended = new Date(now.getTime() + GAME_ATTEMPT_TTL_MS);
+    expect(harness.state.row?.expiresAt).toEqual(extended);
+    expect(harness.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: sessionId,
+        status: { in: ['PENDING', 'ACTIVE'] },
+        expiresAt: { lt: extended },
+      },
+      data: { expiresAt: extended },
+    });
+  });
+
+  it('resolve не сокращает expiresAt, если он позже', async () => {
+    const later = new Date(now.getTime() + GAME_ATTEMPT_TTL_MS + 60 * 60 * 1000);
+    const extended = new Date(now.getTime() + GAME_ATTEMPT_TTL_MS);
+    const harness = resolveHarness(
+      { status: 'ok', claims: claims() },
+      row({ status: 'ACTIVE', expiresAt: later }),
+    );
+    await harness.service.resolve('key');
+    expect(harness.state.row?.expiresAt).toEqual(later);
+    expect(harness.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: sessionId,
+        status: { in: ['PENDING', 'ACTIVE'] },
+        expiresAt: { lt: extended },
+      },
+      data: { expiresAt: extended },
+    });
+  });
+
+  it('повторный resolve ACTIVE продлевает от нового now', async () => {
+    let tick = now.getTime();
+    const moving = { now: () => new Date(tick) } as Clock;
+    const harness = resolveHarness(
+      { status: 'ok', claims: claims() },
+      row({ status: 'ACTIVE', expiresAt: new Date(tick + 2 * 60 * 60 * 1000) }),
+      true,
+      moving,
+    );
+    await harness.service.resolve('key');
+    expect(harness.state.row?.expiresAt).toEqual(new Date(tick + GAME_ATTEMPT_TTL_MS));
+    tick += 30 * 60 * 1000;
+    await harness.service.resolve('again');
+    expect(harness.state.row?.expiresAt).toEqual(new Date(tick + GAME_ATTEMPT_TTL_MS));
+    expect(harness.updateMany).toHaveBeenCalledTimes(2);
   });
 });
 
