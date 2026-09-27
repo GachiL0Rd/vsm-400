@@ -173,10 +173,9 @@ export class SessionsService {
         session.transport === 'REST' &&
         isPlayable(session.status) &&
         isPastDeadline(deadlineMs(session), now.getTime());
+      // WS-смену в ACTIVE переводит только погашенный билет, не просмотр игрока.
       if (!restTimeout) {
-        await this.activatePending(session, now);
-        const fresh = await this.owned(userId, sessionId);
-        return this.presentSession(fresh);
+        return this.presentSession(session);
       }
       await this.decide({
         sessionId,

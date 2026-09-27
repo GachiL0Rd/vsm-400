@@ -886,6 +886,12 @@ describe('игровые сессии', () => {
       where: { id: opened.body.sessionId },
     });
     expect(pending.status).toBe('PENDING');
+    const looked = await inject('GET', `/api/v1/game-sessions/${opened.body.sessionId}`, user.id);
+    expect(looked.statusCode, looked.body).toBe(200);
+    const stillPending = await prisma.gameSession.findUniqueOrThrow({
+      where: { id: opened.body.sessionId },
+    });
+    expect(stillPending.status).toBe('PENDING');
     const denied = await inject('POST', '/api/internal/v1/tickets/verify', undefined, {
       ticket: opened.body.ticket,
     });
