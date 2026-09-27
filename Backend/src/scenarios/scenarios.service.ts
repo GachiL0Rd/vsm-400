@@ -16,7 +16,13 @@ import type { CatalogItem, ScenarioDetail, ScenarioStatusView } from './dto';
 import { assertPlayableGraph } from './graph-check';
 import { loadScenarioGraphs } from './load-content';
 import { parseIncomingGraph } from './parse-graph';
-import { nextVersionNumber, planVersion } from './sync-plan';
+import {
+  fileAdoptedAuthor,
+  fileInsertPublishes,
+  fileVersionIsPublic,
+  nextVersionNumber,
+  planVersion,
+} from './sync-plan';
 
 export type SyncStats = {
   scenarios: number;
@@ -39,9 +45,17 @@ type ScenarioMeta = {
   currentVersion: number;
 };
 
+/** Пара (сценарий, версия) неизменна. Хвост длиннее вытесняет самые старые чтения. */
+export const VERSION_CACHE_LIMIT = 64;
+
+/** Чужая реплика могла опубликовать сценарий: этот процесс дольше не держит каталог. */
+export const CATALOG_TTL_MS = 30_000;
+
 @Injectable()
 export class ScenariosService implements OnApplicationBootstrap {
   private readonly logger = new Logger(ScenariosService.name);
+  private readonly versions = new LruCache<ScenarioVersionView>(VERSION_CACHE_LIMIT);
+  private catalog: { at: number; items: CatalogItem[] } | null = null;
 
   constructor(
     @Inject(PrismaService) private readonly prisma: PrismaService,
@@ -58,17 +72,27 @@ export class ScenariosService implements OnApplicationBootstrap {
     for (const graph of graphs) {
       assertPlayableGraph(graph);
     }
+    this.forgetCatalog();
     let createdVersions = 0;
     const published: ScenarioPublishedPayload[] = [];
+    const keptByHuman: string[] = [];
     await this.prisma.$transaction(async (tx) => {
       for (const graph of graphs) {
-        const version = await syncGraph(tx, graph);
-        if (version !== null) {
+        const outcome = await syncGraph(tx, graph);
+        if (outcome.kind === 'created') {
           createdVersions += 1;
-          published.push({ scenarioId: graph.id, version });
+          if (outcome.public) {
+            published.push({ scenarioId: graph.id, version: outcome.version });
+          }
+        } else if (outcome.kind === 'keep-human') {
+          keptByHuman.push(graph.id);
         }
       }
     });
+    this.forgetCatalog();
+    for (const id of keptByHuman) {
+      this.logger.warn(`сценарий ${id} правится в админке, файл пропущен`);
+    }
     for (const payload of published) {
       await this.emitPublished(payload);
     }
@@ -76,15 +100,12 @@ export class ScenariosService implements OnApplicationBootstrap {
   }
 
   async getCatalog(): Promise<CatalogItem[]> {
-    const rows = await this.prisma.scenario.findMany({
-      where: { status: 'PUBLISHED' },
-      orderBy: { id: 'asc' },
-    });
-    const items: CatalogItem[] = [];
-    for (const row of rows) {
-      const stored = await this.readVersion(row.id, row.currentVersion);
-      items.push(toCatalog(row, stored.graph, stored.version));
+    const cached = this.catalog;
+    if (cached && Date.now() - cached.at < CATALOG_TTL_MS) {
+      return cached.items;
     }
+    const items = deepFreeze(await this.loadCatalog());
+    this.catalog = { at: Date.now(), items };
     return items;
   }
 
@@ -110,6 +131,7 @@ export class ScenariosService implements OnApplicationBootstrap {
     const graph = parseIncomingGraph(id, raw);
     assertPlayableGraph(graph);
     const checksum = graphChecksum(graph);
+    const createdById = fileAdoptedAuthor(actorId, checksum, this.fileChecksum(id));
     let announced: number | null = null;
     await this.prisma.$transaction(async (tx) => {
       const actor = await tx.user.findUnique({ where: { id: actorId }, select: { id: true } });
@@ -143,10 +165,11 @@ export class ScenariosService implements OnApplicationBootstrap {
           version,
           checksum,
           graph: graph as Prisma.InputJsonValue,
-          createdById: actorId,
+          createdById,
         },
       });
     });
+    this.forgetCatalog();
     if (announced !== null) {
       await this.emitPublished({ scenarioId: id, version: announced });
     }
@@ -160,6 +183,7 @@ export class ScenariosService implements OnApplicationBootstrap {
         data: { status },
         select: { id: true, status: true, currentVersion: true },
       });
+      this.forgetCatalog();
       if (updated.status === 'PUBLISHED') {
         await this.emitPublished({ scenarioId: updated.id, version: updated.currentVersion });
       }
@@ -172,23 +196,54 @@ export class ScenariosService implements OnApplicationBootstrap {
     }
   }
 
+  /** Сумма yaml этого id. Нет файла — версию всегда пишет человек. */
+  private fileChecksum(id: string): string | null {
+    const file = loadScenarioGraphs().find((item) => item.id === id);
+    return file === undefined ? null : graphChecksum(file);
+  }
+
   private async emitPublished(payload: ScenarioPublishedPayload): Promise<void> {
     await this.events.emitAsync(SCENARIO_PUBLISHED, payload);
   }
 
+  private async loadCatalog(): Promise<CatalogItem[]> {
+    const rows = await this.prisma.scenario.findMany({
+      where: { status: 'PUBLISHED' },
+      orderBy: { id: 'asc' },
+    });
+    const items: CatalogItem[] = [];
+    for (const row of rows) {
+      const stored = await this.readVersion(row.id, row.currentVersion);
+      items.push(toCatalog(row, stored.graph, stored.version));
+    }
+    return items;
+  }
+
+  private forgetCatalog(): void {
+    this.catalog = null;
+  }
+
   private async readVersion(id: string, version: number): Promise<ScenarioVersionView> {
+    const key = `${id}:${version}`;
+    const hit = this.versions.get(key);
+    if (hit) {
+      return hit;
+    }
     const row = await this.prisma.scenarioVersion.findUnique({
       where: { scenarioId_version: { scenarioId: id, version } },
     });
     if (!row) {
       throw new NotFoundException({ message: 'Версия сценария не найдена', code: 'NOT_FOUND' });
     }
-    return {
+    // Шаг клонирует состояние и граф не пишет. Заморозка дешевле копии на каждый ход.
+    const view = deepFreeze({
       scenarioId: row.scenarioId,
       version: row.version,
       checksum: row.checksum,
       graph: parseStoredGraph(row.graph),
-    };
+    });
+    this.versions.set(key, view);
+    return view;
   }
 }
 
@@ -237,30 +292,39 @@ function parseStoredGraph(value: unknown): ScenarioGraph {
 
 type SyncClient = Pick<Prisma.TransactionClient, 'scenario' | 'scenarioVersion'>;
 
-/**
- * Файл из content — источник каталога. Совпадение checksum не плодит версию,
- * но статус снова PUBLISHED: архив методиста не переживает рестарт.
- */
-async function syncGraph(tx: SyncClient, graph: ScenarioGraph): Promise<number | null> {
-  const latest = await tx.scenarioVersion.findFirst({
+type SyncOutcome =
+  | { kind: 'same' }
+  | { kind: 'keep-human' }
+  | { kind: 'created'; version: number; public: boolean };
+
+/** Файл не трогает статус уже существующей строки и не затирает человеческий хвост. */
+async function syncGraph(tx: SyncClient, graph: ScenarioGraph): Promise<SyncOutcome> {
+  const versions = await tx.scenarioVersion.findMany({
     where: { scenarioId: graph.id },
-    orderBy: { version: 'desc' },
-    select: { version: true, checksum: true },
+    select: { version: true, checksum: true, createdById: true },
   });
-  const plan = planVersion(latest, graph);
-  if (plan.kind === 'same') {
-    await tx.scenario.updateMany({
-      where: { id: graph.id, status: { not: 'PUBLISHED' } },
-      data: { status: 'PUBLISHED' },
-    });
-    return null;
+  const plan = planVersion(versions, graph);
+  if (plan.kind === 'keep-human') {
+    return { kind: 'keep-human' };
   }
-  const meta = scenarioMeta(graph, plan.version);
-  await tx.scenario.upsert({
+  if (plan.kind === 'same') {
+    return { kind: 'same' };
+  }
+  const existing = await tx.scenario.findUnique({
     where: { id: graph.id },
-    create: { id: graph.id, ...meta, status: 'PUBLISHED' },
-    update: { ...meta, status: 'PUBLISHED' },
+    select: { status: true },
   });
+  const meta = scenarioMeta(graph, plan.version);
+  if (fileInsertPublishes(existing?.status ?? null)) {
+    await tx.scenario.create({
+      data: { id: graph.id, ...meta, status: 'PUBLISHED' },
+    });
+  } else {
+    await tx.scenario.update({
+      where: { id: graph.id },
+      data: meta,
+    });
+  }
   await tx.scenarioVersion.create({
     data: {
       scenarioId: graph.id,
@@ -269,7 +333,51 @@ async function syncGraph(tx: SyncClient, graph: ScenarioGraph): Promise<number |
       graph: graph as Prisma.InputJsonValue,
     },
   });
-  return plan.version;
+  return {
+    kind: 'created',
+    version: plan.version,
+    public: fileVersionIsPublic(existing?.status ?? null),
+  };
+}
+
+class LruCache<T> {
+  private readonly items = new Map<string, T>();
+
+  constructor(private readonly limit: number) {}
+
+  get(key: string): T | undefined {
+    const value = this.items.get(key);
+    if (value === undefined) {
+      return undefined;
+    }
+    this.items.delete(key);
+    this.items.set(key, value);
+    return value;
+  }
+
+  set(key: string, value: T): void {
+    if (this.items.has(key)) {
+      this.items.delete(key);
+    }
+    this.items.set(key, value);
+    while (this.items.size > this.limit) {
+      const oldest = this.items.keys().next().value;
+      if (oldest === undefined) {
+        return;
+      }
+      this.items.delete(oldest);
+    }
+  }
+}
+
+function deepFreeze<T>(value: T): T {
+  if (value === null || typeof value !== 'object' || Object.isFrozen(value)) {
+    return value;
+  }
+  for (const nested of Object.values(value as Record<string, unknown>)) {
+    deepFreeze(nested);
+  }
+  return Object.freeze(value);
 }
 
 function isMissingRow(error: unknown): boolean {

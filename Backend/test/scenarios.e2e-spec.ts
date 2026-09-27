@@ -7,6 +7,8 @@ import { AccessGuard } from '../src/auth/access.guard';
 import { configureApp } from '../src/configure-app';
 import type { ScenarioGraph } from '../src/engine/schema';
 import { PrismaService } from '../src/prisma/prisma.service';
+import { graphChecksum } from '../src/scenarios/checksum';
+import { loadScenarioGraphs } from '../src/scenarios/load-content';
 import { ScenariosService } from '../src/scenarios/scenarios.service';
 import { testDatabaseUrl, testRedisUrl } from './databases';
 import { HeaderAccessGuard } from './header-access.guard';
@@ -212,5 +214,123 @@ describe('сценарии', () => {
       status: 'LIVE',
     });
     expect(bad.statusCode).toBe(422);
+  });
+
+  it('правка методиста переживает повторный syncFromContent', async () => {
+    const id = 'ride-smoke-sensor';
+    const current = (await inject('GET', `/api/v1/scenarios/${id}`, 'ADMIN')).json() as {
+      version: number;
+      graph: ScenarioGraph;
+    };
+    const title = `${current.graph.title} правка`;
+    const saved = await inject('PUT', `/api/v1/admin/scenarios/${id}`, 'METHODIST', {
+      ...current.graph,
+      title,
+    });
+    expect(saved.statusCode).toBe(200);
+    const body = saved.json() as { version: number; title: string };
+    expect(body.version).toBe(current.version + 1);
+    expect(body.title).toBe(title);
+
+    const before = await prisma.scenarioVersion.count();
+    const stats = await scenarios.syncFromContent();
+    expect(stats.createdVersions).toBe(0);
+    expect(await prisma.scenarioVersion.count()).toBe(before);
+
+    const again = (await inject('GET', `/api/v1/scenarios/${id}`, 'METHODIST')).json() as {
+      version: number;
+      title: string;
+      status: string;
+    };
+    expect(again.version).toBe(body.version);
+    expect(again.title).toBe(title);
+    expect(again.status).toBe('PUBLISHED');
+    const tip = await prisma.scenarioVersion.findFirst({
+      where: { scenarioId: id },
+      orderBy: { version: 'desc' },
+      select: { version: true, createdById: true },
+    });
+    expect(tip).toEqual({ version: body.version, createdById: actor.id });
+  });
+
+  it('ARCHIVED и DRAFT переживают syncFromContent', async () => {
+    const archivedId = 'board-pet-carrier';
+    const draftId = 'stop-late-exit';
+    try {
+      expect(
+        (
+          await inject('POST', `/api/v1/admin/scenarios/${archivedId}/status`, 'ADMIN', {
+            status: 'ARCHIVED',
+          })
+        ).statusCode,
+      ).toBe(200);
+      expect(
+        (
+          await inject('POST', `/api/v1/admin/scenarios/${draftId}/status`, 'METHODIST', {
+            status: 'DRAFT',
+          })
+        ).statusCode,
+      ).toBe(200);
+
+      const stats = await scenarios.syncFromContent();
+      expect(stats.createdVersions).toBe(0);
+      expect((await prisma.scenario.findUnique({ where: { id: archivedId } }))?.status).toBe(
+        'ARCHIVED',
+      );
+      expect((await prisma.scenario.findUnique({ where: { id: draftId } }))?.status).toBe('DRAFT');
+
+      const catalog = (await inject('GET', '/api/v1/scenarios', 'CHIEF')).json() as {
+        id: string;
+      }[];
+      expect(catalog.some((item) => item.id === archivedId || item.id === draftId)).toBe(false);
+    } finally {
+      await inject('POST', `/api/v1/admin/scenarios/${archivedId}/status`, 'ADMIN', {
+        status: 'PUBLISHED',
+      });
+      await inject('POST', `/api/v1/admin/scenarios/${draftId}/status`, 'ADMIN', {
+        status: 'PUBLISHED',
+      });
+    }
+  });
+
+  it('файл без правок не создаёт версию', async () => {
+    const id = 'board-wrong-train';
+    const before = await prisma.scenarioVersion.count({ where: { scenarioId: id } });
+    const totalBefore = await prisma.scenarioVersion.count();
+    const stats = await scenarios.syncFromContent();
+    expect(stats.createdVersions).toBe(0);
+    expect(await prisma.scenarioVersion.count({ where: { scenarioId: id } })).toBe(before);
+    expect(await prisma.scenarioVersion.count()).toBe(totalBefore);
+  });
+
+  it('PUT графа как в файле снова отдаёт хвост файлу', async () => {
+    const id = 'ride-drunk';
+    const file = loadScenarioGraphs().find((item) => item.id === id);
+    expect(file).toBeTruthy();
+    if (!file) {
+      return;
+    }
+    const current = (await inject('GET', `/api/v1/scenarios/${id}`, 'ADMIN')).json() as {
+      graph: ScenarioGraph;
+    };
+    const edited = await inject('PUT', `/api/v1/admin/scenarios/${id}`, 'METHODIST', {
+      ...current.graph,
+      title: `${current.graph.title} временно`,
+    });
+    expect(edited.statusCode).toBe(200);
+
+    const adopted = await inject('PUT', `/api/v1/admin/scenarios/${id}`, 'ADMIN', file);
+    expect(adopted.statusCode).toBe(200);
+    const body = adopted.json() as { version: number; title: string };
+    expect(body.title).toBe(file.title);
+    const row = await prisma.scenarioVersion.findUnique({
+      where: { scenarioId_version: { scenarioId: id, version: body.version } },
+      select: { createdById: true, checksum: true },
+    });
+    expect(row?.createdById).toBeNull();
+    expect(row?.checksum).toBe(graphChecksum(file));
+
+    const stats = await scenarios.syncFromContent();
+    expect(stats.createdVersions).toBe(0);
   });
 });

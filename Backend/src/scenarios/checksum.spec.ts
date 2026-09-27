@@ -18,14 +18,15 @@ describe('checksum сценария', () => {
       return;
     }
     const checksum = graphChecksum(graph);
-    expect(planVersion({ version: 4, checksum }, graph)).toEqual({ kind: 'same' });
+    const latest = { version: 4, checksum, createdById: null };
+    expect(planVersion([latest], graph)).toEqual({ kind: 'same' });
     const edited = { ...graph, title: `${graph.title} 2` };
-    const plan = planVersion({ version: 4, checksum }, edited);
+    const plan = planVersion([latest], edited);
     expect(plan).toEqual({
       kind: 'insert',
       version: 5,
       checksum: graphChecksum(edited),
     });
-    expect(planVersion(null, graph)).toMatchObject({ kind: 'insert', version: 1 });
+    expect(planVersion([], graph)).toMatchObject({ kind: 'insert', version: 1 });
   });
 });
