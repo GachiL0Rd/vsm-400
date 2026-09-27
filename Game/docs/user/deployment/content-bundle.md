@@ -14,7 +14,13 @@ The shipped baseline layout is:
 ```text
 content/
 ├── manifest.json
-└── vsm-baseline-01/
+├── vsm-baseline-01/
+│   ├── level.json
+│   ├── scenario.json
+│   ├── actions.json
+│   └── assessment.json
+└── vsm-train2-01/
+    ├── map-bindings.json
     ├── level.json
     ├── scenario.json
     ├── actions.json
@@ -39,6 +45,15 @@ content/
       "scenario": "vsm-baseline-01/scenario.json",
       "actions": "vsm-baseline-01/actions.json",
       "assessment": "vsm-baseline-01/assessment.json"
+    },
+    {
+      "gameLevelId": "vsm-train2-01",
+      "gameLevelVersion": "vsm-train2-01",
+      "simulationCompatibilityVersion": "0.1.0",
+      "level": "vsm-train2-01/level.json",
+      "scenario": "vsm-train2-01/scenario.json",
+      "actions": "vsm-train2-01/actions.json",
+      "assessment": "vsm-train2-01/assessment.json"
     }
   ]
 }
@@ -53,6 +68,8 @@ Duplicate `gameLevelId` values are rejected at startup.
 ### `level.json`
 
 Canonical `LevelDefinition` data: regions, grid cells/edges, anchors, interactable world objects, failure locations, and sanitation locations. It is parsed by `levelDefinitionSchema` and reference validation before the server starts accepting sessions.
+
+`vsm-baseline-01/level.json` is a small hand-authored grid. `vsm-train2-01/level.json` is generated. Do not edit it by hand. `content/vsm-train2-01/map-bindings.json` holds the semantics the Tiled art does not carry, and `npm run map:build` writes the level from `assets/map/train2-long.tmx`. `npm run map:check` regenerates that level in memory and fails when the committed file differs. The same command also checks the finite client map `src/client/assets/map/train2-long.map.json`. `map-bindings.json` is authoring input, not a file the content registry loads.
 
 ### `scenario.json`
 

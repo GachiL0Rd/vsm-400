@@ -18,8 +18,10 @@
     "check:write": "biome check --write .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "map:build": "tsx scripts/build-train2-map.ts",
+    "map:check": "tsx scripts/build-train2-map.ts --check",
     "check:bundle": "node scripts/check-bundle.mjs",
-    "verify": "npm run check:biome && npm run typecheck && npm run test && npm run audit:dead-code && npm run build && npm run test:production && npm run check:bundle",
+    "verify": "npm run check:biome && npm run typecheck && npm run map:check && npm run test && npm run audit:dead-code && npm run build && npm run test:production && npm run check:bundle",
     "audit:dead-code": "node scripts/check-dead-code.mjs",
     "start:server": "node dist/server/main.mjs",
     "test:production": "node scripts/test-production-server.mjs"
