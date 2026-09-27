@@ -54,9 +54,26 @@ export class IntegrationController {
   @ApiResponse({ status: 401, schema: problemSchema })
   @ApiResponse({ status: 403, schema: problemSchema })
   @ApiResponse({ status: 404, schema: problemSchema })
+  @ApiResponse({ status: 409, schema: problemSchema })
   @ApiResponse({ status: 422, schema: problemSchema })
   upsert(@Param('extId') extId: string, @Body() body: UpsertEmployeeDto) {
     return this.employees.upsert(parseExtId(extId), body);
+  }
+
+  @Delete('employees/:extId')
+  @HttpCode(204)
+  @ApiClientAuth('employees:write')
+  @ApiOperation({ summary: 'Отключить сотрудника и отозвать его сессии' })
+  @ApiParam({ name: 'extId', description: 'Табельный номер HR. Повтор — 204' })
+  @ApiResponse({ status: 204 })
+  @ApiResponse({ status: 401, schema: problemSchema })
+  @ApiResponse({ status: 403, schema: problemSchema })
+  @ApiResponse({ status: 404, schema: problemSchema })
+  disable(
+    @Param('extId') extId: string,
+    @CurrentApiClient() client: ApiClientContext,
+  ): Promise<void> {
+    return this.employees.disable(parseExtId(extId), client.id);
   }
 
   @Get('employees/:extId/progress')
