@@ -135,10 +135,10 @@ function readChecks(
     }
     choices.set(choice.id, bit);
   }
-  if (!situation) {
-    return null;
-  }
-  return { situation, choices };
+  return {
+    situation: situation ?? { same: false, reason: 'нет пункта text' },
+    choices,
+  };
 }
 
 function readChoiceMap(items: readonly unknown[]): Map<string, JudgeBit> | null {

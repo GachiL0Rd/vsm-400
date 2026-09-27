@@ -79,6 +79,23 @@ describe('судья смысла', () => {
     expect(parsed.reason).toContain('walk: другое действие');
   });
 
+  it('пропуск id text — отказ, а не мусор', () => {
+    const parsed = parseJudge(
+      {
+        checks: [
+          { id: 'radio', same: true, reason: 'доклад' },
+          { id: 'walk', same: true, reason: 'дойти' },
+        ],
+      },
+      ids,
+    );
+    expect(parsed).toMatchObject({ ok: true, passed: false });
+    if (!parsed.ok) {
+      return;
+    }
+    expect(parsed.reason).toContain('нет пункта text');
+  });
+
   it('схема фиксирует text и id выборов', () => {
     const schema = judgeJsonSchema(ids);
     const checks = (
