@@ -5,7 +5,6 @@ import { z } from 'zod';
 import { APP_CONFIG, type AppConfig } from '../config/env';
 import { RedisService } from '../redis/redis.service';
 import { TICKET_REDIS_TTL_SEC, TICKET_TTL_SEC } from './game-cookie';
-import { invalidTicket } from './http-errors';
 
 const ISSUER = 'vsm-backend';
 const AUDIENCE = 'vsm-game';
@@ -46,16 +45,7 @@ export class TicketService {
     );
   }
 
-  /** Legacy /api/internal/v1: и просроченный, и битый билет — 401. */
-  async read(token: string): Promise<TicketClaims> {
-    const verdict = await this.classify(token);
-    if (verdict.status !== 'ok') {
-      throw invalidTicket();
-    }
-    return verdict.claims;
-  }
-
-  /** Platform resolve отличает истечение от битой подписи. 401 здесь не бывает. */
+  /** Platform resolve отличает истечение от битой подписи. */
   async classify(token: string): Promise<TicketVerdict> {
     try {
       const payload = await this.jwt.verifyAsync(token, {

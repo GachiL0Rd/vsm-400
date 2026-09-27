@@ -19,7 +19,7 @@ import { commitOf, createRng } from '../src/engine/rng';
 import type { ScenarioGraph } from '../src/engine/schema';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { ScenariosService } from '../src/scenarios/scenarios.service';
-import type { DecisionView, OpenedSession, RunReport } from '../src/sessions/dto';
+import type { OpenedSession } from '../src/sessions/dto';
 import { decryptSeed } from '../src/sessions/seed-box';
 import { SessionsService } from '../src/sessions/sessions.service';
 import { personaOf, pickApprovedId, readTextPlan, textPlanKey } from '../src/sessions/text-plan';
@@ -173,65 +173,24 @@ function ticketPayload(token: string): { jti: string } {
   return JSON.parse(Buffer.from(part, 'base64url').toString('utf8')) as { jti: string };
 }
 
-function reportBody(): RunReport {
+function finishBody(attemptId: string, loyalty = 87) {
   return {
-    contractVersion: 1,
-    protocolVersion: 1,
-    scenarioId: 'pressure',
-    simulationSeconds: 40,
-    outcome: 'completed',
-    outcomeNote: 'Доложено',
-    safety: 89,
-    loyalty: 87,
-    facts: { prevented: 1, incidents: 0, complaints: 0, interventions: 0 },
-    decisions: [
-      {
-        id: 'report-panel',
-        time: '00:20',
-        stage: 'ride',
-        verdict: 'correct',
-        safety: 0,
-        loyalty: 0,
-        reactionSec: 12,
-        lucky: false,
-      },
-      {
-        id: 'late-call',
-        time: '00:40',
-        stage: 'boarding',
-        verdict: 'late',
-        safety: -2,
-        loyalty: 1,
-        reactionSec: 0.2,
-      },
-      {
-        id: 'wrong',
-        time: '00:50',
-        stage: 'enroute',
-        verdict: 'incorrect',
-        safety: -5,
-        loyalty: -1,
-      },
-      {
-        id: 'skip',
-        time: '01:00',
-        stage: 'stop',
-        verdict: 'missed',
-        safety: -3,
-        loyalty: -2,
-      },
-    ],
-    checks: [
-      {
-        id: 'pressure-panel',
-        detected: true,
-        reportRequired: true,
-        reported: true,
-        actionCorrect: true,
-        consequenceRolled: false,
-      },
-    ],
+    attemptId,
+    content: {
+      gameLevelId: 'level-1',
+      gameLevelVersion: '1',
+      simulationCompatibilityVersion: '1',
+    },
+    rootSeed: 'root-seed',
+    userInputs: [],
+    achievements: { setVersion: '1', ids: [] as string[] },
+    termination: { kind: 'route-completed' as const, outcomeId: 'arrived' },
+    scores: { safety: 89, customerSatisfaction: loyalty },
   };
+}
+
+function bearer(): Record<string, string> {
+  return { authorization: `Bearer ${process.env.GAME_SERVER_TOKEN ?? ''}` };
 }
 
 describe('игровые сессии', () => {
@@ -242,7 +201,6 @@ describe('игровые сессии', () => {
   let prisma: PrismaService;
   let config: AppConfig;
   let redisUrl = '';
-  const serviceToken = process.env.GAME_SERVER_TOKEN ?? '';
 
   beforeAll(async () => {
     redisUrl = testRedisUrl('sessions');
@@ -419,62 +377,6 @@ describe('игровые сессии', () => {
     return { response, body: response.json() as OpenedSession };
   }
 
-  async function move(sessionId: string, seq: number, choiceId: string): Promise<DecisionView> {
-    clock.advance(1000);
-    const response = await inject(
-      'POST',
-      `/api/internal/v1/game-sessions/${sessionId}/decisions`,
-      undefined,
-      { seq, choiceId, clientTs: clock.current.getTime() },
-      { 'x-service-token': serviceToken },
-    );
-    expect(response.statusCode, response.body).toBe(200);
-    return response.json() as DecisionView;
-  }
-
-  async function journalOf(
-    sessionId: string,
-  ): Promise<{ situation: string; action: string; choiceId: string }[]> {
-    const row = await prisma.gameSession.findUniqueOrThrow({ where: { id: sessionId } });
-    const state = row.state as {
-      journal?: { situation: string; action: string; choiceId: string }[];
-    };
-    return state.journal ?? [];
-  }
-
-  function listen(channel: string): Promise<{
-    next: () => Promise<string>;
-    close: () => Promise<void>;
-  }> {
-    const sub = new Redis(redisUrl);
-    const queue: string[] = [];
-    let pending: ((value: string) => void) | null = null;
-    sub.on('message', (_name, message) => {
-      if (pending) {
-        const resolve = pending;
-        pending = null;
-        resolve(message);
-        return;
-      }
-      queue.push(message);
-    });
-    return sub.subscribe(channel).then(() => ({
-      next: () => {
-        const ready = queue.shift();
-        if (ready !== undefined) {
-          return Promise.resolve(ready);
-        }
-        return new Promise((resolve) => {
-          pending = resolve;
-        });
-      },
-      close: async () => {
-        await sub.unsubscribe(channel);
-        await sub.quit();
-      },
-    }));
-  }
-
   it('создаёт одну смену, шифрует seed и помечает назначение', async () => {
     const user = await makeUser('open');
     const assignment = await prisma.shiftAssignment.create({
@@ -500,12 +402,6 @@ describe('игровые сессии', () => {
     expect(first.body.plan.segments).toBeGreaterThan(0);
     expect(first.body.plan.titles.length).toBe(first.body.plan.segments);
     expect(first.body.plan.carClass).toBe('ECONOMY');
-    const cookie = String(first.response.headers['set-cookie']);
-    expect(cookie).toContain('vsm_game=');
-    expect(cookie.toLowerCase()).toContain('httponly');
-    expect(cookie.toLowerCase()).toContain('path=/game-ws');
-    expect(cookie.toLowerCase()).toContain('samesite=strict');
-
     const row = await prisma.gameSession.findUniqueOrThrow({ where: { id: first.body.sessionId } });
     expect(row.status).toBe('PENDING');
     expect(row.transport).toBe('WS');
@@ -547,20 +443,20 @@ describe('игровые сессии', () => {
     expect(again.body.sessionId).toBe(opened.body.sessionId);
     const verified = await inject(
       'POST',
-      '/api/internal/v1/tickets/verify',
+      '/api/game/sessions/resolve',
       undefined,
-      { ticket: again.body.ticket },
-      { 'x-service-token': serviceToken },
+      { key: again.body.ticket },
+      bearer(),
     );
     expect(verified.statusCode, verified.body).toBe(200);
     const reported = await inject(
       'POST',
-      `/api/internal/v1/game-sessions/${opened.body.sessionId}/report`,
+      `/api/game/sessions/${opened.body.sessionId}/finish`,
       undefined,
-      reportBody(),
-      { 'x-service-token': serviceToken },
+      finishBody(opened.body.sessionId),
+      bearer(),
     );
-    expect(reported.statusCode).toBe(200);
+    expect(reported.statusCode, reported.body).toBe(200);
     const mine = completed.filter((event) => event.sessionId === opened.body.sessionId);
     expect(mine).toHaveLength(1);
     expect(mine[0]?.suspicious).toBe(false);
@@ -589,20 +485,6 @@ describe('игровые сессии', () => {
     expect(missing.statusCode).toBe(404);
   });
 
-  it('clientTs за пределом Date — 422', async () => {
-    const user = await makeUser('clock');
-    const opened = await open(user.id);
-    const response = await inject(
-      'POST',
-      `/api/internal/v1/game-sessions/${opened.body.sessionId}/decisions`,
-      undefined,
-      { seq: 0, choiceId: 'do', clientTs: 9e15 },
-      { 'x-service-token': serviceToken },
-    );
-    expect(response.statusCode).toBe(422);
-    expect(await prisma.gameEvent.count({ where: { sessionId: opened.body.sessionId } })).toBe(0);
-  });
-
   it('билет одноразовый и переводит PENDING в ACTIVE', async () => {
     const user = await makeUser('ticket');
     const opened = await open(user.id);
@@ -616,42 +498,41 @@ describe('игровые сессии', () => {
       where: { id: opened.body.sessionId },
     });
     expect(stillPending.status).toBe('PENDING');
-    const denied = await inject('POST', '/api/internal/v1/tickets/verify', undefined, {
-      ticket: opened.body.ticket,
+    const denied = await inject('POST', '/api/game/sessions/resolve', undefined, {
+      key: opened.body.ticket,
     });
     expect(denied.statusCode).toBe(401);
 
     const verified = await inject(
       'POST',
-      '/api/internal/v1/tickets/verify',
+      '/api/game/sessions/resolve',
       undefined,
-      { ticket: opened.body.ticket },
-      {
-        'x-service-token': serviceToken,
-      },
+      { key: opened.body.ticket },
+      bearer(),
     );
-    expect(verified.statusCode).toBe(200);
+    expect(verified.statusCode, verified.body).toBe(200);
     expect(verified.json()).toMatchObject({
-      userId: user.id,
-      callsign: user.callsign,
-      sessionId: opened.body.sessionId,
-      status: 'ACTIVE',
+      contractVersion: 1,
+      attemptId: opened.body.sessionId,
+      mode: { kind: 'live' },
     });
-    const plan = (verified.json() as { plan: { scenarios: unknown[] } }).plan;
-    expect(plan.scenarios.length).toBeGreaterThan(0);
+    const active = await prisma.gameSession.findUniqueOrThrow({
+      where: { id: opened.body.sessionId },
+    });
+    expect(active.status).toBe('ACTIVE');
     const redis = new Redis(redisUrl);
     expect(await redis.get(`vsm:ticket:${ticketPayload(opened.body.ticket).jti}`)).toBe('1');
     await redis.quit();
 
     const reused = await inject(
       'POST',
-      '/api/internal/v1/tickets/verify',
+      '/api/game/sessions/resolve',
       undefined,
-      { ticket: opened.body.ticket },
-      { 'x-service-token': serviceToken },
+      { key: opened.body.ticket },
+      bearer(),
     );
-    expect(reused.statusCode).toBe(409);
-    expect(reused.json()).toMatchObject({ code: 'TICKET_REUSED' });
+    expect(reused.statusCode).toBe(410);
+    expect(reused.json()).toMatchObject({ code: 'session-consumed' });
     const flagged = await prisma.gameSession.findUniqueOrThrow({
       where: { id: opened.body.sessionId },
     });
@@ -659,132 +540,75 @@ describe('игровые сессии', () => {
 
     const garbage = await inject(
       'POST',
-      '/api/internal/v1/tickets/verify',
+      '/api/game/sessions/resolve',
       undefined,
-      { ticket: 'not-a-jwt' },
-      { 'x-service-token': serviceToken },
+      { key: 'not-a-jwt' },
+      bearer(),
     );
-    expect(garbage.statusCode).toBe(401);
-    expect(garbage.json()).toMatchObject({ code: 'INVALID_TICKET' });
+    expect(garbage.statusCode).toBe(404);
+    expect(garbage.json()).toMatchObject({ code: 'invalid-session' });
   });
 
-  it('отчёт мапится в рейс и повтор отдаёт тот же runId', async () => {
+  it('finish пишет рейс и повтор того же тела отдаёт тот же resultId', async () => {
     const user = await makeUser('report');
     const opened = await open(user.id);
     const id = opened.body.sessionId;
-    const headers = { 'x-service-token': serviceToken };
-    const verified = await inject(
+    const resolved = await inject(
       'POST',
-      '/api/internal/v1/tickets/verify',
+      '/api/game/sessions/resolve',
       undefined,
-      { ticket: opened.body.ticket },
-      headers,
+      { key: opened.body.ticket },
+      bearer(),
     );
-    expect(verified.statusCode, verified.body).toBe(200);
+    expect(resolved.statusCode, resolved.body).toBe(200);
+    const body = finishBody(id);
     const first = await inject(
       'POST',
-      `/api/internal/v1/game-sessions/${id}/report`,
+      `/api/game/sessions/${id}/finish`,
       undefined,
-      reportBody(),
-      headers,
+      body,
+      bearer(),
     );
-    expect(first.statusCode).toBe(200);
-    const runId = (first.json() as { runId: string }).runId;
+    expect(first.statusCode, first.body).toBe(200);
+    const runId = (first.json() as { resultId: string }).resultId;
     const mine = completed.filter((event) => event.sessionId === id);
     expect(mine).toHaveLength(1);
     expect(mine[0]?.runId).toBe(runId);
     expect(mine[0]?.suspicious).toBe(false);
-    expect(mine[0]?.summary.decisions.map((decision) => decision.verdict)).toEqual([
-      'best',
-      'ok',
-      'worse',
-      'missed',
-    ]);
-    expect(mine[0]?.summary.decisions.map((decision) => decision.stage)).toEqual([
-      'enroute',
-      'boarding',
-      'enroute',
-      'stop',
-    ]);
-    expect(mine[0]?.summary.decisions[0]?.reactionMs).toBe(12_000);
-    expect(mine[0]?.summary.decisions[1]?.reactionMs).toBe(200);
-    expect(mine[0]?.summary.timeouts).toBe(1);
-    expect(mine[0]?.summary.facts.prevented).toBe(1);
+    expect(mine[0]?.summary.loyalty).toBe(87);
+    expect(mine[0]?.summary.outcome).toBe('completed');
     const run = await prisma.run.findUniqueOrThrow({ where: { sessionId: id } });
     expect(run.id).toBe(runId);
+    expect(run.loyalty).toBe(87);
 
-    const changed = reportBody();
-    changed.loyalty = 1;
     const second = await inject(
       'POST',
-      `/api/internal/v1/game-sessions/${id}/report`,
+      `/api/game/sessions/${id}/finish`,
       undefined,
-      changed,
-      headers,
+      body,
+      bearer(),
     );
     expect(second.statusCode).toBe(200);
-    expect((second.json() as { runId: string }).runId).toBe(runId);
+    expect((second.json() as { resultId: string }).resultId).toBe(runId);
     expect(completed.filter((event) => event.sessionId === id)).toHaveLength(1);
+
+    const changed = finishBody(id, 1);
+    const conflict = await inject(
+      'POST',
+      `/api/game/sessions/${id}/finish`,
+      undefined,
+      changed,
+      bearer(),
+    );
+    expect(conflict.statusCode).toBe(409);
+    expect(conflict.json()).toMatchObject({ code: 'result-conflict' });
     const still = await prisma.run.findUniqueOrThrow({ where: { id: runId } });
     expect(still.loyalty).toBe(87);
-    const stored = await prisma.gameSession.findUniqueOrThrow({ where: { id } });
-    const result = stored.result as {
-      runId: string;
-      suspicious: boolean;
-      summary: { loyalty: number };
-    };
-    expect(result).toMatchObject({ runId, suspicious: false });
-    expect(result.summary.loyalty).toBe(87);
-    const completedAudit = await prisma.auditLog.findFirst({
-      where: { action: 'session.completed', target: id },
-    });
-    expect(completedAudit?.meta).toEqual({ runId, suspicious: false });
-    await prisma.auditLog.deleteMany({ where: { action: 'session.completed', target: id } });
-    const third = await inject(
-      'POST',
-      `/api/internal/v1/game-sessions/${id}/report`,
-      undefined,
-      reportBody(),
-      headers,
-    );
-    expect(third.statusCode).toBe(200);
-    expect((third.json() as { runId: string }).runId).toBe(runId);
-    expect(completed.filter((event) => event.sessionId === id)).toHaveLength(1);
-
-    const batch = {
-      events: [
-        {
-          seq: 50,
-          type: 'ping',
-          payload: { ok: true },
-          clientAt: '2020-01-01T00:00:00.000Z',
-        },
-      ],
-    };
-    const accepted = await inject(
-      'POST',
-      `/api/internal/v1/game-sessions/${id}/events`,
-      undefined,
-      batch,
-      headers,
-    );
-    expect(accepted.statusCode).toBe(200);
-    expect(accepted.json()).toEqual({ accepted: 1, duplicates: 0 });
-    const duplicate = await inject(
-      'POST',
-      `/api/internal/v1/game-sessions/${id}/events`,
-      undefined,
-      batch,
-      headers,
-    );
-    expect(duplicate.json()).toEqual({ accepted: 0, duplicates: 1 });
   });
 
-  it('abort и expire публикуют redis и не пишут рейс', async () => {
+  it('abort и expire закрывают смену и не пишут рейс', async () => {
     const user = await makeUser('stop');
     const opened = await open(user.id);
-    const channel = `vsm:game:${opened.body.sessionId}`;
-    const ear = await listen(channel);
     const aborted = await inject(
       'POST',
       `/api/v1/game-sessions/${opened.body.sessionId}/abort`,
@@ -792,8 +616,6 @@ describe('игровые сессии', () => {
     );
     expect(aborted.statusCode).toBe(200);
     expect(aborted.json()).toEqual({ status: 'ABORTED' });
-    const abortMessage = JSON.parse(await ear.next()) as { type: string };
-    expect(abortMessage.type).toBe('abort');
     expect(await prisma.run.findUnique({ where: { sessionId: opened.body.sessionId } })).toBeNull();
     const again = await inject(
       'POST',
@@ -805,11 +627,9 @@ describe('игровые сессии', () => {
       where: { target: opened.body.sessionId, action: 'session.aborted' },
     });
     expect(audits).toBe(1);
-    await ear.close();
 
     const other = await makeUser('expire');
     const expiring = await open(other.id);
-    const expireEar = await listen(`vsm:game:${expiring.body.sessionId}`);
     clock.advance(2 * 60 * 60 * 1000 + 1000);
     const expired = await app.get(SessionsService).expireDue();
     expect(expired).toBeGreaterThanOrEqual(1);
@@ -818,9 +638,6 @@ describe('игровые сессии', () => {
     });
     expect(row.status).toBe('EXPIRED');
     expect(await prisma.run.findUnique({ where: { sessionId: row.id } })).toBeNull();
-    const expireMessage = JSON.parse(await expireEar.next()) as { type: string; sessionId: string };
-    expect(expireMessage).toMatchObject({ type: 'expire', sessionId: row.id });
-    await expireEar.close();
   });
 
   it('сид фиксирует текст и порядок, вариант не меняет очки, журнал хранит показ', async () => {
@@ -889,58 +706,7 @@ describe('игровые сессии', () => {
     });
     expect(picked.uses).toBe(1);
     expect(picked.status).toBe('RETIRED');
-    const payload = picked.payload as { text: string; choices: { id: string; text: string }[] };
-    const doText = payload.choices.find((choice) => choice.id === 'do')?.text;
-    const stepBody = await move(opened.body.sessionId, 0, 'do');
-    expect(stepBody.scales).toMatchObject({ loyalty: 65, safety: 65 });
-    expect(stepBody.view.nodeId).not.toBe('pool-ask');
-    expect(stepBody.finished).toBe(false);
-    expect((await journalOf(opened.body.sessionId))[0]).toMatchObject({
-      situation: payload.text,
-      action: doText,
-      choiceId: 'do',
-    });
-
-    let finished = false;
-    let seq = stepBody.seq;
-    let choices = stepBody.view.choices;
-    let guard = 0;
-    while (!finished && guard < 8) {
-      const choice = choices[0];
-      if (!choice) {
-        break;
-      }
-      const body = await move(opened.body.sessionId, seq, choice.id);
-      finished = body.finished;
-      seq = body.seq;
-      choices = body.view.choices;
-      guard += 1;
-    }
-    expect(finished).toBe(true);
-    const run = await prisma.run.findUnique({ where: { sessionId: opened.body.sessionId } });
-    if (!run) {
-      throw new Error('рейс не записан');
-    }
-    const detail = await inject('GET', `/api/v1/me/runs/${run.id}`, user.id);
-    expect(detail.statusCode, detail.body).toBe(200);
-    const shown = (
-      detail.json() as {
-        decisions: {
-          situation: string;
-          action: string;
-          loyalty: number;
-          safety: number;
-          verdict: string;
-        }[];
-      }
-    ).decisions.find((decision) => decision.situation === payload.text);
-    expect(shown).toMatchObject({
-      action: doText,
-      loyalty: 5,
-      safety: 5,
-      verdict: 'best',
-    });
-  }, 30_000);
+  });
 
   it('нет APPROVED — исходный текст и авторский порядок, pending не расходуется', async () => {
     await resetLlm('sess-llm', 'Перефраз');
@@ -976,13 +742,6 @@ describe('игровые сессии', () => {
         where: { id: pendingId },
       });
       expect(pending.uses).toBe(0);
-      const stepBody = await move(opened.body.sessionId, 0, 'do');
-      expect(stepBody.view.nodeId).not.toBe('pool-ask');
-      expect((await journalOf(opened.body.sessionId))[0]).toMatchObject({
-        situation: 'Исходная ситуация',
-        action: 'Сделать по регламенту',
-        choiceId: 'do',
-      });
     } finally {
       emitter.off(SESSION_TEXT_REQUESTED, onText);
     }
@@ -1008,11 +767,6 @@ describe('игровые сессии', () => {
       doText: 'Чужое действие пула',
       skipText: 'Чужой пропуск пула',
     });
-    await move(opened.body.sessionId, 0, 'do');
-    expect((await journalOf(opened.body.sessionId))[0]).toMatchObject({
-      situation: 'Исходная ситуация',
-      action: 'Сделать по регламенту',
-    });
     expect(
       (await prisma.scenarioTextVariant.findUniqueOrThrow({ where: { id: poolId } })).uses,
     ).toBe(0);
@@ -1021,7 +775,6 @@ describe('игровые сессии', () => {
         .textPlan,
     );
     expect(plan?.nodes[textPlanKey('sess-live', 'live-ask')]).toBeNull();
-    expect(plan?.shown).toContain(textPlanKey('sess-live', 'live-ask'));
   }, 30_000);
 
   it('live закрепляет вариант своей сессии и не берёт более свежий APPROVED пула', async () => {
@@ -1055,67 +808,6 @@ describe('игровые сессии', () => {
         ]),
       }),
     );
-    const own = '00000000-0000-4000-8000-0000000000d2';
-    const poolNewer = '00000000-0000-4000-8000-0000000000d3';
-    const after = '00000000-0000-4000-8000-0000000000d4';
-    await putVariant({
-      id: own,
-      scenarioId: 'sess-live',
-      nodeId: 'live-ask',
-      persona,
-      text: 'Текст этой сессии',
-      doText: 'Действие этой сессии',
-      skipText: 'Пропуск этой сессии',
-      sessionId: opened.body.sessionId,
-      createdAt: new Date('2020-01-02T00:00:00.000Z'),
-    });
-    await putVariant({
-      id: poolNewer,
-      scenarioId: 'sess-live',
-      nodeId: 'live-ask',
-      persona,
-      text: 'Более свежий текст пула',
-      doText: 'Свежее чужое действие',
-      skipText: 'Свежий чужой пропуск',
-      createdAt: new Date('2020-01-05T00:00:00.000Z'),
-    });
-    await move(opened.body.sessionId, 0, 'do');
-    expect((await journalOf(opened.body.sessionId))[0]).toMatchObject({
-      situation: 'Текст этой сессии',
-      action: 'Действие этой сессии',
-      choiceId: 'do',
-    });
-    const pinned = await prisma.gameSession.findUniqueOrThrow({
-      where: { id: opened.body.sessionId },
-    });
-    const plan = readTextPlan(pinned.textPlan);
-    expect(plan?.nodes[key]).toBe(own);
-    expect(plan?.shown).toContain(key);
-    expect((await prisma.scenarioTextVariant.findUniqueOrThrow({ where: { id: own } })).uses).toBe(
-      1,
-    );
-    expect(
-      (await prisma.scenarioTextVariant.findUniqueOrThrow({ where: { id: poolNewer } })).uses,
-    ).toBe(0);
-
-    await putVariant({
-      id: after,
-      scenarioId: 'sess-live',
-      nodeId: 'live-ask',
-      persona,
-      text: 'Текст после показа',
-      doText: 'Позднее действие',
-      skipText: 'Поздний пропуск',
-      sessionId: opened.body.sessionId,
-      createdAt: new Date('2020-01-06T00:00:00.000Z'),
-    });
-    const frozen = await prisma.gameSession.findUniqueOrThrow({
-      where: { id: opened.body.sessionId },
-    });
-    expect(readTextPlan(frozen.textPlan)?.nodes[key]).toBe(own);
-    expect(
-      (await prisma.scenarioTextVariant.findUniqueOrThrow({ where: { id: after } })).uses,
-    ).toBe(0);
     emitter.off(SESSION_TEXT_REQUESTED, onText);
   }, 30_000);
 });

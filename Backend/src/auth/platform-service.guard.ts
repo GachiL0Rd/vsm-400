@@ -8,10 +8,7 @@ import {
 import { APP_CONFIG, type AppConfig } from '../config/env';
 import { tokenEquals } from './token';
 
-/**
- * Game Server ходит с Authorization: Bearer. Секрет тот же, что X-Service-Token
- * у legacy /api/internal/v1. Заголовок X-Service-Token здесь не принимается.
- */
+/** Game Server ходит с Authorization: Bearer. Секрет — GAME_SERVER_TOKEN. */
 @Injectable()
 export class PlatformServiceGuard implements CanActivate {
   constructor(@Inject(APP_CONFIG) private readonly config: AppConfig) {}

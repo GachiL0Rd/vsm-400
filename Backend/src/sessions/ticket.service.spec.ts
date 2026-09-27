@@ -1,4 +1,3 @@
-import { UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { describe, expect, it, vi } from 'vitest';
 import type { AppConfig } from '../config/env';
@@ -36,15 +35,13 @@ function sign(
 }
 
 describe('TicketService.classify', () => {
-  it('отличает истечение от битой подписи, read() оба случая держит на 401', async () => {
+  it('отличает истечение от битой подписи', async () => {
     const { jwt, tickets } = service();
     const expired = await sign(jwt, -30);
     const broken = `${expired}x`;
     await expect(tickets.classify(expired)).resolves.toEqual({ status: 'expired' });
     await expect(tickets.classify(broken)).resolves.toEqual({ status: 'invalid' });
     await expect(tickets.classify('not-a-jwt')).resolves.toEqual({ status: 'invalid' });
-    await expect(tickets.read(expired)).rejects.toBeInstanceOf(UnauthorizedException);
-    await expect(tickets.read(broken)).rejects.toBeInstanceOf(UnauthorizedException);
   });
 
   it('принимает живой билет и отвергает чужие claims', async () => {

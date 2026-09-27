@@ -13,12 +13,10 @@ import type { AppConfig } from '../config/env';
 import { Role } from '../generated/prisma/client';
 import type { PrismaService } from '../prisma/prisma.service';
 import { AccessGuard } from './access.guard';
-import { InternalService } from './internal-service.decorator';
 import { PlatformServiceGuard } from './platform-service.guard';
 import { Public } from './public.decorator';
 import { Roles } from './roles.decorator';
 import { RolesGuard } from './roles.guard';
-import { ServiceTokenGuard } from './service-token.guard';
 
 const userId = '018f1a2b-3c4d-7e5f-8a9b-0c1d2e3f4a5b';
 const sessionId = '018f1a2b-3c4d-7e5f-8a9b-0c1d2e3f4a5c';
@@ -36,7 +34,6 @@ class Probe {
   @Get()
   adminOnly(): void {}
 
-  @InternalService()
   @Get()
   internal(): void {}
 }
@@ -204,26 +201,6 @@ describe('RolesGuard', () => {
   });
 });
 
-describe('ServiceTokenGuard', () => {
-  const guard = new ServiceTokenGuard({
-    gameServerToken: 'local-dev-game-server-token',
-  } as AppConfig);
-
-  function withHeader(value?: string): ExecutionContext {
-    return context(
-      { headers: value === undefined ? {} : { 'x-service-token': value } },
-      Probe.prototype.internal,
-    );
-  }
-
-  it('сверяет X-Service-Token и не падает на другой длине', () => {
-    expect(guard.canActivate(withHeader('local-dev-game-server-token'))).toBe(true);
-    expect(() => guard.canActivate(withHeader('nope'))).toThrow(UnauthorizedException);
-    expect(() => guard.canActivate(withHeader('x'))).toThrow(UnauthorizedException);
-    expect(() => guard.canActivate(withHeader())).toThrow(UnauthorizedException);
-  });
-});
-
 describe('bearer платформы', () => {
   const token = 'local-dev-game-server-token';
   const guard = new PlatformServiceGuard({ gameServerToken: token } as AppConfig);
@@ -245,14 +222,5 @@ describe('bearer платформы', () => {
     expect(() =>
       guard.canActivate(headers({ authorization: `Basic ${token}`, 'x-service-token': token })),
     ).toThrow(UnauthorizedException);
-  });
-});
-
-describe('@InternalService', () => {
-  const reflector = new Reflector();
-
-  it('это публичный маршрут с ServiceTokenGuard', () => {
-    expect(reflector.get('isPublic', Probe.prototype.internal)).toBe(true);
-    expect(reflector.get('__guards__', Probe.prototype.internal)).toEqual([ServiceTokenGuard]);
   });
 });

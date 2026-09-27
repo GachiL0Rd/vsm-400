@@ -118,73 +118,49 @@ launch="$(jq -er '.launchUrl' "$opened")"
 [[ "$launch" == *"sessionKey="* ]] || die "launchUrl без sessionKey" "$opened"
 step "POST /api/v1/game-sessions session=$ws_id"
 
-verify="$WORK/verify.json"
-code="$(curl -sS --max-time 30 -o "$verify" -w '%{http_code}' \
+resolve="$WORK/resolve.json"
+code="$(curl -sS --max-time 30 -o "$resolve" -w '%{http_code}' \
   -H 'content-type: application/json' \
-  -H "X-Service-Token: $GAME_SERVER_TOKEN" \
-  -d "$(jq -nc --arg ticket "$ticket" '{ticket:$ticket}')" \
-  "$BASE/api/internal/v1/tickets/verify")"
-expect "$code" 200 "tickets/verify" "$verify"
-[[ "$(jq -r '.status' "$verify")" == "ACTIVE" ]] || die "билет не перевёл сессию в ACTIVE" "$verify"
-[[ "$(jq -r '.sessionId' "$verify")" == "$ws_id" ]] || die "verify.sessionId не совпал" "$verify"
-step "POST /api/internal/v1/tickets/verify ACTIVE"
+  -H "Authorization: Bearer $GAME_SERVER_TOKEN" \
+  -d "$(jq -nc --arg key "$ticket" '{key:$key}')" \
+  "$BASE/api/game/sessions/resolve")"
+expect "$code" 200 "sessions/resolve" "$resolve"
+[[ "$(jq -r '.attemptId' "$resolve")" == "$ws_id" ]] || die "resolve.attemptId не совпал" "$resolve"
+step "POST /api/game/sessions/resolve attempt=$ws_id"
 
 reused="$WORK/reused.json"
 code="$(curl -sS --max-time 30 -o "$reused" -w '%{http_code}' \
   -H 'content-type: application/json' \
-  -H "X-Service-Token: $GAME_SERVER_TOKEN" \
-  -d "$(jq -nc --arg ticket "$ticket" '{ticket:$ticket}')" \
-  "$BASE/api/internal/v1/tickets/verify")"
-expect "$code" 409 "tickets/verify повтор" "$reused"
-[[ "$(jq -r '.code' "$reused")" == "TICKET_REUSED" ]] || die "повтор билета не TICKET_REUSED" "$reused"
-step "POST tickets/verify повтор 409 TICKET_REUSED"
+  -H "Authorization: Bearer $GAME_SERVER_TOKEN" \
+  -d "$(jq -nc --arg key "$ticket" '{key:$key}')" \
+  "$BASE/api/game/sessions/resolve")"
+expect "$code" 410 "sessions/resolve повтор" "$reused"
+[[ "$(jq -r '.code' "$reused")" == "session-consumed" ]] || die "повтор билета не session-consumed" "$reused"
+step "POST sessions/resolve повтор 410 session-consumed"
 
-report="$WORK/report.json"
-report_req="$WORK/report-req.json"
-cat >"$report_req" <<'JSON'
-{
-  "contractVersion": 1,
-  "protocolVersion": 1,
-  "scenarioId": "ride-unwell",
-  "simulationSeconds": 40,
-  "outcome": "completed",
-  "outcomeNote": "Смена сдана",
-  "safety": 88,
-  "loyalty": 84,
-  "facts": { "prevented": 1, "incidents": 0, "complaints": 0, "interventions": 0 },
-  "decisions": [
-    {
-      "id": "ask",
-      "time": "09:40",
-      "stage": "ride",
-      "situation": "Пассажиру плохо",
-      "action": "Вызвать начальника поезда",
-      "verdict": "correct",
-      "safety": 4,
-      "loyalty": 2,
-      "reactionSec": 2
-    }
-  ],
-  "checks": [
-    {
-      "id": "panel",
-      "detected": true,
-      "reportRequired": true,
-      "reported": true,
-      "actionCorrect": true,
-      "consequenceRolled": false
-    }
-  ]
-}
-JSON
+report="$WORK/finish.json"
+report_req="$WORK/finish-req.json"
+jq -nc --arg attemptId "$ws_id" '{
+  attemptId: $attemptId,
+  content: {
+    gameLevelId: "level-1",
+    gameLevelVersion: "1",
+    simulationCompatibilityVersion: "1"
+  },
+  rootSeed: "root-seed",
+  userInputs: [],
+  achievements: { setVersion: "1", ids: [] },
+  termination: { kind: "route-completed", outcomeId: "arrived" },
+  scores: { safety: 88, customerSatisfaction: 84 }
+}' >"$report_req"
 code="$(curl -sS --max-time 30 -o "$report" -w '%{http_code}' \
   -H 'content-type: application/json' \
-  -H "X-Service-Token: $GAME_SERVER_TOKEN" \
+  -H "Authorization: Bearer $GAME_SERVER_TOKEN" \
   --data-binary @"$report_req" \
-  "$BASE/api/internal/v1/game-sessions/$ws_id/report")"
-expect "$code" 200 "report" "$report"
-ws_run="$(jq -er '.runId' "$report")"
-step "POST report runId=$ws_run"
+  "$BASE/api/game/sessions/$ws_id/finish")"
+expect "$code" 200 "finish" "$report"
+ws_run="$(jq -er '.resultId' "$report")"
+step "POST finish resultId=$ws_run"
 
 runs_ws="$WORK/runs-ws.json"
 code="$(req GET '/api/v1/me/runs?limit=5' "$runs_ws")"
