@@ -23,7 +23,7 @@
 2. [`project_direction.md`](project_direction.md) — общая граница модулей.
 3. [`vsm_conductor_game_concept.md`](vsm_conductor_game_concept.md) — продуктовая концепция.
 4. [`vsm_baseline_vertical_slice.md`](vsm_baseline_vertical_slice.md) — целевой вертикальный срез, включая deferred возможности.
-5. [`architecture/repository-structure.md`](architecture/repository-structure.md) — границы `common / simulation / server / client`.
+5. [`architecture/repository-structure.md`](architecture/repository-structure.md) — границы `common / simulation / projection / server / client`.
 6. [`architecture/client-server.md`](architecture/client-server.md) — Browser ↔ Game Server ↔ Platform Server.
 7. [`api/websocket-protocol.md`](api/websocket-protocol.md) — фактический Browser ↔ Game Server protocol v1.
 8. [`api/platform-openapi.yaml`](api/platform-openapi.yaml) — Swagger/OpenAPI Game Server ↔ Platform Server.
@@ -35,7 +35,6 @@
 14. [`deployment/server-configuration.md`](deployment/server-configuration.md) — запуск и environment configuration Game Server.
 15. [`deployment/content-bundle.md`](deployment/content-bundle.md) — release-format server-side Level/Scenario/Actions/Assessment config.
 16. [`deployment/container-layout.md`](deployment/container-layout.md) — контейнерные/service boundaries и reference topology.
-17. [`engineering/library-candidates.md`](engineering/library-candidates.md) — ненормативные dependency candidates.
 
 ## Нормативная граница
 
@@ -43,7 +42,6 @@
 
 `implementation/` задаёт конкретную реализацию текущего demo и подчиняется этим инвариантам.
 
-`engineering/` — research: список кандидатов и экспериментов, а не обязательные зависимости.
 
 ## Иерархия источников
 

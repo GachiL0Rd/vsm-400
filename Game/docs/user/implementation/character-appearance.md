@@ -23,18 +23,9 @@ body/mannequin
 
 Game Server не хранит изображения и не занимается их композицией.
 
-Он может передавать публичное описание внешности через стабильные IDs, например:
+В текущем release public contract намеренно минимален: персонаж получает стабильный `appearanceId`, а held item публикуется отдельно со своим `visualId`.
 
-```ts
-interface CharacterAppearanceView {
-  bodyId: string;
-  clothingIds: string[];
-  accessoryIds?: string[];
-  heldItemVisualId?: string;
-}
-```
-
-Конкретная schema может измениться после утверждения art pipeline.
+Layered appearance schema (`bodyId`, `clothingIds`, accessories и другие изменяемые визуальные данные) относится к следующему этапу интеграции клиента и будет зафиксирована после получения реального набора изменяемых presentation-данных. До этого момента не следует считать пример layered schema частью protocol v1.
 
 ## 3. Ответственность клиента
 

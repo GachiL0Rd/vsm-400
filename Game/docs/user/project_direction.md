@@ -45,7 +45,7 @@ Action definitions
 Dialogue/presentation assets
 ```
 
-Внутри `Game` код разделяется на `common / simulation / server / client`. `server` является composition root: он использует authoritative `simulation` и browser-safe `common`; Client импортирует `common`, но никогда не импортирует `simulation`. Подробности — `architecture/repository-structure.md`.
+Внутри `Game` код разделяется на `common / simulation / projection / server / client`. `projection` является безопасной browser-facing границей поверх authoritative `simulation`, а `server` — composition root поверх projection/transport/platform integration. Client импортирует `common`, но никогда не импортирует `simulation` или `projection`. Подробности — `architecture/repository-structure.md`.
 
 Platform Server передаёт внешний `gameLevelId`, а Game Server разрешает его в локальный versioned config.
 

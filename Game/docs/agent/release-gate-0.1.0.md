@@ -5,9 +5,9 @@
 
 ## Gate result
 
-**Status: PASS for the current `0.1.0` release scope after the hardening changes in this gate.**
+**Status: PASS for the Game Server/simulation release scope after the hardening changes in this gate. Full browser acceptance remains a pre-release integration barrier owned with the client branch.**
 
-The release artifact can run as `server + content + client-root`, resolve a live attempt, execute the gameplay included in the current release scope, produce assessment/achievements, finish through Platform, and serve/reconnect over the documented WebSocket protocol.
+The server artifact can run as `server + content + client-root`, resolve a live attempt, execute the gameplay included in the current release scope through the public protocol, produce assessment/achievements, finish through Platform, and serve/reconnect over the documented WebSocket protocol. This does not by itself prove that the current browser UI exposes every release interaction end-to-end.
 
 ## Release blockers found and fixed
 
@@ -47,6 +47,12 @@ The release gate checks:
 - file content bundle loading and validation;
 - production build, external content root, external client root and production WebSocket smoke;
 - dead files/dependencies/unresolved imports/cycles.
+
+## Browser integration barrier
+
+Before the final product release, the client branch must pass an end-to-end acceptance path through the real browser UI for the release interactions. Current server/protocol tests prove that these interactions are executable through the public contract, while the production smoke test only proves static delivery, WebSocket startup and a minimal command path.
+
+This barrier is intentionally tracked separately because the browser client is developed in another branch. Server-side integration work should prefer simplifying/stabilizing the public contract and browser-only asset delivery rather than duplicating client implementation here.
 
 ## Accepted 0.1.0 limitations
 
