@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { Prisma } from '../generated/prisma/client';
-import { refreshExpiry, rotateRefresh } from './refresh';
+import { REFRESH_RACE_WINDOW_MS, refreshExpiry, rotateRefresh } from './refresh';
 
 describe('rotateRefresh', () => {
   it('не выдаёт новую сессию, пока пароль обязателен', async () => {
@@ -82,5 +82,104 @@ describe('rotateRefresh', () => {
         now,
       ),
     ).resolves.toEqual({ kind: 'invalid' });
+  });
+
+  it('замена моложе окна — гонка, сессии не отзывает', async () => {
+    const now = new Date('2026-09-27T12:00:00.000Z');
+    const updateMany = vi.fn(async () => ({ count: 1 }));
+    const tx = {
+      authSession: {
+        findUnique: async () => ({
+          id: 'old-session',
+          replacedById: 'winner',
+          revokedAt: new Date(now.getTime() - REFRESH_RACE_WINDOW_MS + 1),
+          expiresAt: new Date('2026-09-28T00:00:00.000Z'),
+          userId: 'user-1',
+          user: { mustChangePassword: false, disabledAt: null },
+        }),
+        create: vi.fn(),
+        updateMany,
+        delete: vi.fn(),
+      },
+    };
+    await expect(
+      rotateRefresh(
+        tx as unknown as Prisma.TransactionClient,
+        'raw-token',
+        { ip: null, userAgent: null },
+        now,
+      ),
+    ).resolves.toEqual({ kind: 'race', userId: 'user-1' });
+    expect(updateMany).not.toHaveBeenCalled();
+  });
+
+  it('замена старше окна — reuse и отзыв живых сессий', async () => {
+    const now = new Date('2026-09-27T12:00:00.000Z');
+    const updateMany = vi.fn(async () => ({ count: 2 }));
+    const tx = {
+      authSession: {
+        findUnique: async () => ({
+          id: 'old-session',
+          replacedById: 'winner',
+          revokedAt: new Date(now.getTime() - REFRESH_RACE_WINDOW_MS),
+          expiresAt: new Date('2026-09-28T00:00:00.000Z'),
+          userId: 'user-1',
+          user: { mustChangePassword: false, disabledAt: null },
+        }),
+        create: vi.fn(),
+        updateMany,
+        delete: vi.fn(),
+      },
+    };
+    await expect(
+      rotateRefresh(
+        tx as unknown as Prisma.TransactionClient,
+        'raw-token',
+        { ip: null, userAgent: null },
+        now,
+      ),
+    ).resolves.toEqual({ kind: 'reuse', userId: 'user-1' });
+    expect(updateMany).toHaveBeenCalledWith({
+      where: { userId: 'user-1', revokedAt: null },
+      data: { revokedAt: now },
+    });
+  });
+
+  it('проигравший параллельный refresh удаляет свою сессию и не гасит победителя', async () => {
+    const now = new Date('2026-09-27T12:00:00.000Z');
+    let reads = 0;
+    const updateMany = vi.fn(async () => ({ count: 0 }));
+    const remove = vi.fn(async () => ({ id: 'orphan' }));
+    const tx = {
+      authSession: {
+        findUnique: async () => {
+          reads += 1;
+          if (reads === 1) {
+            return {
+              id: 'old-session',
+              replacedById: null,
+              revokedAt: null,
+              expiresAt: new Date('2026-09-28T00:00:00.000Z'),
+              userId: 'user-1',
+              user: { mustChangePassword: false, disabledAt: null },
+            };
+          }
+          return { replacedById: 'winner', revokedAt: now };
+        },
+        create: async () => ({ id: 'orphan' }),
+        updateMany,
+        delete: remove,
+      },
+    };
+    await expect(
+      rotateRefresh(
+        tx as unknown as Prisma.TransactionClient,
+        'raw-token',
+        { ip: null, userAgent: null },
+        now,
+      ),
+    ).resolves.toEqual({ kind: 'race', userId: 'user-1' });
+    expect(remove).toHaveBeenCalledWith({ where: { id: 'orphan' } });
+    expect(updateMany).toHaveBeenCalledTimes(1);
   });
 });

@@ -13,10 +13,18 @@ export type SessionMeta = {
   userAgent: string | null;
 };
 
+/**
+ * Две вкладки или ретрай шлют один refresh почти вместе.
+ * Победитель уже записал cookie. 10 с покрывают повтор сети,
+ * украденный токен старше окна по-прежнему гасит все сессии.
+ */
+export const REFRESH_RACE_WINDOW_MS = 10_000;
+
 export type RefreshOutcome =
   | { kind: 'missing' }
   | { kind: 'invalid' }
   | { kind: 'reuse'; userId: string }
+  | { kind: 'race'; userId: string }
   | { kind: 'password' }
   | { kind: 'ok'; refresh: string; user: SessionUser; sessionId: string };
 
@@ -34,8 +42,7 @@ export async function rotateRefresh(
     return { kind: 'missing' };
   }
   if (session.replacedById) {
-    await revokeLiveSessions(tx, session.userId, now);
-    return { kind: 'reuse', userId: session.userId };
+    return replacedOutcome(tx, session.userId, session.revokedAt, now);
   }
   if (
     session.revokedAt ||
@@ -63,10 +70,38 @@ export async function rotateRefresh(
   });
   if (won.count !== 1) {
     await tx.authSession.delete({ where: { id: next.id } });
+    const current = await tx.authSession.findUnique({
+      where: { id: session.id },
+      select: { replacedById: true, revokedAt: true },
+    });
+    if (current?.replacedById) {
+      return replacedOutcome(tx, session.userId, current.revokedAt, now);
+    }
     await revokeLiveSessions(tx, session.userId, now);
     return { kind: 'reuse', userId: session.userId };
   }
   return { kind: 'ok', refresh, user: session.user, sessionId: next.id };
+}
+
+/** Время замены — revokedAt, его ставит ротация вместе с replacedById. */
+async function replacedOutcome(
+  tx: Prisma.TransactionClient,
+  userId: string,
+  revokedAt: Date | null,
+  now: Date,
+): Promise<RefreshOutcome> {
+  if (replacedRecently(revokedAt, now)) {
+    return { kind: 'race', userId };
+  }
+  await revokeLiveSessions(tx, userId, now);
+  return { kind: 'reuse', userId };
+}
+
+function replacedRecently(revokedAt: Date | null, now: Date): boolean {
+  if (!revokedAt) {
+    return false;
+  }
+  return now.getTime() - revokedAt.getTime() < REFRESH_RACE_WINDOW_MS;
 }
 
 export async function revokeLiveSessions(
