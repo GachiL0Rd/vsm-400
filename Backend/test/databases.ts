@@ -150,8 +150,31 @@ export function replaceDatabase(baseUrl: string, database: string): string {
   return url.toString();
 }
 
+/**
+ * От основной базы `vsm` — общие имена наборов, как в CI.
+ * От другой (worktree, второй прогон) — её имя префиксом: параллельные
+ * прогоны на одном Postgres не чистят и не мигрируют базы друг друга.
+ */
+export function testDatabaseName(database: TestDatabase, source?: EnvSource): string {
+  const shared = TEST_DATABASE_NAMES[database];
+  const base = baseDatabaseName(resolveDatabaseUrl(source));
+  if (base === null || base === 'vsm') {
+    return shared;
+  }
+  return assertDatabaseName(`${base}_${shared.slice('vsm_'.length)}`);
+}
+
 export function testDatabaseUrl(database: TestDatabase, source?: EnvSource): string {
-  return replaceDatabase(resolveDatabaseUrl(source), TEST_DATABASE_NAMES[database]);
+  return replaceDatabase(resolveDatabaseUrl(source), testDatabaseName(database, source));
+}
+
+function baseDatabaseName(baseUrl: string): string | null {
+  try {
+    const name = decodeURIComponent(new URL(baseUrl).pathname.slice(1));
+    return name.length > 0 ? name : null;
+  } catch {
+    return null;
+  }
 }
 
 /** Служебная база, чтобы CREATE DATABASE работал, когда целевой ещё нет. */

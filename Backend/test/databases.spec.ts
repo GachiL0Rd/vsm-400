@@ -35,7 +35,7 @@ describe('URL тестовой базы', () => {
       DATABASE_URL: 'postgresql://10.0.0.1:1/nope',
     });
     const url = new URL(testDatabaseUrl('sessions', env));
-    expect(url.pathname).toBe('/vsm_sessions');
+    expect(url.pathname).toBe('/vsm_fix_tests_sessions');
     expect(url.username).toBe('vsm');
     expect(url.password).toBe(password);
     expect(url.hostname).toBe('127.0.0.1');
@@ -45,8 +45,13 @@ describe('URL тестовой базы', () => {
 
   it('без TEST_DATABASE_URL читает DATABASE_URL, в том числе из файла', () => {
     const env = source({}, { DATABASE_URL: databaseUrl() });
-    expect(new URL(testDatabaseUrl('cabinet', env)).pathname).toBe('/vsm_cabinet');
+    expect(new URL(testDatabaseUrl('cabinet', env)).pathname).toBe('/vsm_fix_tests_cabinet');
     expect(new URL(adminDatabaseUrl(env)).pathname).toBe('/postgres');
+  });
+
+  it('от основной базы vsm имена общие, как в CI', () => {
+    const env = source({ DATABASE_URL: 'postgresql://127.0.0.1:5432/vsm' });
+    expect(new URL(testDatabaseUrl('sessions', env)).pathname).toBe('/vsm_sessions');
   });
 
   it('без URL падает и не предлагает пропуск', () => {
@@ -101,9 +106,9 @@ describe('снимок исходного URL', () => {
     delete process.env[origin];
     process.env.DATABASE_URL = databaseUrl();
     try {
-      expect(new URL(testDatabaseUrl('auth')).pathname).toBe('/vsm_auth');
+      expect(new URL(testDatabaseUrl('auth')).pathname).toBe('/vsm_fix_tests_auth');
       process.env.DATABASE_URL = testDatabaseUrl('auth');
-      expect(new URL(testDatabaseUrl('cabinet')).pathname).toBe('/vsm_cabinet');
+      expect(new URL(testDatabaseUrl('cabinet')).pathname).toBe('/vsm_fix_tests_cabinet');
     } finally {
       restore('DATABASE_URL', previousDatabase);
       restore('TEST_DATABASE_URL', previousTest);

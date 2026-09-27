@@ -8,6 +8,7 @@ import {
   serviceUnavailable,
   TEST_DATABASE_NAMES,
   type TestDatabase,
+  testDatabaseName,
   testDatabaseUrl,
   testRedisUrl,
 } from './databases';
@@ -103,8 +104,8 @@ export default async function setup(): Promise<void> {
   const adminUrl = adminDatabaseUrl();
   const client = await openPostgres(adminUrl);
   try {
-    for (const name of Object.values(TEST_DATABASE_NAMES)) {
-      await ensureDatabase(client, name);
+    for (const database of Object.keys(TEST_DATABASE_NAMES) as TestDatabase[]) {
+      await ensureDatabase(client, testDatabaseName(database));
     }
   } finally {
     await client.end();

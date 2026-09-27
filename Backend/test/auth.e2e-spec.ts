@@ -76,7 +76,7 @@ describe('auth e2e', () => {
     await app.init();
     await app.getHttpAdapter().getInstance().ready();
     const config = app.get<AppConfig>(APP_CONFIG);
-    expect(config.databaseUrl).toContain('/vsm_auth');
+    expect(config.databaseUrl).toBe(testDatabaseUrl('auth'));
     expect(config.redisUrl.endsWith(`/${redisDbFor('auth')}`)).toBe(true);
     prisma = app.get(PrismaService);
     redis = app.get(RedisService);
