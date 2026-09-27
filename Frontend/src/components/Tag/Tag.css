@@ -19,6 +19,7 @@
 .tag--stop,
 .tag--new {
   padding: 1px 8px;
+  border-radius: var(--radius-xs);
   color: var(--white);
   font-weight: 700;
 }
