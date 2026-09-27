@@ -12,6 +12,15 @@ init: { loyalty: 64, safety: 68 }
 gates:
   failIf:
     safety: { lt: 30 }
+llm:
+  enabled: true
+  mode: pool
+  keep: [пассажир, начальник, вода, грудь]
+  forbid: [medications, numbers, names, new-facts]
+  personas:
+    - говорит тихо и испуганно
+    - говорит сбивчиво и просит помощи
+    - держится спокойно, но торопит
 start: open
 nodes:
   open:
