@@ -73,12 +73,42 @@ describe('finishToSummary', () => {
     expect(summary.facts.interventions).toBe(1);
   });
 
-  it('безопасное прерывание — terminated и одно вмешательство', () => {
+  it('безопасное прерывание при шкале не ниже порога — completed и одно вмешательство', () => {
     const summary = finishToSummary(
       assessment({ kind: 'terminal-rule', outcomeId: 'route-safely-interrupted' }),
     );
-    expect(summary.outcome).toBe('terminated');
+    expect(summary.outcome).toBe('completed');
     expect(summary.facts).toMatchObject({ incidents: 0, interventions: 1 });
+  });
+
+  it('safety после округления ниже 30 — terminated при любом завершении', () => {
+    const low = { safety: 29.4, customerSatisfaction: 80 };
+    const onThreshold = { safety: 29.5, customerSatisfaction: 80 };
+    const stopped = finishToSummary(
+      assessment({ kind: 'terminal-rule', outcomeId: 'route-safely-interrupted' }, low),
+    );
+    expect(stopped.safety).toBe(29);
+    expect(stopped.outcome).toBe('terminated');
+    expect(stopped.facts).toMatchObject({ incidents: 0, interventions: 1 });
+
+    const arrived = finishToSummary(
+      assessment({ kind: 'route-completed', outcomeId: 'destination-arrived' }, low),
+    );
+    expect(arrived.outcome).toBe('terminated');
+    expect(arrived.facts.incidents).toBe(0);
+
+    const wrecked = finishToSummary(
+      assessment({ kind: 'terminal-rule', outcomeId: 'wagon-unserviceable' }, low),
+    );
+    expect(wrecked.outcome).toBe('terminated');
+    expect(wrecked.facts).toMatchObject({ incidents: 0, interventions: 0 });
+
+    const held = finishToSummary(
+      assessment({ kind: 'terminal-rule', outcomeId: 'wagon-unserviceable' }, onThreshold),
+    );
+    expect(held.safety).toBe(30);
+    expect(held.outcome).toBe('incident');
+    expect(held.facts.incidents).toBe(1);
   });
 
   it('прочие terminal-rule, включая неизвестный id, — incident', () => {
