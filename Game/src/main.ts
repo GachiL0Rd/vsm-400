@@ -5,6 +5,7 @@ import { InteractionController } from './client/input/interaction-controller';
 import { GameWebSocketClient } from './client/network/game-websocket-client';
 import { createBrowserSessionBootstrap } from './client/network/session-bootstrap';
 import { PresentationStore } from './client/presentation/presentation-store';
+import { hiDpiGameSize } from './client/rendering/view-scale';
 import { GAME_WEBSOCKET_PATH } from './common';
 import './style.css';
 
@@ -99,16 +100,25 @@ const interactions = new InteractionController(
   (level, event, data) => logger.record(level, 'navigation', event, data),
 );
 
+const initialPixels = hiDpiGameSize(
+  window.innerWidth,
+  window.innerHeight,
+  window.devicePixelRatio || 1,
+);
+
 export const game = new Phaser.Game({
   type: Phaser.AUTO,
   parent: gameRoot,
   backgroundColor: '#10222c',
   scale: {
-    mode: Phaser.Scale.RESIZE,
-    width: window.innerWidth,
-    height: window.innerHeight,
+    // RESIZE writes the backing store in CSS pixels and ignores zoom.
+    // NONE + zoom 1/dpr keeps one device pixel per backing pixel (ScaleManager.updateScale).
+    mode: Phaser.Scale.NONE,
+    width: initialPixels.backingWidth,
+    height: initialPixels.backingHeight,
+    zoom: initialPixels.scaleZoom,
   },
-  render: { pixelArt: false, antialias: true },
+  render: { pixelArt: true },
   scene: [
     new GameScene({
       store,
@@ -119,11 +129,59 @@ export const game = new Phaser.Game({
   ],
 });
 
+syncHiDpiCanvas();
+game.events.once('ready', syncHiDpiCanvas);
+window.addEventListener('resize', syncHiDpiCanvas);
+new ResizeObserver(() => syncHiDpiCanvas()).observe(gameRoot);
+watchPixelRatio(syncHiDpiCanvas);
+
 if (!sessionBootstrap.hasCredential) {
   store.setConnection('error');
   logger.record('error', 'client', 'missing-session-credential');
 } else {
   network.connect();
+}
+
+function syncHiDpiCanvas(): void {
+  const parent = game.scale.parent;
+  const cssWidth =
+    parent instanceof HTMLElement && parent.clientWidth > 0
+      ? parent.clientWidth
+      : window.innerWidth;
+  const cssHeight =
+    parent instanceof HTMLElement && parent.clientHeight > 0
+      ? parent.clientHeight
+      : window.innerHeight;
+  const next = hiDpiGameSize(cssWidth, cssHeight, window.devicePixelRatio || 1);
+  const canvas = game.canvas;
+  const styleWidth = `${Math.max(1, Math.round(cssWidth))}px`;
+  const styleHeight = `${Math.max(1, Math.round(cssHeight))}px`;
+  if (
+    game.scale.width === next.backingWidth &&
+    game.scale.height === next.backingHeight &&
+    game.scale.zoom === next.scaleZoom &&
+    canvas.style.width === styleWidth &&
+    canvas.style.height === styleHeight
+  ) {
+    return;
+  }
+  if (game.scale.zoom !== next.scaleZoom) game.scale.zoom = next.scaleZoom;
+  if (game.scale.width !== next.backingWidth || game.scale.height !== next.backingHeight) {
+    game.scale.resize(next.backingWidth, next.backingHeight);
+  }
+  canvas.style.width = styleWidth;
+  canvas.style.height = styleHeight;
+  game.scale.refresh();
+}
+
+function watchPixelRatio(onChange: () => void): void {
+  const media = window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
+  const listener = (): void => {
+    media.removeEventListener('change', listener);
+    onChange();
+    watchPixelRatio(onChange);
+  };
+  media.addEventListener('change', listener);
 }
 
 function availableSessionStorage(): Storage | undefined {

@@ -2,6 +2,7 @@ import extinguisherUrl from '../../../assets/ui/extinguisher.png';
 import type { InteractionController } from '../input/interaction-controller';
 import { ActionOfferOverlay } from './action-offer-overlay';
 import { ConnectionStatus } from './connection-status';
+import { availableLocalStorage, type GuideTargetId, OnboardingGuide } from './onboarding-guide';
 import {
   formatSimClock,
   heldItemName,
@@ -57,6 +58,10 @@ export class GameHud {
   private redirectTimer: number | undefined;
   private armedUrl: string | null = null;
   private redirectCancelled = false;
+  private guide: OnboardingGuide | null = null;
+  private timeBar: HTMLElement | null = null;
+  private feedPanel: HTMLElement | null = null;
+  private itemsPanel: HTMLElement | null = null;
 
   constructor(
     parent: HTMLElement,
@@ -73,6 +78,7 @@ export class GameHud {
     this.buildSession();
     this.buildRotate();
     parent.append(this.root);
+    this.mountGuide();
     this.onLayout();
     this.landscape.addEventListener('change', this.onLayout);
     this.unsubscribe = store.subscribe((state) => this.render(state));
@@ -93,6 +99,7 @@ export class GameHud {
     window.clearTimeout(this.redirectTimer);
     this.offer.destroy();
     this.connection.destroy();
+    this.guide?.destroy();
     this.root.remove();
   }
 
@@ -143,6 +150,12 @@ export class GameHud {
       bar.append(button);
       this.scales.push(button);
     }
+    const help = el('button', 'hud-help', '?');
+    help.type = 'button';
+    help.setAttribute('aria-label', 'Открыть подсказку');
+    help.addEventListener('click', () => this.guide?.open());
+    bar.append(help);
+    this.timeBar = bar;
     this.root.append(bar);
     return bar;
   }
@@ -175,6 +188,7 @@ export class GameHud {
     this.addColumn(tabs, columns, 'events', 'События', this.events);
     this.addColumn(tabs, columns, 'actions', 'Действия', this.actions);
     strip.append(tabs, columns);
+    this.feedPanel = strip;
 
     const items = el('aside', 'hud-items');
     items.setAttribute('aria-label', 'Предметы');
@@ -184,6 +198,7 @@ export class GameHud {
     this.itemSlot.className = 'hud-items__slot';
     this.itemSlot.dataset.item = 'empty';
     items.append(this.itemCaption, title, this.itemSlot);
+    this.itemsPanel = items;
     dock.append(this.hint, strip, items);
     this.root.append(dock);
     this.selectTab('observations');
@@ -271,6 +286,25 @@ export class GameHud {
     const rotate = el('div', 'hud-rotate');
     rotate.append(el('p', 'hud-rotate__text', 'Поверните телефон горизонтально'));
     this.root.append(rotate);
+  }
+
+  private mountGuide(): void {
+    const time = this.timeBar;
+    const feed = this.feedPanel;
+    const items = this.itemsPanel;
+    if (time === null || feed === null || items === null) return;
+    const targets = new Map<GuideTargetId, HTMLElement>([
+      ['tasks', this.tasks],
+      ['hint', this.hint],
+      ['feed', feed],
+      ['items', items],
+      ['time', time],
+    ]);
+    this.guide = new OnboardingGuide({
+      parent: this.root,
+      storage: availableLocalStorage(),
+      targets,
+    });
   }
 
   private setTasksOpen(open: boolean): void {

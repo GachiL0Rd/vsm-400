@@ -41,6 +41,8 @@ body {
 #game canvas {
   display: block;
   touch-action: none;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
 }
 
 [hidden] { display: none !important; }
@@ -73,7 +75,11 @@ button, a, input, select, textarea { font: inherit; }
 .hud-rotate,
 .hud-tasks__log,
 .hud-speed__button,
+.hud-help,
 .hud-strip__tab,
+.hud-guide,
+.hud-guide__scrim,
+.hud-guide__button,
 .hud-session__go,
 .hud-session__cancel {
   pointer-events: auto;
@@ -210,6 +216,84 @@ button, a, input, select, textarea { font: inherit; }
 .hud-speed__button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.hud-help {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 3px solid #95dbd0;
+  border-radius: 999px;
+  background: #10222c;
+  color: #a2f4e7;
+  cursor: pointer;
+}
+
+.hud-guide__scrim {
+  position: absolute;
+  inset: 0;
+  z-index: 60;
+  background: rgba(16, 34, 44, 0.55);
+}
+
+.hud-guide {
+  position: absolute;
+  z-index: 70;
+  top: max(72px, calc(env(safe-area-inset-top) + 60px));
+  left: 50%;
+  right: auto;
+  transform: translateX(-50%);
+  width: min(440px, calc(100% - 24px));
+  max-height: calc(100% - 96px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  overflow: auto;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+  padding: 14px 16px;
+  border: 4px solid #95dbd0;
+  border-radius: 10px;
+  background: rgba(16, 34, 44, 0.96);
+  box-shadow: 0 0 0 3px #a2f4e7;
+}
+
+.hud-guide__progress,
+.hud-guide__title,
+.hud-guide__body { margin: 0; }
+
+.hud-guide__progress { color: #95dbd0; }
+
+.hud-guide__title {
+  margin-top: 4px;
+  font-size: var(--hud-dialog);
+  font-weight: 400;
+}
+
+.hud-guide__body { margin: 8px 0 12px; }
+
+.hud-guide__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.hud-guide__button {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 8px 14px;
+  border: 3px solid #95dbd0;
+  border-radius: 8px;
+  background: #10222c;
+  color: #eef9ff;
+  cursor: pointer;
+}
+
+.hud-guide__button--primary { border-color: #a2f4e7; }
+
+.hud-guide__button:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.is-guide-target {
+  z-index: 65;
+  box-shadow: 0 0 0 3px #10222c, 0 0 0 7px #a2f4e7;
+  pointer-events: none !important;
 }
 
 .hud-dialog {
@@ -580,7 +664,17 @@ button, a, input, select, textarea { font: inherit; }
   }
 
   .hud-time { gap: 4px; min-height: 44px; padding: 0 6px 0 10px; }
-  .hud-speed__button { min-width: 44px; min-height: 44px; padding: 0 8px; }
+  .hud-speed__button,
+  .hud-help { min-width: 44px; min-height: 44px; padding: 0 8px; }
+
+  .hud-guide {
+    top: 52px;
+    width: min(360px, 54vw);
+    max-height: calc(100% - 108px);
+    padding: 8px 10px;
+  }
+
+  .hud-guide__body { margin: 4px 0 8px; }
   .hud-time__label,
   .hud-connection__text {
     position: absolute;

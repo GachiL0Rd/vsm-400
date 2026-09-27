@@ -4,8 +4,10 @@ import type { InteractionController } from './input/interaction-controller';
 import { GameHud } from './presentation/game-hud';
 import type { PresentationStore } from './presentation/presentation-store';
 import { preloadCharacterArt } from './rendering/character-art';
+import { preloadNpcArt } from './rendering/npc-art';
 import { TILE_SIZE } from './rendering/tile-layout';
 import { preloadTrain2Map } from './rendering/train2-map';
+import { pixelCameraLayout } from './rendering/view-scale';
 import { WorldRenderer } from './rendering/world-renderer';
 
 export interface GameSceneDependencies {
@@ -15,17 +17,12 @@ export interface GameSceneDependencies {
   downloadLog?(): void;
 }
 
-const MAP_ROWS = 16;
-const MOBILE_MIN_ZOOM = 0.55;
-const SHORT_LANDSCAPE_HEIGHT = 450;
-
 /** Browser view of server state. Clicks are sent as intents, never applied locally. */
 export class GameScene extends Phaser.Scene {
   private worldRenderer: WorldRenderer | null = null;
   private hud: GameHud | null = null;
-  private followTarget: Phaser.GameObjects.Rectangle | null = null;
-  private followStarted = false;
   private unsubscribe: (() => void) | null = null;
+  private bandCenterY = 0;
   private lastState: PublicGameState | null = null;
   private lastWorld: PublicGameState['world'] | null = null;
   private lastLoggedPlayerFrame: string | null = null;
@@ -37,6 +34,7 @@ export class GameScene extends Phaser.Scene {
 
   preload(): void {
     preloadCharacterArt(this);
+    preloadNpcArt(this);
     preloadTrain2Map(this);
   }
 
@@ -45,8 +43,10 @@ export class GameScene extends Phaser.Scene {
       viewportWidth: this.scale.width,
       viewportHeight: this.scale.height,
     });
-    this.followTarget = this.add.rectangle(0, 0, 1, 1, 0xffffff, 0).setVisible(false);
     this.worldRenderer = new WorldRenderer(this);
+    void document.fonts.ready.then(() => {
+      this.worldRenderer?.refreshText();
+    });
     const parent = this.game.canvas.parentElement;
     if (parent !== null) {
       this.hud = new GameHud(
@@ -86,8 +86,6 @@ export class GameScene extends Phaser.Scene {
       this.hud = null;
       this.worldRenderer?.clear();
       this.worldRenderer = null;
-      this.followTarget = null;
-      this.followStarted = false;
     });
   }
 
@@ -120,7 +118,7 @@ export class GameScene extends Phaser.Scene {
     const visualTimeUs = this.visualTimeUs(state);
     this.worldRenderer.render(state, visualTimeUs);
     const player = this.worldRenderer.playerPoint(state, visualTimeUs);
-    if (player !== null) this.followTarget?.setPosition(player.x, player.y);
+    this.placeCamera(player ?? this.focusPoint());
     this.logPlayerFrame(state, visualTimeUs, player);
     this.hud?.setVisualTime(visualTimeUs);
   }
@@ -153,40 +151,41 @@ export class GameScene extends Phaser.Scene {
   }
 
   private fitCamera(): void {
-    const width = this.scale.width;
-    const height = this.scale.height;
-    // The DOM HUD overlays the canvas (PSD layout); only narrow portrait keeps reserved bands.
-    const phoneLandscape = height <= 500 && width > height;
-    const narrow = width <= 760 && !phoneLandscape;
-    const left = 0;
-    const top = narrow ? 166 : 0;
-    const bottom = narrow ? 82 : 0;
-    const viewportWidth = Math.max(1, width - left);
-    const viewportHeight = Math.max(220, height - top - bottom);
-    const camera = this.cameras.main;
+    const cssWidth = Math.max(1, this.scale.displaySize.width);
+    const cssHeight = Math.max(1, this.scale.displaySize.height);
     const frame = this.worldRenderer?.worldFrame() ?? {
       x: 0,
       y: 0,
-      width: TILE_SIZE * MAP_ROWS,
-      height: TILE_SIZE * MAP_ROWS,
+      width: TILE_SIZE * 16,
+      height: TILE_SIZE * 16,
     };
-    camera.setBounds(frame.x, frame.y, frame.width, frame.height);
-    camera.setViewport(left, top, viewportWidth, viewportHeight);
-    camera.setZoom(viewZoom(viewportHeight, compactViewport(width, height, narrow)));
-    this.placeFollow(this.focusPoint(), true);
+    const layout = pixelCameraLayout({
+      backingWidth: this.scale.width,
+      backingHeight: this.scale.height,
+      cssWidth,
+      cssHeight,
+      frame,
+      followX: this.focusPoint().x,
+      tileSize: TILE_SIZE,
+    });
+    const camera = this.cameras.main;
+    camera.setRoundPixels(true);
+    camera.setViewport(
+      layout.viewportX,
+      layout.viewportY,
+      layout.viewportWidth,
+      layout.viewportHeight,
+    );
+    camera.setZoom(layout.zoom);
+    camera.setBounds(frame.x, layout.bandY, frame.width, layout.bandHeight);
+    this.bandCenterY = layout.bandY + layout.bandHeight / 2;
+    const dpr = this.scale.width / cssWidth;
+    this.worldRenderer?.setViewMetrics(layout.zoom, dpr);
+    this.placeCamera(this.focusPoint());
   }
 
-  private placeFollow(point: { x: number; y: number }, snap: boolean): void {
-    const target = this.followTarget;
-    if (target === null) return;
-    target.setPosition(point.x, point.y);
-    const camera = this.cameras.main;
-    if (!this.followStarted) {
-      camera.startFollow(target, true, 0.1, 0.1);
-      this.followStarted = true;
-      return;
-    }
-    if (snap) camera.centerOn(point.x, point.y);
+  private placeCamera(point: { x: number; y: number }): void {
+    this.cameras.main.centerOn(Math.round(point.x), this.bandCenterY);
   }
 
   private focusPoint(): { x: number; y: number } {
@@ -269,16 +268,6 @@ export class GameScene extends Phaser.Scene {
     }
     this.hud?.setTarget(cell === null ? null : 'Кликните, чтобы переместиться сюда');
   }
-}
-
-function compactViewport(width: number, height: number, narrow: boolean): boolean {
-  return narrow || (width > height && height <= SHORT_LANDSCAPE_HEIGHT);
-}
-
-function viewZoom(viewportHeight: number, compact: boolean): number {
-  const fit = viewportHeight / (MAP_ROWS * TILE_SIZE);
-  if (!Number.isFinite(fit) || fit <= 0) return compact ? MOBILE_MIN_ZOOM : 1;
-  return compact ? Math.max(MOBILE_MIN_ZOOM, fit) : fit;
 }
 
 function objectName(kind: string): string {
