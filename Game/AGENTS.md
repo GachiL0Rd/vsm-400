@@ -31,6 +31,10 @@ presentation state через `src/common/`. Клиент не импортир�
 Не реализуйте механику по предположениям. Неопределённую продуктовую деталь
 оставляйте открытым вопросом.
 
+Новые зависимости должны иметь конкретное назначение и точную версию. Не
+создавайте пустые слои, framework-обёртки или интеграционные контракты до
+появления реального потребителя.
+
 ## Среда и команды
 
 - Node.js: минимум **22.12.0** (`package.json#engines`), рекомендуемая
@@ -44,10 +48,17 @@ presentation state через `src/common/`. Клиент не импортир�
 ## Phaser Skills и проверка API
 
 Работаем с Phaser 4. Перед изменениями используйте релевантный skill из
-официального набора `phaserjs/phaser/skills` по правилам в `../AGENTS.md`:
-`scenes` для lifecycle сцены, `loading-assets` для ассетов, `animations`
-для анимаций, `physics-arcade` для коллизий, `tilemaps` для Tiled,
-`input-keyboard-mouse-touch` для управления.
+официального набора
+[`phaserjs/phaser/skills`](https://github.com/phaserjs/phaser/tree/master/skills):
+
+- `scenes` — жизненный цикл сцены;
+- `loading-assets` — добавление или загрузка ассетов;
+- `animations` — анимации;
+- `physics-arcade` — коллизии;
+- `tilemaps` — Tiled и Phaser Tilemap;
+- `input-keyboard-mouse-touch` — управление.
+
+Для другой подсистемы Phaser выберите соответствующий skill из того же набора.
 
 Не используйте API, если не уверены, что он существует в установленном
 Phaser 4.2.1. Перед новым вызовом Phaser API объясните, почему он подходит,
@@ -91,4 +102,4 @@ npm run verify
   внешний контракт позволяет это сделать.
 - Перед runtime-зависимостью проверьте Phaser, Web API и стандартный TypeScript.
 - Vitest используется для simulation unit-тестов; Knip доступен для аудита dead code, Playwright — для будущего стабильного сквозного сценария.
-- `node_modules/` и `dist/` не входят в Git.
+- Не коммитьте секреты, `node_modules/`, `dist/` и локальное состояние tools.
