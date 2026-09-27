@@ -7,11 +7,20 @@ import type {
   PublicWorldView,
 } from '../../common';
 import { VisualRegistry } from '../presentation/visual-registry';
+import { actorFacing } from './actor-facing';
+import {
+  ACTOR_DISPLAY_PX,
+  actorAnchor,
+  actorHitContains,
+  passengerLabelLift,
+} from './actor-layout';
 import { actorPose } from './actor-pose';
-import { conductorTextureKey, type Direction, type Step } from './character-art';
+import { conductorTextureKey } from './character-art';
+import { npcLayers, passengerBadge, passengerPose } from './npc-art';
 import { markerOffsetX, objectLabel } from './object-markers';
 import { mapOrigin, originFromCells, TILE_SIZE, TileLayout, type WorldFrame } from './tile-layout';
 import { TRAIN2_MAP_KEY, TRAIN2_TILESETS, usesTrain2Map } from './train2-map';
+import { markerFontPx } from './view-scale';
 
 type Cell = PublicWorldView['cells'][number];
 type MapLayer = Phaser.Tilemaps.TilemapLayer | Phaser.Tilemaps.TilemapGPULayer;
@@ -24,10 +33,14 @@ interface MarkerBox {
 }
 
 const PASSENGER_COLORS = [0x6fb4d4, 0xb894d1, 0x8dc5a3, 0xd7a39a];
-const PLAYER_HIT = 28;
-const PASSENGER_HIT = 14;
-const CONDUCTOR_SIZE = 56;
-const PASSENGER_RADIUS = 11;
+const PASSENGER_RADIUS = 16;
+
+interface PassengerView {
+  readonly body: Phaser.GameObjects.Image;
+  readonly clothes: Phaser.GameObjects.Image;
+  readonly eyes: Phaser.GameObjects.Image;
+  readonly label: Phaser.GameObjects.Text;
+}
 
 const EMPTY_FRAME: WorldFrame = {
   x: 0,
@@ -51,12 +64,11 @@ export class WorldRenderer {
   private readonly actors: Phaser.GameObjects.Graphics;
   private readonly heldItems: Phaser.GameObjects.Graphics;
   private readonly objectLabels: Phaser.GameObjects.Text[] = [];
-  private readonly passengerLabels = new Map<
-    string,
-    { badge: Phaser.GameObjects.Text; name: Phaser.GameObjects.Text }
-  >();
+  private readonly passengers = new Map<string, PassengerView>();
   private conductor: Phaser.GameObjects.Image | null = null;
   private previousWorld: PublicGameState['world'] | null = null;
+  private viewZoom = 1;
+  private fontPx = 12;
 
   constructor(
     private readonly scene: Phaser.Scene,
@@ -66,7 +78,7 @@ export class WorldRenderer {
     this.overlay = scene.add.graphics().setDepth(16);
     this.objects = scene.add.graphics().setDepth(20);
     this.actors = scene.add.graphics().setDepth(30);
-    this.heldItems = scene.add.graphics().setDepth(40);
+    this.heldItems = scene.add.graphics().setDepth(5_000);
   }
 
   render(state: PublicGameState, visualTimeUs = state.timeUs): void {
@@ -85,7 +97,7 @@ export class WorldRenderer {
     this.heldItems.clear();
     this.conductor?.setVisible(false);
     this.destroyObjectLabels();
-    this.destroyPassengerLabels();
+    this.destroyPassengers();
     this.destroyMap();
     this.markerBoxes.clear();
     this.layout = null;
@@ -102,6 +114,20 @@ export class WorldRenderer {
 
   cellAt(state: PublicGameState, worldX: number, worldY: number): Cell | null {
     return this.layout?.cellAt(state.world.cells, worldX, worldY, state.activeRegionIds) ?? null;
+  }
+
+  setViewMetrics(zoom: number, dpr: number): void {
+    const fontPx = markerFontPx(zoom, dpr);
+    if (this.viewZoom === zoom && this.fontPx === fontPx) return;
+    this.viewZoom = zoom;
+    this.fontPx = fontPx;
+    this.previousWorld = null;
+    this.restylePassengerLabels();
+  }
+
+  refreshText(): void {
+    this.previousWorld = null;
+    this.restylePassengerLabels();
   }
 
   setHoveredCell(cellId: string | null): void {
@@ -226,11 +252,11 @@ export class WorldRenderer {
   private drawObject(object: PublicObjectView, x: number, y: number): void {
     const label = this.scene.add
       .text(x, y, objectLabel(object.kind), {
-        fontFamily: 'Arial',
-        fontSize: '12px',
-        fontStyle: 'bold',
+        fontFamily: 'Monocraft, monospace',
+        fontSize: `${this.fontPx}px`,
         color: '#102b35',
         align: 'center',
+        resolution: Math.max(1, this.viewZoom),
       })
       .setOrigin(0.5)
       .setDepth(21);
@@ -248,17 +274,27 @@ export class WorldRenderer {
     this.heldItems.clear();
     this.conductor?.setVisible(false);
     const activePassengers = new Set<string>();
+    const queue: DrawnActor[] = [];
     let passengerIndex = 0;
     for (const entity of state.entities) {
       const pose = this.poseFor(entity, state, visualTimeUs);
       if (pose === null) continue;
-      if (entity.kind === 'player') this.drawPlayer(entity, state, pose, visualTimeUs);
-      else {
+      let index = 0;
+      if (entity.kind !== 'player') {
         passengerIndex += 1;
+        index = passengerIndex;
         activePassengers.add(entity.id);
-        this.drawPassenger(entity, pose, passengerIndex);
       }
-      if (entity.heldItem !== undefined) this.drawHeldItem(entity, pose);
+      queue.push({ entity, pose, anchor: actorAnchor(pose), index });
+    }
+    queue.sort(
+      (left, right) =>
+        left.anchor.y - right.anchor.y || left.entity.id.localeCompare(right.entity.id),
+    );
+    for (const actor of queue) {
+      if (actor.entity.kind === 'player') this.drawPlayer(actor, state, visualTimeUs);
+      else this.drawPassenger(actor, state, visualTimeUs);
+      if (actor.entity.heldItem !== undefined) this.drawHeldItem(actor);
     }
     this.dropMissingPassengers(activePassengers);
   }
@@ -268,93 +304,140 @@ export class WorldRenderer {
     return actorPose(this.layout, state.world.cells, entity.position, visualTimeUs);
   }
 
-  private drawPlayer(
-    entity: PublicEntityView,
-    state: PublicGameState,
-    pose: { x: number; y: number; alpha: number },
-    visualTimeUs: number,
-  ): void {
-    const { direction, step } = conductorFrame(entity, state, visualTimeUs);
+  private drawPlayer(actor: DrawnActor, state: PublicGameState, visualTimeUs: number): void {
+    const { direction, step } = actorFacing(actor.entity.position, state.world.cells, visualTimeUs);
     const key = conductorTextureKey(direction, step);
     if (!this.scene.textures.exists(key)) {
-      this.actors.fillStyle(0xf2bd67, pose.alpha).fillCircle(pose.x, pose.y, 22);
-      this.actors.lineStyle(3, 0x183440, pose.alpha).strokeCircle(pose.x, pose.y, 22);
+      this.drawFallbackActor(actor, 0xf2bd67);
       return;
     }
-    if (this.conductor === null) {
-      this.conductor = this.scene.add.image(pose.x, pose.y, key).setDepth(31);
-      this.conductor.setDisplaySize(CONDUCTOR_SIZE, CONDUCTOR_SIZE);
+    const image = this.ensureConductor(key);
+    this.placeActorSprite(image, key, actor, actor.anchor.y + 10);
+  }
+
+  private drawPassenger(actor: DrawnActor, state: PublicGameState, visualTimeUs: number): void {
+    const pose = passengerPose(actor.entity.position, state.world.cells, visualTimeUs);
+    const layers = npcLayers(actor.entity.appearanceId, actor.entity.id, pose);
+    const view = this.ensurePassenger(actor.entity.id);
+    if (view === null || !this.scene.textures.exists(layers.body)) {
+      view?.body.setVisible(false);
+      view?.clothes.setVisible(false);
+      view?.eyes.setVisible(false);
+      this.drawFallbackActor(
+        actor,
+        PASSENGER_COLORS[(actor.index - 1) % PASSENGER_COLORS.length] ?? 0x6fb4d4,
+      );
+      this.placePassengerLabel(view, actor);
+      return;
     }
-    this.conductor
-      .setTexture(key)
-      .setPosition(pose.x, pose.y)
-      .setAlpha(pose.alpha)
-      .setVisible(true);
+    const depth = actor.anchor.y;
+    this.placeActorSprite(view.body, layers.body, actor, depth);
+    this.placeActorSprite(view.clothes, layers.clothes, actor, depth + 1);
+    if (layers.eyes === null) view.eyes.setVisible(false);
+    else this.placeActorSprite(view.eyes, layers.eyes, actor, depth + 2);
+    this.placePassengerLabel(view, actor);
   }
 
-  private drawPassenger(
-    entity: PublicEntityView,
-    pose: { x: number; y: number; alpha: number },
-    index: number,
-  ): void {
-    const color = PASSENGER_COLORS[(index - 1) % PASSENGER_COLORS.length] ?? 0x6fb4d4;
-    this.actors.fillStyle(color, pose.alpha).fillCircle(pose.x, pose.y, PASSENGER_RADIUS);
-    this.actors.lineStyle(2, 0x173742, pose.alpha).strokeCircle(pose.x, pose.y, PASSENGER_RADIUS);
-    const labels = this.passengerLabel(entity.id, index);
-    labels.badge
-      .setText(String(index))
-      .setPosition(pose.x, pose.y)
-      .setAlpha(pose.alpha)
-      .setVisible(true);
-    labels.name
-      .setText(`Пассажир ${index}`)
-      .setPosition(pose.x, pose.y + 18)
-      .setAlpha(pose.alpha)
-      .setVisible(true);
+  private drawFallbackActor(actor: DrawnActor, color: number): void {
+    this.actors
+      .fillStyle(color, actor.pose.alpha)
+      .fillCircle(actor.pose.x, actor.pose.y, PASSENGER_RADIUS);
+    this.actors
+      .lineStyle(2, 0x173742, actor.pose.alpha)
+      .strokeCircle(actor.pose.x, actor.pose.y, PASSENGER_RADIUS);
   }
 
-  private passengerLabel(
-    id: string,
-    index: number,
-  ): {
-    badge: Phaser.GameObjects.Text;
-    name: Phaser.GameObjects.Text;
-  } {
-    const existing = this.passengerLabels.get(id);
+  private ensureConductor(key: string): Phaser.GameObjects.Image {
+    if (this.conductor === null) {
+      this.conductor = this.actorImage(key);
+    }
+    return this.conductor;
+  }
+
+  private ensurePassenger(id: string): PassengerView | null {
+    const existing = this.passengers.get(id);
     if (existing !== undefined) return existing;
-    const labels = {
-      badge: this.scene.add
-        .text(0, 0, String(index), {
-          fontFamily: 'Arial',
-          fontSize: '12px',
-          fontStyle: 'bold',
-          color: '#173742',
-        })
-        .setOrigin(0.5)
-        .setDepth(31),
-      name: this.scene.add
-        .text(0, 0, '', {
-          fontFamily: 'Arial',
-          fontSize: '11px',
-          color: '#fff4dc',
-          backgroundColor: '#16313bdd',
-          padding: { x: 3, y: 1 },
-        })
-        .setOrigin(0.5)
+    const key = 'npc:body:front:0';
+    if (!this.scene.textures.exists(key)) return null;
+    const view = {
+      body: this.actorImage(key),
+      clothes: this.actorImage(key),
+      eyes: this.actorImage(key),
+      label: this.scene.add
+        .text(0, 0, '', this.passengerLabelStyle())
+        .setOrigin(0.5, 1)
         .setDepth(32),
     };
-    this.passengerLabels.set(id, labels);
-    return labels;
+    view.label.setResolution(Math.max(1, this.viewZoom));
+    this.passengers.set(id, view);
+    return view;
   }
 
-  private drawHeldItem(
-    entity: PublicEntityView,
-    pose: { x: number; y: number; alpha: number },
+  private actorImage(key: string): Phaser.GameObjects.Image {
+    return this.scene.add
+      .image(0, 0, key)
+      .setOrigin(0.5, 1)
+      .setDisplaySize(ACTOR_DISPLAY_PX, ACTOR_DISPLAY_PX)
+      .setVisible(false);
+  }
+
+  private placeActorSprite(
+    image: Phaser.GameObjects.Image,
+    key: string,
+    actor: DrawnActor,
+    depth: number,
   ): void {
-    if (entity.heldItem === undefined) return;
-    const color = this.visuals.heldItem(entity.heldItem.visualId).fillColor;
-    this.heldItems.fillStyle(color, pose.alpha).fillCircle(pose.x + 18, pose.y - 18, 5);
-    this.heldItems.lineStyle(2, 0x183440, pose.alpha).strokeCircle(pose.x + 18, pose.y - 18, 5);
+    if (!this.scene.textures.exists(key)) {
+      image.setVisible(false);
+      return;
+    }
+    image
+      .setTexture(key)
+      .setDisplaySize(ACTOR_DISPLAY_PX, ACTOR_DISPLAY_PX)
+      .setPosition(actor.anchor.x, actor.anchor.y)
+      .setAlpha(actor.pose.alpha)
+      .setDepth(1_000 + depth)
+      .setVisible(true);
+  }
+
+  private placePassengerLabel(view: PassengerView | null, actor: DrawnActor): void {
+    if (view === null) return;
+    const lift = passengerLabelLift(actor.anchor.x, this.fontPx);
+    view.label
+      .setText(passengerBadge(actor.index))
+      .setPosition(actor.anchor.x, actor.anchor.y - ACTOR_DISPLAY_PX - 4 - lift)
+      .setAlpha(actor.pose.alpha)
+      .setDepth(1_000 + actor.anchor.y + 6)
+      .setVisible(true);
+  }
+
+  private passengerLabelStyle(): Phaser.Types.GameObjects.Text.TextStyle {
+    return {
+      fontFamily: 'Monocraft, monospace',
+      fontSize: `${this.fontPx}px`,
+      color: '#eef9ff',
+      backgroundColor: '#10222cdd',
+      align: 'center',
+      padding: { x: 4, y: 2 },
+    };
+  }
+
+  private restylePassengerLabels(): void {
+    const style = this.passengerLabelStyle();
+    for (const view of this.passengers.values()) {
+      view.label.setStyle(style);
+      view.label.setResolution(Math.max(1, this.viewZoom));
+    }
+  }
+
+  private drawHeldItem(actor: DrawnActor): void {
+    const held = actor.entity.heldItem;
+    if (held === undefined) return;
+    const color = this.visuals.heldItem(held.visualId).fillColor;
+    const x = actor.anchor.x + 30;
+    const y = actor.anchor.y - 40;
+    this.heldItems.fillStyle(color, actor.pose.alpha).fillCircle(x, y, 6);
+    this.heldItems.lineStyle(2, 0x183440, actor.pose.alpha).strokeCircle(x, y, 6);
   }
 
   private entityAt(
@@ -363,23 +446,24 @@ export class WorldRenderer {
     y: number,
     visualTimeUs: number,
   ): PublicTargetRef | null {
-    for (const entity of [...state.entities].reverse()) {
+    const hits: { id: string; y: number }[] = [];
+    for (const entity of state.entities) {
       const pose = this.poseFor(entity, state, visualTimeUs);
       if (pose === null || pose.alpha <= 0.05) continue;
-      const radius = entity.kind === 'player' ? PLAYER_HIT : PASSENGER_HIT;
-      if (Math.hypot(pose.x - x, pose.y - y) <= radius) {
-        return { kind: 'entity', entityId: entity.id };
-      }
+      const anchor = actorAnchor(pose);
+      if (!actorHitContains(x, y, anchor.x, anchor.y)) continue;
+      hits.push({ id: entity.id, y: anchor.y });
     }
-    return null;
+    hits.sort((left, right) => right.y - left.y);
+    const hit = hits[0];
+    return hit === undefined ? null : { kind: 'entity', entityId: hit.id };
   }
 
   private dropMissingPassengers(active: ReadonlySet<string>): void {
-    for (const [id, labels] of this.passengerLabels) {
+    for (const [id, view] of this.passengers) {
       if (active.has(id)) continue;
-      labels.badge.destroy();
-      labels.name.destroy();
-      this.passengerLabels.delete(id);
+      destroyPassenger(view);
+      this.passengers.delete(id);
     }
   }
 
@@ -388,13 +472,24 @@ export class WorldRenderer {
     this.objectLabels.length = 0;
   }
 
-  private destroyPassengerLabels(): void {
-    for (const labels of this.passengerLabels.values()) {
-      labels.badge.destroy();
-      labels.name.destroy();
-    }
-    this.passengerLabels.clear();
+  private destroyPassengers(): void {
+    for (const view of this.passengers.values()) destroyPassenger(view);
+    this.passengers.clear();
   }
+}
+
+interface DrawnActor {
+  readonly entity: PublicEntityView;
+  readonly pose: { readonly x: number; readonly y: number; readonly alpha: number };
+  readonly anchor: { readonly x: number; readonly y: number };
+  readonly index: number;
+}
+
+function destroyPassenger(view: PassengerView): void {
+  view.body.destroy();
+  view.clothes.destroy();
+  view.eyes.destroy();
+  view.label.destroy();
 }
 
 function linkedTilesets(map: Phaser.Tilemaps.Tilemap): Phaser.Tilemaps.Tileset[] {
@@ -419,25 +514,4 @@ function createVisibleLayers(
     layers.push(created);
   }
   return layers;
-}
-
-function conductorFrame(
-  entity: PublicEntityView,
-  state: PublicGameState,
-  visualTimeUs: number,
-): { direction: Direction; step: Step } {
-  const position = entity.position;
-  if (position.kind !== 'moving') return { direction: 'front', step: 0 };
-  const from = state.world.cells.find((cell) => cell.id === position.fromCellId);
-  const to = state.world.cells.find((cell) => cell.id === position.toCellId);
-  let direction: Direction = 'front';
-  if (from !== undefined && to !== undefined) {
-    const dx = to.x - from.x;
-    const dy = to.y - from.y;
-    direction =
-      Math.abs(dx) > Math.abs(dy) ? (dx >= 0 ? 'right' : 'left') : dy >= 0 ? 'front' : 'back';
-  }
-  const step =
-    Math.floor(Math.max(0, visualTimeUs - position.startedAt) / 150_000) % 2 === 0 ? 1 : 2;
-  return { direction, step };
 }
