@@ -302,6 +302,11 @@ describe('GameSessionWorker', () => {
     expect(value.lifecycle).toBe('finished');
     expect(gateway.finished).toHaveLength(1);
     expect(gateway.finished[0]?.rootSeed).toBe('12');
+    expect(gateway.finished[0]?.achievements.setVersion).toBe('baseline-v1');
+    expect(gateway.finished[0]?.scores.safety).toBeGreaterThanOrEqual(0);
+    expect(gateway.finished[0]?.scores.safety).toBeLessThanOrEqual(100);
+    expect(gateway.finished[0]?.scores.customerSatisfaction).toBeGreaterThanOrEqual(0);
+    expect(gateway.finished[0]?.scores.customerSatisfaction).toBeLessThanOrEqual(100);
     expect(
       publications.map((message) => message.type === 'session-state' && message.state),
     ).toContain('finishing');

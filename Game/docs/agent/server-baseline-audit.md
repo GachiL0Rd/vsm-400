@@ -130,15 +130,9 @@ Fire and pressure incidents are now instantiated inside `GameAttempt`. Fire has 
 Implemented ticket/passport public document data plus authoritative admit/reject action. Hidden
 correctness on the server.
 
-### B4. Assessment and achievements
+### B4. Assessment and achievements — complete for baseline
 
-Replace placeholders in `finishedResult()` with a run-scoped observer/assessment result.
-At minimum baseline completion must produce non-placeholder:
-
-- safety `0..100`;
-- customer satisfaction `0..100`;
-- achievement set version;
-- unlocked IDs.
+`AssessmentRuntime` observes authoritative gameplay facts without mutating simulation state. `finishedResult()` now sends non-placeholder safety/customer scores plus versioned achievement IDs to Platform Server. Current `baseline-v1` covers journal outcome, boarding decisions, service response/timeout, fire, pressure and emergency-brake use. Tuning and new mechanics can extend this observer without changing simulation semantics.
 
 ### B5. Guided/replay behavior
 

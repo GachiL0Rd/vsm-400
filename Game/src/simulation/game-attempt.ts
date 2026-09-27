@@ -13,6 +13,7 @@ import {
   createRequestItemActionHandler,
   createWaitActionHandler,
 } from './action-runtime';
+import { type AssessmentResult, AssessmentRuntime } from './assessment';
 import { BASELINE_ACTION_CONTENT } from './baseline-content';
 import {
   createEntityStore,
@@ -131,6 +132,8 @@ export class GameAttempt {
   readonly catalog: ActionCatalog;
   readonly random: SimulationRandom;
 
+  private readonly assessmentRuntime = new AssessmentRuntime();
+
   private readonly queue = new EventQueue<AttemptEvent>();
   private readonly activeRegions = new Set<string>();
   private readonly activePassengers = new Set<EntityId>();
@@ -235,6 +238,11 @@ export class GameAttempt {
     return this.terminationState;
   }
 
+  assessmentResult(): AssessmentResult {
+    if (this.terminationState === null) throw new RangeError('Attempt is not finished');
+    return this.assessmentRuntime.result(this.terminationState);
+  }
+
   snapshot(): GameAttemptSnapshot {
     return {
       time: this.time,
@@ -308,7 +316,12 @@ export class GameAttempt {
     const current = this.items.snapshot().journal;
     requireJournalReadyForSubmission(current);
     const returned = this.items.returnJournal(this.playerId);
-    if (acceptanceJournalHasCriticalProblem(returned)) {
+    const criticalProblem = acceptanceJournalHasCriticalProblem(returned);
+    this.assessmentRuntime.recordJournalSubmission({
+      sanitation: returned.sanitation,
+      criticalProblem,
+    });
+    if (criticalProblem) {
       this.signal('critical-predeparture-fault');
       return returned;
     }
@@ -343,9 +356,15 @@ export class GameAttempt {
     this.requireCellInteractionRange(player.position.cellId, passenger.position.cellId);
     this.pendingBoarding.delete(passengerId);
     this.boardingDecisions.set(passengerId, decision);
+    const passengerDefinition = this.scenario.passenger(passengerId);
+    this.assessmentRuntime.recordBoardingDecision(
+      passengerId,
+      passengerDefinition.expectedBoardingDecision,
+      decision,
+    );
 
     if (decision === 'admit') {
-      const definition = this.scenario.passenger(passengerId);
+      const definition = passengerDefinition;
       this.spatial.removeEntity(passengerId);
       this.entities.setPosition(passengerId, { kind: 'cell', cellId: definition.seatCellId });
       this.spatial.addEntity(passengerId, definition.seatCellId);
@@ -397,6 +416,7 @@ export class GameAttempt {
     const event = this.items.useExtinguisher(this.playerId, targetId);
     this.fields.setFireSource(cellId, 0);
     this.fields.reduceFire(cellId, 5);
+    this.assessmentRuntime.recordFireExtinguished(this.time);
     return event;
   }
 
@@ -414,6 +434,7 @@ export class GameAttempt {
       throw new RangeError('Emergency brake is already activated');
     }
     this.emergencyBrakeState = { ...this.emergencyBrakeState, seal: 'broken' };
+    this.assessmentRuntime.recordEmergencySealRemoved();
     return this.emergencyBrakeState;
   }
 
@@ -429,6 +450,7 @@ export class GameAttempt {
       throw new RangeError('Emergency brake is already activated');
     }
     this.emergencyBrakeState = { seal: 'broken', activated: true };
+    this.assessmentRuntime.recordEmergencyActivation(this.hasActiveSafetyIncident());
     const termination = this.signal('emergency-brake-used');
     if (termination === null)
       throw new RangeError('Emergency brake terminal rule is not configured');
@@ -459,9 +481,21 @@ export class GameAttempt {
   giveHeldItem(targetId: EntityId): ItemEvent {
     this.requireRunning();
     this.requireInteractionRange(this.playerId, targetId);
+    const targetBefore = this.entities.get(targetId);
+    const waitingAction = targetBefore.currentAction;
     const event = this.items.giveConsumable(this.playerId, targetId);
     this.actions.handleExternalEvent(event, this.time);
     this.advanceTo(this.time);
+    if (
+      waitingAction !== undefined &&
+      (waitingAction.actionId === 'request-food' || waitingAction.actionId === 'request-drink')
+    ) {
+      const passenger = this.scenario.passenger(targetId);
+      this.assessmentRuntime.recordServiceResolution(
+        passenger.serviceClass,
+        this.time - waitingAction.startedAt,
+      );
+    }
     return event;
   }
 
@@ -484,7 +518,17 @@ export class GameAttempt {
     const event = scheduled.payload;
     switch (event.kind) {
       case 'action': {
+        const currentBefore = this.entities.get(event.event.entityId).currentAction;
         const result = this.actions.apply(event.event, scheduled.at);
+        if (
+          result.status === 'finished' &&
+          result.outcome === 'timeout' &&
+          currentBefore !== undefined &&
+          (currentBefore.actionId === 'request-food' || currentBefore.actionId === 'request-drink')
+        ) {
+          const passenger = this.scenario.passenger(result.entityId);
+          this.assessmentRuntime.recordServiceTimeout(passenger.serviceClass);
+        }
         if (result.status === 'finished' && this.activePassengers.has(result.entityId)) {
           this.scheduleNpcDecision(result.entityId, scheduled.at);
         }
@@ -617,6 +661,7 @@ export class GameAttempt {
     );
     if (location === undefined)
       throw new RangeError(`Unknown fire location ${incident.failureLocationId}`);
+    this.assessmentRuntime.recordFireStarted(at);
     this.fields.setFireSource(location.cellId, incident.sourcePerSecond);
     const events = this.fields.addFire(location.cellId, incident.initialFire);
     this.handleFieldEvents(events);
@@ -650,6 +695,7 @@ export class GameAttempt {
     this.updatePressureExposureTraits(incident, sourceCell.x, sourceCell.y, at);
     const measured = this.measureClimate(at);
     if (measured.pressureKPa <= incident.criticalCabinPressureKPa) {
+      this.assessmentRuntime.recordPressureCritical();
       this.signal('pressure-critical');
     }
   }
@@ -754,6 +800,7 @@ export class GameAttempt {
       if (location === undefined) continue;
       const field = fields.get(location.cellId);
       if (field !== undefined && field.fire >= incident.criticalFire) {
+        this.assessmentRuntime.recordFireCritical();
         this.signal('fire-unsalvageable');
         return;
       }
@@ -847,6 +894,11 @@ export class GameAttempt {
     if (position.kind !== 'cell') throw new RangeError('Movement did not materialize to a cell');
     this.entities.setPosition(entityId, { kind: 'cell', cellId: position.cellId });
     this.refreshPressureExposure(this.time);
+  }
+
+  private hasActiveSafetyIncident(): boolean {
+    if (this.activePressureIncidentId !== null) return true;
+    return this.fields.snapshot().some((cell) => cell.fire > 0 || cell.fireSource > 0);
   }
 
   private requireInteractionRange(actorId: EntityId, targetId: EntityId): void {

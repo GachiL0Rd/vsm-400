@@ -10,6 +10,7 @@ import type {
   PublicGameProjection,
   RecordedGameplayCommand,
 } from '../projection/public-game-session.ts';
+import type { AssessmentResult } from '../simulation/assessment.ts';
 import type { GameAttemptSnapshot } from '../simulation/game-attempt.ts';
 import { SimulationClock } from '../simulation/simulation-clock.ts';
 import type { ResolvedGameContent } from './content-registry.ts';
@@ -33,6 +34,7 @@ export type ConnectionLifecycle = 'attached' | 'detached';
 export interface GameAttemptPort {
   readonly termination: GameAttemptSnapshot['termination'];
   snapshot(): GameAttemptSnapshot;
+  assessmentResult(): AssessmentResult;
 }
 
 export interface WorkerTimer {
@@ -392,6 +394,7 @@ export class GameSessionWorker {
     const termination = this.options.attempt.termination;
     if (termination === null)
       throw new Error(`Attempt ${this.attemptId} has not reached a terminal state`);
+    const assessment = this.options.attempt.assessmentResult();
     return {
       attemptId: this.attemptId,
       content: {
@@ -401,13 +404,13 @@ export class GameSessionWorker {
       },
       rootSeed: String(snapshot.rootSeed),
       userInputs: [...this.userInputs],
-      achievements: { setVersion: 'unimplemented', ids: [] },
+      achievements: assessment.achievements,
       termination: {
         kind: termination.kind,
         outcomeId:
           termination.kind === 'route-completed' ? 'route-completed' : termination.outcomeId,
       },
-      scores: { safety: 0, customerSatisfaction: 0 },
+      scores: assessment.scores,
     };
   }
 }
