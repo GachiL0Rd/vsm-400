@@ -64,6 +64,7 @@ export class CommonGameProtocolAdapter implements GameProtocolAdapter {
         code: 'invalid-message',
         message: errorMessage(error),
       });
+      connection.close(1007, 'invalid game protocol message');
       return;
     }
 
@@ -84,6 +85,7 @@ export class CommonGameProtocolAdapter implements GameProtocolAdapter {
         code: 'already-authenticated',
         message: 'hello is only valid as the first message',
       });
+      connection.close(1008, 'hello is only valid as the first message');
       return;
     }
 
@@ -108,6 +110,7 @@ export class CommonGameProtocolAdapter implements GameProtocolAdapter {
         code: 'invalid-hello',
         message: 'hello requires exactly one of sessionKey or resumeToken',
       });
+      connection.close(1008, 'invalid hello');
       return;
     }
 
@@ -221,8 +224,9 @@ type AuthenticatedState = {
 type ConnectionState = AwaitingHelloState | AuthenticatedState;
 
 function parseCommand(data: string | Uint8Array): ClientCommand {
-  const text = typeof data === 'string' ? data : new TextDecoder().decode(data);
-  return clientCommandSchema.parse(JSON.parse(text) as unknown);
+  if (typeof data !== 'string')
+    throw new TypeError('Binary game protocol frames are not supported');
+  return clientCommandSchema.parse(JSON.parse(data) as unknown);
 }
 
 function send(connection: GameProtocolConnection, message: ServerMessage): void {

@@ -3,6 +3,7 @@ import { readFile, stat } from 'node:fs/promises';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { extname, resolve, sep } from 'node:path';
 import { type RawData, type WebSocket, WebSocketServer } from 'ws';
+import { GAME_WEBSOCKET_PATH } from '../common/game-wire.ts';
 import type { ServerConfig } from './config.ts';
 import type { GameProtocolAdapter, GameProtocolConnection } from './protocol-adapter.ts';
 
@@ -24,7 +25,7 @@ export function createGameHttpServer(
   });
   server.on('upgrade', (request, socket, head) => {
     const pathname = new URL(request.url ?? '/', 'http://localhost').pathname;
-    if (pathname !== '/game-ws') {
+    if (pathname !== GAME_WEBSOCKET_PATH) {
       socket.write('HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n');
       socket.destroy();
       return;

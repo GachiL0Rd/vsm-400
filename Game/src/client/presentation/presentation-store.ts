@@ -83,6 +83,10 @@ export class PresentationStore {
         return;
       case 'command-result':
         this.update({ lastCommandResult: message });
+        if (message.status === 'rejected' && message.code === 'stale-revision') {
+          this.update({ currentOffer: null });
+          this.requestResync();
+        }
         return;
       case 'presentation-event':
         this.options.log?.('Presentation event received.', message.event);
@@ -113,22 +117,16 @@ export class PresentationStore {
       previous.revision !== message.baseRevision
     ) {
       this.options.log?.('Presentation revision mismatch; requesting resync.', message);
-      this.options.send({
-        protocolVersion: 1,
-        type: 'resync',
-        requestId: this.options.nextRequestId(),
-        knownRevision: this.state.revision ?? undefined,
-      });
+      this.requestResync();
       return;
     }
 
     const entities = message.changes.entities
-      ? [
-          ...previous.entities.filter(
-            (entity) => !message.changes.entities?.removeIds.includes(entity.id),
-          ),
-          ...message.changes.entities.upsert,
-        ]
+      ? mergeEntityDelta(
+          previous.entities,
+          message.changes.entities.removeIds,
+          message.changes.entities.upsert,
+        )
       : previous.entities;
     const next: PublicGameState = {
       ...previous,
@@ -152,8 +150,30 @@ export class PresentationStore {
     });
   }
 
+  clearActionOffer(): void {
+    if (this.state.currentOffer !== null) this.update({ currentOffer: null });
+  }
+
+  private requestResync(): void {
+    this.options.send({
+      protocolVersion: 1,
+      type: 'resync',
+      requestId: this.options.nextRequestId(),
+      knownRevision: this.state.revision ?? undefined,
+    });
+  }
+
   private update(change: Partial<PresentationState>): void {
     this.state = { ...this.state, ...change };
     for (const listener of this.listeners) listener(this.state);
   }
+}
+
+function mergeEntityDelta(
+  previous: PublicGameState['entities'],
+  removeIds: readonly string[],
+  upsert: PublicGameState['entities'],
+): PublicGameState['entities'] {
+  const replaced = new Set([...removeIds, ...upsert.map((entity) => entity.id)]);
+  return [...previous.filter((entity) => !replaced.has(entity.id)), ...upsert];
 }

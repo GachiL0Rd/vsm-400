@@ -36,7 +36,11 @@ class FakeConnection implements GameProtocolConnection {
   }
 
   receive(message: unknown): void {
-    this.messageListener?.(JSON.stringify(message));
+    this.receiveRaw(JSON.stringify(message));
+  }
+
+  receiveRaw(data: string | Uint8Array): void {
+    this.messageListener?.(data);
   }
 
   disconnect(): void {
@@ -149,6 +153,52 @@ describe('CommonGameProtocolAdapter', () => {
 
     expect(resumed.sent[0]).toMatchObject({ type: 'session-ready', attemptId: 'attempt-1' });
     expect(resumed.closes).toEqual([]);
+  });
+
+  it('closes malformed messages after reporting a protocol error', () => {
+    const { adapter } = setup();
+    const connection = new FakeConnection('socket-bad');
+    adapter.open(connection);
+    // Use the public fake transport by sending a value that fails the common schema.
+    connection.receive({ type: 'not-a-command' });
+
+    expect(connection.sent[0]).toMatchObject({ type: 'error', code: 'invalid-message' });
+    expect(connection.closes).toEqual([{ code: 1007, reason: 'invalid game protocol message' }]);
+  });
+
+  it('rejects binary protocol frames predictably', () => {
+    const { adapter } = setup();
+    const connection = new FakeConnection('socket-binary');
+    adapter.open(connection);
+    connection.receiveRaw(new TextEncoder().encode('{}'));
+
+    expect(connection.sent[0]).toMatchObject({ type: 'error', code: 'invalid-message' });
+    expect(connection.closes).toEqual([{ code: 1007, reason: 'invalid game protocol message' }]);
+  });
+
+  it('closes a repeated hello after authentication', async () => {
+    const { adapter } = setup();
+    const connection = new FakeConnection('socket-repeat');
+    adapter.open(connection);
+    connection.receive({
+      protocolVersion: GAME_PROTOCOL_VERSION,
+      type: 'hello',
+      requestId: 'hello-1',
+      sessionKey: 'platform-key',
+    });
+    await flush();
+    connection.receive({
+      protocolVersion: GAME_PROTOCOL_VERSION,
+      type: 'hello',
+      requestId: 'hello-2',
+      sessionKey: 'platform-key',
+    });
+
+    expect(connection.sent.at(-1)).toMatchObject({ type: 'error', code: 'already-authenticated' });
+    expect(connection.closes).toContainEqual({
+      code: 1008,
+      reason: 'hello is only valid as the first message',
+    });
   });
 
   it('rejects commands before hello', () => {

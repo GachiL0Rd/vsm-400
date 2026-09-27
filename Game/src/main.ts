@@ -2,10 +2,11 @@ import Phaser from 'phaser';
 import { GameScene } from './client/GameScene';
 import { InteractionController } from './client/input/interaction-controller';
 import { GameWebSocketClient } from './client/network/game-websocket-client';
+import { createBrowserSessionBootstrap } from './client/network/session-bootstrap';
 import { ActionOfferOverlay } from './client/presentation/action-offer-overlay';
 import { ConnectionStatus } from './client/presentation/connection-status';
 import { PresentationStore } from './client/presentation/presentation-store';
-import { GAME_PROTOCOL_VERSION } from './common';
+import { GAME_WEBSOCKET_PATH } from './common';
 import './style.css';
 
 const gameRoot = document.getElementById('game');
@@ -17,6 +18,12 @@ const nextRequestId = (): string => {
   return `browser-${requestSequence}`;
 };
 
+const sessionBootstrap = createBrowserSessionBootstrap({
+  href: window.location.href,
+  storage: window.sessionStorage,
+  replaceUrl: (url) => window.history.replaceState(null, '', url),
+});
+
 let network: GameWebSocketClient;
 const store = new PresentationStore({
   send: (command) => network.send(command),
@@ -24,11 +31,18 @@ const store = new PresentationStore({
   log: (message, detail) => console.debug(`[presentation] ${message}`, detail),
 });
 network = new GameWebSocketClient({
-  url: `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`,
+  url: `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}${GAME_WEBSOCKET_PATH}`,
   store,
-  initialCommands: () => [
-    { protocolVersion: GAME_PROTOCOL_VERSION, type: 'hello', requestId: nextRequestId() },
-  ],
+  initialCommands: () => {
+    const hello = sessionBootstrap.helloCommand(nextRequestId());
+    return hello === null ? [] : [hello];
+  },
+  onServerMessage: (message) => {
+    sessionBootstrap.observe(message);
+    if (message.type === 'error' && message.code === 'authentication-failed') {
+      sessionBootstrap.invalidateCredentials();
+    }
+  },
   log: (message, detail) => console.warn(`[network] ${message}`, detail),
 });
 const interactions = new InteractionController(store, (command) => network.send(command));
@@ -49,4 +63,9 @@ export const game = new Phaser.Game({
   scene: [new GameScene({ store, interactions })],
 });
 
-network.connect();
+if (!sessionBootstrap.hasCredential) {
+  store.setConnection('error');
+  console.error('No game session credential is available. Open the game with ?sessionKey=...');
+} else {
+  network.connect();
+}

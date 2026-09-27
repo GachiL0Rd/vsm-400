@@ -41,4 +41,36 @@ describe('browser transport', () => {
     expect(store.snapshot.sessionState?.state).toBe('active');
     expect(sent).toEqual([]);
   });
+
+  it('does not reconnect after an authentication failure or policy close', () => {
+    const store = new PresentationStore({ send: () => undefined, nextRequestId: () => 'r1' });
+    const sockets: FakeSocket[] = [];
+    const client = new GameWebSocketClient({
+      url: 'ws://test',
+      store,
+      reconnectDelayMs: 0,
+      createSocket: () => {
+        const socket = new FakeSocket();
+        sockets.push(socket);
+        return socket;
+      },
+    });
+    client.connect();
+    const socket = sockets[0];
+    if (socket === undefined) throw new Error('Expected socket');
+    socket.onopen?.(new Event('open'));
+    socket.onmessage?.({
+      data: JSON.stringify({
+        protocolVersion: GAME_PROTOCOL_VERSION,
+        type: 'error',
+        requestId: 'hello-1',
+        code: 'authentication-failed',
+        message: 'bad key',
+      }),
+    } as MessageEvent<unknown>);
+    socket.onclose?.({ code: 1008 } as CloseEvent);
+
+    expect(store.snapshot.connection).toBe('error');
+    expect(sockets).toHaveLength(1);
+  });
 });

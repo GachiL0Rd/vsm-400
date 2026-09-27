@@ -1,9 +1,10 @@
 import Phaser from 'phaser';
-import type { PublicEntityView } from '../common';
+import type { PublicEntityView, PublicObjectView } from '../common';
 import type { InteractionController } from './input/interaction-controller';
 import type { PresentationStore } from './presentation/presentation-store';
+import { VisualRegistry } from './presentation/visual-registry';
 
-const CELL_SIZE = 48;
+const CELL_SIZE = 64;
 const PADDING = 32;
 
 export interface GameSceneDependencies {
@@ -15,6 +16,7 @@ export interface GameSceneDependencies {
 export class GameScene extends Phaser.Scene {
   private graphics!: Phaser.GameObjects.Graphics;
   private readonly unsubscribe: () => void;
+  private readonly visuals = new VisualRegistry();
 
   constructor(private readonly dependencies: GameSceneDependencies) {
     super('GameScene');
@@ -36,28 +38,40 @@ export class GameScene extends Phaser.Scene {
     const state = this.dependencies.store.snapshot.publicState;
     if (state === null) return;
 
-    const regionColors = new Map(
-      state.world.regions.map((region, index) => [
-        region.id,
-        [0x244b5a, 0x2c5a48, 0x5a442c][index % 3],
-      ]),
-    );
+    const regions = new Map(state.world.regions.map((region) => [region.id, region]));
     for (const cell of state.world.cells) {
       const point = this.cellPoint(cell.x, cell.y);
-      this.graphics.fillStyle(regionColors.get(cell.regionId) ?? 0x304854, 1);
+      const visual = this.visuals.region(regions.get(cell.regionId) ?? { id: cell.regionId });
+      this.graphics.fillStyle(visual.fillColor, 1);
       this.graphics.fillRect(point.x, point.y, CELL_SIZE, CELL_SIZE);
-      this.graphics.lineStyle(state.activeRegionIds.includes(cell.regionId) ? 2 : 1, 0xf2ead6, 0.7);
+      this.graphics.lineStyle(
+        state.activeRegionIds.includes(cell.regionId) ? 2 : 1,
+        visual.borderColor,
+        0.7,
+      );
       this.graphics.strokeRect(point.x, point.y, CELL_SIZE, CELL_SIZE);
     }
-    for (const object of state.world.objects) this.drawObject(object.cellId, 0xd6ae5c);
+    for (const object of state.world.objects) this.drawObject(object);
     for (const entity of state.entities) this.drawEntity(entity);
   }
 
-  private drawObject(cellId: string, color: number): void {
-    const point = this.pointForCell(cellId);
+  private drawObject(object: PublicObjectView): void {
+    const point = this.pointForCell(object.cellId);
     if (point === null) return;
-    this.graphics.fillStyle(color, 1);
-    this.graphics.fillRect(point.x + 15, point.y + 15, 18, 18);
+    const visual = this.visuals.object(object);
+    const centerX = point.x + CELL_SIZE / 2;
+    const centerY = point.y + CELL_SIZE / 2;
+    this.graphics.fillStyle(visual.fillColor, 1);
+    this.graphics.lineStyle(2, visual.borderColor, 1);
+    if (visual.shape === 'circle') {
+      this.graphics.fillCircle(centerX, centerY, 13);
+      this.graphics.strokeCircle(centerX, centerY, 13);
+      return;
+    }
+    const width = visual.shape === 'document' ? 22 : 26;
+    const height = visual.shape === 'document' ? 30 : 26;
+    this.graphics.fillRect(centerX - width / 2, centerY - height / 2, width, height);
+    this.graphics.strokeRect(centerX - width / 2, centerY - height / 2, width, height);
   }
 
   private drawEntity(entity: PublicEntityView): void {
@@ -70,10 +84,13 @@ export class GameScene extends Phaser.Scene {
     if (cellId === null) return;
     const point = this.pointForCell(cellId);
     if (point === null) return;
-    this.graphics.fillStyle(entity.kind === 'player' ? 0x78dce8 : 0xe67e71, 1);
+    const visual = this.visuals.entity(entity);
+    this.graphics.fillStyle(visual.fillColor, 1);
+    this.graphics.lineStyle(3, visual.borderColor, 1);
     this.graphics.fillCircle(point.x + CELL_SIZE / 2, point.y + CELL_SIZE / 2, 12);
+    this.graphics.strokeCircle(point.x + CELL_SIZE / 2, point.y + CELL_SIZE / 2, 12);
     if (entity.heldItem) {
-      this.graphics.fillStyle(0xf2ead6, 1);
+      this.graphics.fillStyle(this.visuals.heldItem(entity.heldItem.visualId).fillColor, 1);
       this.graphics.fillCircle(point.x + 34, point.y + 14, 4);
     }
   }

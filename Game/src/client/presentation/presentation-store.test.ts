@@ -90,6 +90,59 @@ describe('PresentationStore', () => {
     ]);
   });
 
+  it('replaces an existing entity on upsert instead of duplicating it', () => {
+    const store = new PresentationStore({ send: () => undefined, nextRequestId: () => 'unused' });
+    store.apply(snapshot());
+    store.apply({
+      protocolVersion: GAME_PROTOCOL_VERSION,
+      type: 'delta',
+      attemptId: 'attempt-1',
+      baseRevision: 1,
+      revision: 2,
+      changes: {
+        entities: {
+          removeIds: [],
+          upsert: [
+            {
+              id: 'player-1',
+              kind: 'player',
+              appearanceId: 'conductor',
+              position: { kind: 'cell', cellId: 'cell-2' },
+            },
+          ],
+        },
+      },
+    });
+
+    expect(store.snapshot.publicState?.entities).toHaveLength(1);
+    expect(store.snapshot.publicState?.entities[0]?.position).toEqual({
+      kind: 'cell',
+      cellId: 'cell-2',
+    });
+  });
+
+  it('requests resync when the server rejects a command as stale', () => {
+    const sent: ClientCommand[] = [];
+    const store = new PresentationStore({
+      send: (command) => sent.push(command),
+      nextRequestId: () => 'resync-stale',
+    });
+    store.apply(snapshot());
+    store.apply({
+      protocolVersion: GAME_PROTOCOL_VERSION,
+      type: 'command-result',
+      requestId: 'move-old',
+      status: 'rejected',
+      revision: 2,
+      code: 'stale-revision',
+      message: 'stale-revision',
+    });
+
+    expect(sent).toEqual([
+      { protocolVersion: 1, type: 'resync', requestId: 'resync-stale', knownRevision: 1 },
+    ]);
+  });
+
   it('keeps an offer only for the current revision and clears it on the next revision', () => {
     const store = new PresentationStore({ send: () => undefined, nextRequestId: () => 'unused' });
     store.apply(snapshot());

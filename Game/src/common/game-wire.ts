@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 export const GAME_PROTOCOL_VERSION = 1 as const;
+export const GAME_WEBSOCKET_PATH = '/game-ws' as const;
 
 const idSchema = z.string().min(1);
 const simTimeSchema = z.number().int().nonnegative();

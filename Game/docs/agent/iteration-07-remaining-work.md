@@ -51,12 +51,13 @@
 
 ## 5. Предпочтительный порядок ближайших коротких итераций
 
-Чтобы не смешивать несколько границ за один проход, дальнейшую работу вести небольшими patch-сессиями:
+`common`, public projection, server skeleton и первый client foundation уже существуют. Дальше приоритет смещается с изолированной реализации модулей на укрепление их реальной связки. Детальный checklist и последующий documentation gate находятся в [integration-hardening.md](integration-hardening.md).
 
-1. **Public projection + `common` wire schemas.** Зафиксировать browser-safe DTO, snapshot/diff и `query-actions → action-offer → invoke-action` без WebSocket lifecycle.
-2. **Server package skeleton.** Добавить composition root, `GameSessionWorker`, mock `PlatformGateway` и HTTP/WebSocket boundary поверх готового `GameAttempt`; без полного клиента.
-3. **Platform OpenAPI draft.** Описать `resolveSession` и `finishSession` в Swagger/OpenAPI так, чтобы отдельный разработчик Platform Server мог начать работу независимо.
-4. **Asset/content skeleton.** Добавить tracked content directories, asset manifest schema и placeholder policy; downloader production assets оставить отдельной задачей.
-5. **Client protocol spike.** После стабилизации common contract — минимальный Client, который применяет snapshot/diff, делает `move-to`, `query-actions`, `invoke-action` и отображает placeholders.
+Ближайший порядок:
 
-Не объединять эти пункты в один большой patch без необходимости. Каждый слой должен иметь contract/unit tests до перехода к следующему.
+1. **H1 — protocol correctness.** Auth/bootstrap/resume клиента, корректный delta upsert, revision/resync и полный protocol contract test.
+2. **H2 — authoritative runtime/lifecycle.** Wall-clock worker, pause/resume, simulation-originated deltas, terminal/finalization flow.
+3. **H3 — transport/operational hardening.** Backpressure/message limits, cleanup/shutdown, health/readiness и startup/config behavior.
+4. **Integration documentation.** После стабилизации H1–H3 зафиксировать WebSocket reference, Platform OpenAPI/Swagger и подробную server/container deployment documentation.
+
+Не объединять H1–H3 в один большой patch без необходимости. Визуальный Phaser-клиент может развиваться параллельно поверх `common`, пока его изменения не переносят игровые правила обратно на клиент.

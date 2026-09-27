@@ -22,6 +22,7 @@ export class InteractionController {
   }
 
   queryActions(target: PublicTargetRef): void {
+    this.store.clearActionOffer();
     const revision = this.store.snapshot.revision;
     if (revision === null) return;
     this.send({

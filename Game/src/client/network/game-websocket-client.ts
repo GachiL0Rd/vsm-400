@@ -22,6 +22,7 @@ export interface GameWebSocketClientOptions {
   createSocket?(url: string): WebSocketLike;
   initialCommands?(): readonly ClientCommand[];
   reconnectDelayMs?: number;
+  onServerMessage?(message: ServerMessage): void;
   log?(message: string, detail?: unknown): void;
 }
 
@@ -30,11 +31,13 @@ export class GameWebSocketClient {
   private reconnectTimer: number | null = null;
   private reconnecting = false;
   private stopped = true;
+  private reconnectBlocked = false;
 
   constructor(private readonly options: GameWebSocketClientOptions) {}
 
   connect(): void {
     this.stopped = false;
+    this.reconnectBlocked = false;
     this.open('connecting');
   }
 
@@ -79,10 +82,15 @@ export class GameWebSocketClient {
     };
     socket.onmessage = (event: MessageEvent<unknown>) => this.receive(event.data);
     socket.onerror = () => this.options.store.setConnection('error');
-    socket.onclose = () => {
+    socket.onclose = (event) => {
       if (socket !== this.socket) return;
       this.socket = null;
       if (this.stopped) return;
+      if (this.reconnectBlocked || isPolicyClose(event)) {
+        this.reconnectBlocked = true;
+        this.options.store.setConnection('error');
+        return;
+      }
       this.scheduleReconnect();
     };
   }
@@ -104,7 +112,10 @@ export class GameWebSocketClient {
       this.options.log?.('Rejected invalid server message.', parsed.error.flatten());
       return;
     }
-    this.options.store.apply(parsed.data as ServerMessage);
+    const message = parsed.data as ServerMessage;
+    if (isTerminalProtocolError(message)) this.reconnectBlocked = true;
+    this.options.onServerMessage?.(message);
+    this.options.store.apply(message);
   }
 
   private scheduleReconnect(): void {
@@ -115,4 +126,18 @@ export class GameWebSocketClient {
       if (!this.stopped) this.open(this.reconnecting ? 'reconnecting' : 'connecting');
     }, this.options.reconnectDelayMs ?? 1_000);
   }
+}
+
+function isPolicyClose(event: CloseEvent): boolean {
+  return event.code === 1007 || event.code === 1008;
+}
+
+function isTerminalProtocolError(message: ServerMessage): boolean {
+  if (message.type !== 'error') return false;
+  return new Set([
+    'authentication-failed',
+    'invalid-hello',
+    'already-authenticated',
+    'invalid-message',
+  ]).has(message.code);
 }

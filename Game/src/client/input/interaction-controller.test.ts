@@ -41,12 +41,13 @@ describe('InteractionController', () => {
       ],
     });
     const interactions = new InteractionController(store, (command) => sent.push(command));
-    interactions.queryActions({ kind: 'object', objectId: 'o1' });
     interactions.invokeAction('a1');
+    interactions.queryActions({ kind: 'object', objectId: 'o1' });
+    interactions.invokeAction('a1'); // old offer was invalidated by the new query
     interactions.moveTo('c2');
     expect(sent.map((command) => command.type)).toEqual([
-      'query-actions',
       'invoke-action',
+      'query-actions',
       'move-to',
     ]);
     expect(store.snapshot.revision).toBe(3);
