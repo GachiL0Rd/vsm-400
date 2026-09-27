@@ -58,7 +58,7 @@ const judgeOk = JSON.stringify({
   ],
 });
 
-function harness(autoApprove = true, llmJudge = true) {
+function harness(autoApprove = true, llmJudge = true, judge?: LlmProvider) {
   const prisma = {
     scenarioVersion: {
       findUnique: vi.fn().mockResolvedValue({ graph }),
@@ -97,6 +97,7 @@ function harness(autoApprove = true, llmJudge = true) {
     prisma as unknown as PrismaService,
     rules as unknown as RulesService,
     provider,
+    judge ?? provider,
     redis as unknown as RedisService,
     clock,
     { llmJudge } as AppConfig,
@@ -163,6 +164,16 @@ describe('LlmProcessor', () => {
     const second = vi.mocked(provider.complete).mock.calls[1]?.[0];
     expect(second?.schemaName).toBe(JUDGE_SCHEMA_NAME);
     expect(second?.temperature).toBe(0);
+    const judgeSchema = second?.jsonSchema as {
+      required: string[];
+      properties: { checks: { items: { properties: { id: { enum: string[] } } } } };
+    };
+    expect(judgeSchema.required).toEqual(['checks']);
+    expect(judgeSchema.properties.checks.items.properties.id.enum).toEqual([
+      'text',
+      'radio',
+      'walk',
+    ]);
     expect(prisma.scenarioTextVariant.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
@@ -178,6 +189,19 @@ describe('LlmProcessor', () => {
         }),
       }),
     );
+  });
+
+  it('генерация и судья ходят в разные провайдеры', async () => {
+    const judge: LlmProvider = {
+      name: 'gigachat',
+      complete: vi.fn(async () => ({ content: judgeOk, model: 'GigaChat-2-Max' })),
+    };
+    const { processor, provider, prisma } = harness(true, true, judge);
+    await processor.process(job(manual));
+    expect(provider.complete).toHaveBeenCalledOnce();
+    expect(judge.complete).toHaveBeenCalledOnce();
+    expect(vi.mocked(judge.complete).mock.calls[0]?.[0]?.temperature).toBe(0);
+    expect(prisma.scenarioTextVariant.create.mock.calls[0]?.[0].data.model).toBe('qwen3-8b');
   });
 
   it('без судьи autoApprove не одобряет', async () => {

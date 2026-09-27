@@ -4,10 +4,15 @@ import { unwrapJson } from './validate-variant';
 
 export const JUDGE_SCHEMA_NAME = 'scenario_text_judge';
 
-const JUDGE_SYSTEM = [
+export const SITUATION_CHECK_ID = 'text';
+
+export const JUDGE_SYSTEM = [
   'Ты проверяешь, сохранил ли перефраз смысл учебного узла проводника.',
-  'Стиль не оценивай. same=true только если действие, место факта, должность и последствия те же.',
-  'same=false, если действие подменено (таблетка стала пилкой, зевать стало топтаться, уже во рту стало в руке), должность заменена или появился новый факт.',
+  'Стиль не оценивай.',
+  'same=true, если действие и адресат те же, отличаются только слова.',
+  'Другая формулировка того же действия и того же адресата — same=true, в том числе на медицинском узле: таблетка во рту остаётся таблеткой во рту, доклад начальнику остаётся докладом начальнику.',
+  'same=false, только если подменено действие, предмет, место факта или адресат: таблетка стала пилкой, зевать стало топтаться, уже во рту стало в руке, начальник стал водителем, появился новый факт.',
+  'Верни checks на каждый id из схемы. id text — ситуация, остальные id — выборы. Ни один id не пропускай.',
   'Верни только JSON.',
 ].join('\n');
 
@@ -22,22 +27,22 @@ export function reviewStatus(
 }
 
 export function judgeJsonSchema(choiceIds: readonly string[]): Record<string, unknown> {
+  const ids = [SITUATION_CHECK_ID, ...choiceIds];
   return {
     type: 'object',
     additionalProperties: false,
-    required: ['situation', 'choices'],
+    required: ['checks'],
     properties: {
-      situation: boolReasonSchema(),
-      choices: {
+      checks: {
         type: 'array',
-        minItems: choiceIds.length,
-        maxItems: choiceIds.length,
+        minItems: ids.length,
+        maxItems: ids.length,
         items: {
           type: 'object',
           additionalProperties: false,
           required: ['id', 'same', 'reason'],
           properties: {
-            id: { type: 'string', enum: [...choiceIds] },
+            id: { type: 'string', enum: ids },
             same: { type: 'boolean' },
             reason: { type: 'string' },
           },
@@ -90,12 +95,55 @@ type JudgeBit = { same: boolean; reason: string };
 function readVerdict(raw: unknown): { situation: JudgeBit; choices: Map<string, JudgeBit> } | null {
   const value = typeof raw === 'string' ? parseJson(unwrapJson(raw)) : raw;
   const record = asRecord(value);
-  const situation = readBit(asRecord(record?.situation));
-  if (!record || !situation || !Array.isArray(record.choices)) {
+  if (!record) {
     return null;
   }
+  if (Array.isArray(record.checks)) {
+    return readChecks(record.checks);
+  }
+  const situation = readBit(asRecord(record.situation));
+  if (!situation || !Array.isArray(record.choices)) {
+    return null;
+  }
+  const choices = readChoiceMap(record.choices);
+  if (!choices) {
+    return null;
+  }
+  return { situation, choices };
+}
+
+function readChecks(
+  items: readonly unknown[],
+): { situation: JudgeBit; choices: Map<string, JudgeBit> } | null {
+  let situation: JudgeBit | null = null;
   const choices = new Map<string, JudgeBit>();
-  for (const item of record.choices) {
+  for (const item of items) {
+    const choice = asRecord(item);
+    const bit = readBit(choice);
+    if (!choice || typeof choice.id !== 'string' || !bit) {
+      return null;
+    }
+    if (choice.id === SITUATION_CHECK_ID) {
+      if (situation) {
+        return null;
+      }
+      situation = bit;
+      continue;
+    }
+    if (choices.has(choice.id)) {
+      return null;
+    }
+    choices.set(choice.id, bit);
+  }
+  if (!situation) {
+    return null;
+  }
+  return { situation, choices };
+}
+
+function readChoiceMap(items: readonly unknown[]): Map<string, JudgeBit> | null {
+  const choices = new Map<string, JudgeBit>();
+  for (const item of items) {
     const choice = asRecord(item);
     const bit = readBit(choice);
     if (!choice || typeof choice.id !== 'string' || !bit || choices.has(choice.id)) {
@@ -103,7 +151,7 @@ function readVerdict(raw: unknown): { situation: JudgeBit; choices: Map<string, 
     }
     choices.set(choice.id, bit);
   }
-  return { situation, choices };
+  return choices;
 }
 
 function readBit(record: Record<string, unknown> | null): JudgeBit | null {
@@ -145,18 +193,6 @@ function hasForeignId(choices: Map<string, JudgeBit>, choiceIds: readonly string
     }
   }
   return false;
-}
-
-function boolReasonSchema(): Record<string, unknown> {
-  return {
-    type: 'object',
-    additionalProperties: false,
-    required: ['same', 'reason'],
-    properties: {
-      same: { type: 'boolean' },
-      reason: { type: 'string' },
-    },
-  };
 }
 
 function parseJson(raw: string): unknown {

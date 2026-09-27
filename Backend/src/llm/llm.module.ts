@@ -3,7 +3,13 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '../config/config.module';
 import { APP_CONFIG, type AppConfig } from '../config/env';
 import { RedisService } from '../redis/redis.service';
-import { LLM_BACKOFF_MS, LLM_JOB_ATTEMPTS, LLM_PROVIDER, LLM_QUEUE } from './llm.constants';
+import {
+  LLM_BACKOFF_MS,
+  LLM_JOB_ATTEMPTS,
+  LLM_JUDGE_PROVIDER,
+  LLM_PROVIDER,
+  LLM_QUEUE,
+} from './llm.constants';
 import { LlmStatusController, LlmVariantsController } from './llm.controller';
 import { LlmProcessor } from './llm.processor';
 import { LlmSessionListener } from './llm-session.listener';
@@ -40,7 +46,14 @@ import { VariantPoolService } from './variant-pool.service';
     {
       provide: LLM_PROVIDER,
       inject: [APP_CONFIG, RedisService],
-      useFactory: (config: AppConfig, redis: RedisService) => createLlmProvider(config, redis),
+      useFactory: (config: AppConfig, redis: RedisService) =>
+        createLlmProvider(config, redis, 'generate'),
+    },
+    {
+      provide: LLM_JUDGE_PROVIDER,
+      inject: [APP_CONFIG, RedisService],
+      useFactory: (config: AppConfig, redis: RedisService) =>
+        createLlmProvider(config, redis, 'judge'),
     },
   ],
   exports: [VariantPoolService, LLM_PROVIDER],

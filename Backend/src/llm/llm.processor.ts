@@ -17,6 +17,7 @@ import {
 import {
   LLM_ERROR_LIMIT,
   LLM_ERRORS_KEY,
+  LLM_JUDGE_PROVIDER,
   LLM_PROVIDER,
   LLM_QUEUE,
   LLM_RATE_MAX,
@@ -50,6 +51,7 @@ export class LlmProcessor extends WorkerHost {
     @Inject(PrismaService) private readonly prisma: PrismaService,
     @Inject(RulesService) private readonly rules: RulesService,
     @Inject(LLM_PROVIDER) private readonly provider: LlmProvider,
+    @Inject(LLM_JUDGE_PROVIDER) private readonly judgeProvider: LlmProvider,
     @Inject(RedisService) private readonly redis: RedisService,
     @Inject(Clock) private readonly clock: Clock,
     @Inject(APP_CONFIG) private readonly config: AppConfig,
@@ -95,7 +97,7 @@ export class LlmProcessor extends WorkerHost {
       await this.note(data, reason, true);
       return;
     }
-    const judgeEnabled = this.config.llmJudge;
+    const judgeEnabled = this.config.llmJudge && this.judgeProvider.name !== 'none';
     if (judgeEnabled) {
       let judged: { content: string };
       try {
@@ -194,7 +196,7 @@ export class LlmProcessor extends WorkerHost {
     source: ReturnType<typeof sourceOf>,
     payload: VariantPayload,
   ): Promise<{ content: string; model: string }> {
-    return this.provider.complete({
+    return this.judgeProvider.complete({
       messages: buildJudgeMessages(source, payload),
       jsonSchema: judgeJsonSchema(payload.choices.map((choice) => choice.id)),
       schemaName: JUDGE_SCHEMA_NAME,
