@@ -60,7 +60,8 @@ export class ChallengeService {
     await this.openWeek(now);
   }
 
-  @OnEvent(RUN_RECORDED, { async: true })
+  // Повтор run.recorded не пишет второй CHALLENGE: ключ Redis и строка леджера.
+  @OnEvent(RUN_RECORDED, { async: true, promisify: true, suppressErrors: false })
   async onRunRecorded(payload: RunRecordedPayload): Promise<void> {
     if (payload.suspicious || !payload.depotId) {
       return;

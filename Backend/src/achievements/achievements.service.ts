@@ -66,6 +66,8 @@ export class AchievementsService implements OnModuleInit {
    * Знаки и грейд идут одним слушателем: бонус этого рейса уже в леджере,
    * когда проверяется уровень (SPEC §8).
    * Подозрительный рейс знак не закрывает: бонус ушёл бы в рейтинг в обход points=0.
+   * suppressErrors: false — ошибка доходит до RunRecorder, effectsAt не ставится, cron повторит.
+   * Прогресс знака считается заново, повтор не выдаёт бонус второй раз.
    */
   @OnEvent(RUN_RECORDED, { async: true, promisify: true, suppressErrors: false })
   async onRunRecorded(payload: RunRecordedPayload): Promise<void> {

@@ -55,6 +55,7 @@ function recorded(partial: Partial<RunRecordedPayload> = {}): RunRecordedPayload
     outcome: 'completed',
     suspicious: false,
     ...partial,
+    finishedAt: partial.finishedAt ?? '2026-09-21T12:00:00+03:00',
   };
 }
 
@@ -157,5 +158,13 @@ describe('челлендж депо', () => {
     const { service, ledger } = setup();
     await service.onRunRecorded(recorded({ suspicious: true, runId: 'bad' }));
     expect(ledger).toHaveLength(0);
+  });
+
+  it('не пишет второй CHALLENGE, если начисление уже есть', async () => {
+    const { service, ledger } = setup();
+    ledger.push({ userId: 'u1', amount: 40, reason: 'CHALLENGE', runId: 'run-1' });
+    await service.onRunRecorded(recorded());
+    await service.onRunRecorded(recorded());
+    expect(ledger).toHaveLength(1);
   });
 });

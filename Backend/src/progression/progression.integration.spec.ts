@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { Module } from '@nestjs/common';
 import { APP_FILTER, APP_PIPE } from '@nestjs/core';
-import { EventEmitterModule } from '@nestjs/event-emitter';
+import { EventEmitter2, EventEmitterModule } from '@nestjs/event-emitter';
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 import { FastifyAdapter } from '@nestjs/platform-fastify';
 import { Test } from '@nestjs/testing';
@@ -13,19 +13,31 @@ import { AchievementsService } from '../achievements/achievements.service';
 import type { AuthUser } from '../auth/auth-user';
 import { lifetimeLevelPoints } from '../cabinet/points';
 import { ClockModule } from '../common/clock';
-import type { RunCompletedPayload } from '../common/events';
+import { RUN_RECORDED, type RunCompletedPayload } from '../common/events';
 import { ProblemFilter } from '../common/problem.filter';
 import { ConfigModule } from '../config/config.module';
 import { APP_CONFIG, loadConfig } from '../config/env';
 import { configureApp } from '../configure-app';
 import type { JournalEntry, RunSummary } from '../engine/types';
 import { Competency, Role } from '../generated/prisma/client';
+import { appliedRunKey, companyBoardKey } from '../leaderboard/keys';
+import { LeaderboardModule } from '../leaderboard/leaderboard.module';
+import { NotificationListener } from '../notifications/notification.listener';
 import { PrismaService } from '../prisma/prisma.service';
+import { RedisModule } from '../redis/redis.module';
+import { RedisService } from '../redis/redis.service';
 import { PromotionsService } from './promotions.service';
 import { RunRecorder } from './run-recorder';
 
 @Module({
-  imports: [ConfigModule, EventEmitterModule.forRoot(), ClockModule, AchievementsModule],
+  imports: [
+    ConfigModule,
+    EventEmitterModule.forRoot(),
+    ClockModule,
+    RedisModule,
+    AchievementsModule,
+    LeaderboardModule,
+  ],
   providers: [
     { provide: APP_PIPE, useClass: ZodValidationPipe },
     { provide: APP_FILTER, useClass: ProblemFilter },
@@ -111,6 +123,9 @@ describe('прогрессия в базе', () => {
     const moduleRef = await Test.createTestingModule({ imports: [ProgressionTestModule] })
       .overrideProvider(APP_CONFIG)
       .useValue(testConfig())
+      // Слушатель ленты без promisify дописывает строку уже после хода. В этом наборе он не нужен.
+      .overrideProvider(NotificationListener)
+      .useValue({})
       .compile();
     app = moduleRef.createNestApplication(new FastifyAdapter({ bodyLimit: 1_048_576 }), {
       logger: false,
@@ -531,6 +546,7 @@ describe('прогрессия в базе', () => {
       points: 0,
       outcome: 'completed',
       suspicious: false,
+      finishedAt: new Date().toISOString(),
     });
     const after = await achievements.listForUser(user.id);
     const streak = after.find((card) => card.code === 'streak');
@@ -549,6 +565,7 @@ describe('прогрессия в базе', () => {
       points: 0,
       outcome: 'completed',
       suspicious: false,
+      finishedAt: new Date().toISOString(),
     });
     expect(
       await prisma.pointLedger.count({
@@ -682,6 +699,7 @@ describe('прогрессия в базе', () => {
     expect(paths['/api/v1/promotions']).toBeDefined();
     expect(paths['/api/v1/promotions/{id}/decision']).toBeDefined();
   });
+
   it('начальник не утверждает собственное повышение', async () => {
     const { brigade, depot } = await createBrigade();
     const chief = await createUser({ role: Role.CHIEF, brigadeId: brigade.id });
@@ -749,6 +767,34 @@ describe('прогрессия в базе', () => {
     );
   });
 
+  it('сбой слушателя не роняет ход и чинится сверкой без второго начисления', async () => {
+    const user = await createUser();
+    const session = await createSession(user.id, new Date());
+    const payload = completed(user.id, session.id, summary());
+    const emitter = app.get(EventEmitter2);
+    const fail = (): never => {
+      throw new Error('эффект сломался');
+    };
+    emitter.on(RUN_RECORDED, fail, { promisify: true });
+    try {
+      await expect(recorder.onRunCompleted(payload)).resolves.toBeUndefined();
+      const run = await prisma.run.findUniqueOrThrow({ where: { id: payload.runId } });
+      expect(run.points).toBeGreaterThan(0);
+      expect(run.effectsAt).toBeNull();
+      expect(
+        await prisma.pointLedger.count({ where: { runId: payload.runId, reason: 'RUN' } }),
+      ).toBe(1);
+    } finally {
+      emitter.off(RUN_RECORDED, fail);
+    }
+    await recorder.reconcileEffects(new Date(Date.now() + 120_000));
+    const fixed = await prisma.run.findUniqueOrThrow({ where: { id: payload.runId } });
+    expect(fixed.effectsAt).not.toBeNull();
+    expect(await prisma.pointLedger.count({ where: { runId: payload.runId, reason: 'RUN' } })).toBe(
+      1,
+    );
+  });
+
 });
 
 type HttpResult = {
@@ -792,12 +838,15 @@ async function wipe(prisma: PrismaService, bag: Bag): Promise<void> {
     await prisma.promotionRecommendation.deleteMany({
       where: { OR: [{ userId: { in: users } }, { decidedById: { in: users } }] },
     });
+    await prisma.notification.deleteMany({ where: { userId: { in: users } } });
+    await prisma.seasonScore.deleteMany({ where: { userId: { in: users } } });
     await prisma.pointLedger.deleteMany({ where: { userId: { in: users } } });
     await prisma.runDecision.deleteMany({ where: { run: { userId: { in: users } } } });
     await prisma.run.deleteMany({ where: { userId: { in: users } } });
     await prisma.gameSession.deleteMany({ where: { userId: { in: users } } });
     await prisma.competencyScore.deleteMany({ where: { userId: { in: users } } });
     await prisma.userAchievement.deleteMany({ where: { userId: { in: users } } });
+    await prisma.notification.deleteMany({ where: { userId: { in: users } } });
     await prisma.user.deleteMany({ where: { id: { in: users } } });
   }
   if (bag.brigades.length > 0) {

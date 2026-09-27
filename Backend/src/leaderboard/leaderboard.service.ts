@@ -63,7 +63,8 @@ export class LeaderboardService {
     @Inject(Clock) private readonly clock: Clock,
   ) {}
 
-  @OnEvent(RUN_RECORDED, { async: true })
+  // suppressErrors: false — сбой Redis не должен ставить effectsAt, cron повторит.
+  @OnEvent(RUN_RECORDED, { async: true, promisify: true, suppressErrors: false })
   async onRunRecorded(payload: RunRecordedPayload): Promise<void> {
     const key = appliedRunKey(payload.runId);
     const skip = payload.suspicious || payload.points <= 0;
