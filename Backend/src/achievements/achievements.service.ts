@@ -66,6 +66,8 @@ export class AchievementsService implements OnModuleInit {
    * Знаки и грейд идут одним слушателем: бонус этого рейса уже в леджере,
    * когда проверяется уровень (SPEC §8).
    * Подозрительный рейс знак не закрывает: бонус ушёл бы в рейтинг в обход points=0.
+   * suppressErrors: false — ошибка доходит до RunRecorder, effectsAt не ставится, cron повторит.
+   * Прогресс знака считается заново, повтор не выдаёт бонус второй раз.
    */
   @OnEvent(RUN_RECORDED, { async: true, promisify: true, suppressErrors: false })
   async onRunRecorded(payload: RunRecordedPayload): Promise<void> {
@@ -183,8 +185,31 @@ export class AchievementsService implements OnModuleInit {
   private async loadRuns(userId: string): Promise<RunView[]> {
     const runs = await this.prisma.run.findMany({
       where: { userId, suspicious: false },
-      include: { decisions: { orderBy: { idx: 'asc' } } },
       orderBy: { finishedAt: 'asc' },
+      select: {
+        outcome: true,
+        safety: true,
+        loyalty: true,
+        suspicious: true,
+        facts: true,
+        decisions: {
+          orderBy: { idx: 'asc' },
+          select: {
+            idx: true,
+            stage: true,
+            scenarioId: true,
+            choiceId: true,
+            situation: true,
+            verdict: true,
+            reactionMs: true,
+            timerSec: true,
+            safetyDelta: true,
+            loyaltyDelta: true,
+            lucky: true,
+            deviation: true,
+          },
+        },
+      },
     });
     const scenarioIds = new Set<string>();
     for (const run of runs) {

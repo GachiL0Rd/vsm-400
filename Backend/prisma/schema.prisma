@@ -235,6 +235,7 @@ model User {
   decidedPromotions         PromotionRecommendation[] @relation("PromotionDecider")
   scenarioVersions          ScenarioVersion[]
   reviewedTextVariants      ScenarioTextVariant[]     @relation("TextVariantReview")
+  reviewedRuns              Run[]                     @relation("RunReviewer")
 
   @@index([brigadeId])
   @@map("user")
@@ -480,14 +481,21 @@ model Run {
   competencyDelta Json       @db.JsonB
   facts           Json       @db.JsonB
   suspicious      Boolean    @default(false)
+  reviewedAt      DateTime?
+  reviewedById    String?    @db.Uuid
+  reviewApproved  Boolean?
+  /// null, пока слушатели run.recorded этой версии рейса не отработали.
+  effectsAt       DateTime?
   finishedAt      DateTime
 
-  user      User          @relation(fields: [userId], references: [id])
-  session   GameSession   @relation(fields: [sessionId], references: [id])
-  decisions RunDecision[]
-  ledger    PointLedger[]
+  user       User          @relation(fields: [userId], references: [id])
+  reviewedBy User?         @relation("RunReviewer", fields: [reviewedById], references: [id])
+  session    GameSession   @relation(fields: [sessionId], references: [id])
+  decisions  RunDecision[]
+  ledger     PointLedger[]
 
   @@index([userId, finishedAt])
+  @@index([reviewedById])
   @@map("run")
 }
 

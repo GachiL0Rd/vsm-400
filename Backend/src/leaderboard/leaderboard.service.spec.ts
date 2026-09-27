@@ -73,6 +73,11 @@ class MemoryRedis {
     return this.zsets.get(key)?.size ?? 0;
   }
 
+  async zscore(key: string, member: string): Promise<string | null> {
+    const score = this.zsets.get(key)?.get(member);
+    return score === undefined ? null : String(score);
+  }
+
   async zrevrank(key: string, member: string): Promise<number | null> {
     const index = this.ranked(key).findIndex((row) => row.member === member);
     return index < 0 ? null : index;
@@ -143,6 +148,15 @@ class MemoryRedis {
     }
     this.strings.set(key, value);
     return 'OK';
+  }
+
+  async eval(_script: string, _numKeys: number, key: string, _ttl: string): Promise<number> {
+    const current = this.strings.get(key);
+    if (current === undefined || current === 'skip') {
+      this.strings.set(key, 'pending');
+      return 1;
+    }
+    return 0;
   }
 }
 
@@ -315,6 +329,7 @@ function recorded(
     outcome: 'completed' as RunOutcome,
     suspicious: false,
     ...partial,
+    finishedAt: partial.finishedAt ?? '2026-09-26T12:00:00.000+03:00',
   };
 }
 
@@ -427,6 +442,43 @@ describe('рейтинг', () => {
     expect(db.scores).toHaveLength(0);
     await db.service.onRunRecorded(recorded({ runId: 'flaky', userId: 'a', points: 40 }));
     expect(db.scores[0]?.points).toBe(40);
+  });
+
+  it('снятый флаг текущей недели начисляет рейтинг один раз', async () => {
+    const db = new Harness();
+    db.users.push(user('a', 'AAAA'));
+    await db.service.onRunRecorded(
+      recorded({ runId: 'bad', userId: 'a', points: 40, suspicious: true }),
+    );
+    expect(db.scores).toHaveLength(0);
+    await db.service.onRunRecorded(recorded({ runId: 'bad', userId: 'a', points: 40 }));
+    await db.service.onRunRecorded(recorded({ runId: 'bad', userId: 'a', points: 40 }));
+    expect(db.scores).toEqual([{ seasonId: 'season-39', userId: 'a', points: 40 }]);
+    expect(await db.redis.zscore('lb:season-39:company', 'a')).toBe('40');
+  });
+
+  it('рейс прошлой недели не дописывается в текущий сезон', async () => {
+    const db = new Harness();
+    db.users.push(user('a', 'AAAA'));
+    await db.service.onRunRecorded(
+      recorded({
+        runId: 'old',
+        userId: 'a',
+        points: 40,
+        suspicious: true,
+        finishedAt: '2026-08-01T12:00:00+03:00',
+      }),
+    );
+    await db.service.onRunRecorded(
+      recorded({
+        runId: 'old',
+        userId: 'a',
+        points: 40,
+        finishedAt: '2026-08-01T12:00:00+03:00',
+      }),
+    );
+    expect(db.scores).toHaveLength(0);
+    expect(await db.redis.zcard('lb:season-39:company')).toBe(0);
   });
 
   it('место бригады в депо и закрытие сезона топ-3', async () => {

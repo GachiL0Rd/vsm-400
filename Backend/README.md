@@ -168,7 +168,9 @@ SameSite=Strict). Оба HttpOnly, флаг Secure берётся из `COOKIE_S
 
 - `GET /api/v1/leaderboards/:scope` — `brigade`, `depot` или `company`. Query `season` — uuid сезона, иначе текущая неделя МСК. Ответ `{ seasonId, season, endsAt, total, rows }`: `seasonId` тот же uuid, `season` — название («Сезон 39»). Бригада целиком, депо и компания — топ-5 и своя строка. Без бригады scope `brigade` отдаёт пустой список.
 - `GET /api/v1/leaderboards/brigades` — место бригады среди бригад депо, `{ rank, total }`. Нет бригады — `{ rank: null, total: 0 }`.
-- Уведомление `scenario` — проводникам, у которых рейс или назначение того же класса вагона, что у опубликованной версии. `advice` — понедельник 09:00 МСК, компетенция ниже `weakScore` и ниже среднего депо, в тексте название сценария. `challenge` — понедельник 00:00 МСК, тема недели = самая слабая компетенция депо, бонус `challengePoints` в леджер с причиной `CHALLENGE`. Назначение пишет названия сценариев.
+- Уведомление `scenario` — проводникам, у которых рейс или назначение того же класса вагона, что у опубликованной версии. `advice` — понедельник 09:00 МСК, компетенция ниже `weakScore` и ниже среднего депо, в тексте название сценария. `challenge` — понедельник 00:00 МСК, тема недели = самая слабая компетенция депо, бонус `challengePoints` в леджер с причиной `CHALLENGE`. Повтор того же рейса бонус не удваивает. Назначение пишет названия сценариев.
+- Подозрительный рейс в рейтинг не входит. Снятие флага (`POST /api/v1/runs/:id/review`, `approve: true`) добавляет очки в сезон недели `finishedAt`, если эта неделя ещё текущая, ровно один раз. Рейс прошлой недели остаётся в леджере и уровне, в текущий ZSET не пишется.
+- Закрытие сезона, снимок рангов и тема недели берут Redis-блокировку `SET NX PX` на имя крона и календарное окно МСК, чтобы несколько реплик не сделали одно и то же.
 - `GET /api/v1/notifications` — `{ unreadCount, items, nextCursor }`. Элемент: `{ id, kind, title, text, at, unread, link? }`.
 - `POST /api/v1/notifications/:id/read`, `POST /api/v1/notifications/read-all`.
 - `GET /api/v1/notifications/stream` — SSE, событие `new-notification`, heartbeat 25 с. На heartbeat сессия access (`sid`) должна быть живой, учётка не отключена: иначе поток закрывается.
@@ -251,10 +253,14 @@ METHODIST и ADMIN любой. `GET /api/v1/analytics/scenarios/:id` — вор�
 
 ### Прогрессия
 
-Рейс пишется по событию `run.completed` (одна транзакция, повтор по `sessionId` ничего не делает). После коммита — `run.recorded`.
+Рейс пишется по событию `run.completed` (одна транзакция, повтор по `sessionId` ничего не делает). После коммита — `run.recorded`. Ошибка слушателя не отдаётся ходу: она пишется в лог, `Run.effectsAt` остаётся пустым. Раз в минуту сверка берёт такие рейсы старше минуты и шлёт `run.recorded` снова. Слушатели идемпотентны, повтор не удваивает очки. Блокировка сверки — тот же `SET NX PX`, окно в одну минуту.
 
+Подозрительный рейс сохраняется с `points = 0`, пока человек не снимет флаг.
+
+- `GET /api/v1/runs/suspicious` — очередь ещё не разобранных. Начальник видит свою бригаду, администратор — все.
+- `POST /api/v1/runs/:id/review` — тело `{ "approve": true|false }`. Начальник своей бригады или администратор, не автор рейса. Чужая бригада — 403 `FORBIDDEN`. Уже рассмотрен — 409 `RUN_REVIEWED`, рейс без флага — 409 `RUN_NOT_SUSPICIOUS`, свой рейс — 403 `SELF_DECISION`. `approve: true` снимает флаг, считает очки тем же `pointsForRun`, пишет `PointLedger` `RUN` и снова публикует `run.recorded`. `approve: false` только помечает разбор. Аудит: `run.review.approved` или `run.review.rejected`.
 - `GET /api/v1/promotions?status=PENDING` — очередь рекомендаций. Начальник видит свою бригаду, администратор — все.
-- `POST /api/v1/promotions/:id/decision` — тело `{ "approve": true|false }`. Начальник своей бригады или администратор. Утверждение меняет грейд.
+- `POST /api/v1/promotions/:id/decision` — тело `{ "approve": true|false }`. Начальник своей бригады или администратор. Своё повышение — 403 `SELF_DECISION`. Утверждение меняет грейд, только если он всё ещё `fromGrade`; иначе 409 `GRADE_CHANGED`, рекомендация остаётся `PENDING`. Уровень для порога — пожизненные положительные `RUN`, `ACHIEVEMENT` и `CHALLENGE` (`lifetimeLevelPoints`), не живые баллы и не `ADJUST`.
 
 `GET /api/v1/me/achievements` отдаёт кабинет. Список собирает `AchievementsService.listForUser`: `code`, `title`, `description`, `earnedAt` или `null`, для незакрытых счётчиков ещё `progress`.
 

@@ -1,7 +1,9 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
+import { Cron, CronExpression } from '@nestjs/schedule';
 import { z } from 'zod';
 import { Clock } from '../common/clock';
+import { acquireCronLock, cronWindow } from '../common/cron-lock';
 import {
   RUN_COMPLETED,
   RUN_RECORDED,
@@ -12,10 +14,12 @@ import { CarClassSchema } from '../engine/schema';
 import type { JournalEntry } from '../engine/types';
 import { ActorType, Competency, type Prisma, type RunOutcome } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { RedisService } from '../redis/redis.service';
 import { RulesService } from '../rules/rules.service';
 import { isUniqueViolation } from '../users/unique-violation';
 import { assertUuid, lockUser } from './lock-user';
-import { computePoints, ewmaCompetency, NEUTRAL_COMPETENCY } from './scoring';
+import { difficultyOf, pointsForRun } from './run-points';
+import { ewmaCompetency, NEUTRAL_COMPETENCY } from './scoring';
 import { nextStreak } from './streak';
 import { decisionList, isRunOutcome, summaryViolations } from './summary-invariants';
 
@@ -36,6 +40,10 @@ const SessionPlanSchema = z.object({
 });
 
 const DAY_MS = 86_400_000;
+/** Не подхватывать рейс, чьи слушатели ещё могут идти в запросе хода. */
+const EFFECTS_LAG_MS = 60_000;
+const RECONCILE_BATCH = 50;
+const CRON_MINUTE_TTL_MS = 55_000;
 
 function isCompetency(key: string): key is Competency {
   return (COMPETENCIES as readonly string[]).includes(key);
@@ -80,16 +88,6 @@ function playSeconds(startedAt: Date | null, finishedAt: Date): number {
   return seconds;
 }
 
-function asDifficulty(value: number): 1 | 2 | 3 {
-  if (value >= 3) {
-    return 3;
-  }
-  if (value <= 1) {
-    return 1;
-  }
-  return 2;
-}
-
 function readPlan(plan: unknown): z.infer<typeof SessionPlanSchema> {
   const parsed = SessionPlanSchema.safeParse(plan);
   if (!parsed.success) {
@@ -130,28 +128,6 @@ function assertEvent(event: RunCompletedPayload): void {
   }
 }
 
-async function difficultyOf(
-  tx: Prisma.TransactionClient,
-  decisions: readonly JournalEntry[],
-): Promise<1 | 2 | 3> {
-  const ids = [...new Set(decisions.map((decision) => decision.scenarioId))];
-  if (ids.length === 0) {
-    return 1;
-  }
-  const rows = await tx.scenario.findMany({
-    where: { id: { in: ids } },
-    select: { difficulty: true },
-  });
-  if (rows.length === 0) {
-    return 1;
-  }
-  let hardest = 1;
-  for (const row of rows) {
-    hardest = Math.max(hardest, row.difficulty);
-  }
-  return asDifficulty(hardest);
-}
-
 async function applyCompetencies(
   tx: Prisma.TransactionClient,
   userId: string,
@@ -179,21 +155,112 @@ async function applyCompetencies(
 
 @Injectable()
 export class RunRecorder {
+  private readonly logger = new Logger(RunRecorder.name);
+
   constructor(
     @Inject(PrismaService) private readonly prisma: PrismaService,
     @Inject(RulesService) private readonly rules: RulesService,
     @Inject(EventEmitter2) private readonly events: EventEmitter2,
     @Inject(Clock) private readonly clock: Clock,
+    @Inject(RedisService) private readonly redis: RedisService,
   ) {}
 
   // promisify: без него eventemitter2 ставит слушателя на setImmediate и теряет промис.
+  // Ошибка слушателя run.recorded не должна ронять уже записанный ход.
   @OnEvent(RUN_COMPLETED, { async: true, promisify: true, suppressErrors: false })
   async onRunCompleted(event: RunCompletedPayload): Promise<void> {
     const recorded = await this.record(event);
     if (!recorded) {
       return;
     }
-    await this.events.emitAsync(RUN_RECORDED, recorded);
+    await this.dispatchEffects(recorded);
+  }
+
+  /**
+   * Слушатели обязаны быть идемпотентными: повтор после сбоя не удваивает очки.
+   * effectsAt ставится, только если payload ещё совпадает со строкой — чужой разбор не затирается.
+   */
+  async dispatchEffects(payload: RunRecordedPayload): Promise<boolean> {
+    try {
+      await this.events.emitAsync(RUN_RECORDED, payload);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error(`run.recorded ${payload.runId}: ${message}`);
+      return false;
+    }
+    const marked = await this.prisma.run.updateMany({
+      where: {
+        id: payload.runId,
+        effectsAt: null,
+        suspicious: payload.suspicious,
+        points: payload.points,
+      },
+      data: { effectsAt: this.clock.now() },
+    });
+    return marked.count === 1;
+  }
+
+  async payloadOf(runId: string): Promise<RunRecordedPayload | null> {
+    const run = await this.prisma.run.findUnique({
+      where: { id: runId },
+      select: {
+        id: true,
+        userId: true,
+        points: true,
+        outcome: true,
+        suspicious: true,
+        finishedAt: true,
+        user: { select: { brigadeId: true, brigade: { select: { depotId: true } } } },
+      },
+    });
+    if (!run) {
+      return null;
+    }
+    return {
+      runId: run.id,
+      userId: run.userId,
+      brigadeId: run.user.brigadeId,
+      depotId: run.user.brigade?.depotId ?? null,
+      points: run.points,
+      outcome: run.outcome,
+      suspicious: run.suspicious,
+      finishedAt: run.finishedAt.toISOString(),
+    };
+  }
+
+  @Cron(CronExpression.EVERY_MINUTE, {
+    name: 'progression-effects-reconcile',
+    waitForCompletion: true,
+  })
+  async reconcileEffectsJob(): Promise<void> {
+    const now = this.clock.now();
+    const locked = await acquireCronLock(
+      this.redis,
+      'progression-effects-reconcile',
+      cronWindow(now, 'minute'),
+      CRON_MINUTE_TTL_MS,
+    );
+    if (!locked) {
+      return;
+    }
+    await this.reconcileEffects(now);
+  }
+
+  async reconcileEffects(now = this.clock.now()): Promise<void> {
+    const cutoff = new Date(now.getTime() - EFFECTS_LAG_MS);
+    const pending = await this.prisma.run.findMany({
+      where: { effectsAt: null, finishedAt: { lt: cutoff } },
+      select: { id: true },
+      orderBy: { finishedAt: 'asc' },
+      take: RECONCILE_BATCH,
+    });
+    for (const row of pending) {
+      const payload = await this.payloadOf(row.id);
+      if (!payload) {
+        continue;
+      }
+      await this.dispatchEffects(payload);
+    }
   }
 
   private async record(event: RunCompletedPayload): Promise<RunRecordedPayload | null> {
@@ -248,8 +315,28 @@ export class RunRecorder {
     const suspicious = event.suspicious === true || violations.length > 0;
     const decisions = decisionList(summary);
     const outcome = isRunOutcome(summary.outcome) ? summary.outcome : 'terminated';
-    const difficulty = await difficultyOf(tx, decisions);
-    const points = suspicious ? 0 : computePoints(summary, difficulty, this.rules.scoring());
+    const difficulty = await difficultyOf(
+      tx,
+      decisions.map((decision) => decision.scenarioId),
+    );
+    const points = suspicious
+      ? 0
+      : pointsForRun(
+          {
+            outcome,
+            loyalty: summary.loyalty,
+            safety: summary.safety,
+            decisions: decisions.map((decision) => ({
+              scenarioId: decision.scenarioId,
+              choiceId: decision.choiceId,
+              verdict: decision.verdict,
+              reactionMs: decision.reactionMs,
+              timerSec: decision.timerSec,
+            })),
+          },
+          difficulty,
+          this.rules.scoring(),
+        );
     const expiresAt = new Date(now.getTime() + this.rules.pointsTtlDays() * DAY_MS);
     if (violations.length > 0) {
       await tx.auditLog.create({
@@ -328,6 +415,7 @@ export class RunRecorder {
       points,
       outcome,
       suspicious,
+      finishedAt: finishedAt.toISOString(),
     };
   }
 }

@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import type { AuthUser } from '../auth/auth-user';
+import { type LedgerRow, lifetimeLevelPoints } from '../cabinet/points';
 import { Clock } from '../common/clock';
 import { PROMOTION_RECOMMENDED } from '../common/events';
 import {
@@ -126,6 +127,12 @@ export class PromotionsService {
       throw new NotFoundException({ message: 'Рекомендация не найдена', code: 'NOT_FOUND' });
     }
     this.assertBrigade(actor, current.user.brigadeId);
+    if (actor.id === current.userId) {
+      throw new ForbiddenException({
+        message: 'Нельзя решить по собственному повышению',
+        code: 'SELF_DECISION',
+      });
+    }
     if (current.status !== PromotionStatus.PENDING) {
       throw new ConflictException({
         message: 'Рекомендация уже рассмотрена',
@@ -135,6 +142,19 @@ export class PromotionsService {
 
     const now = this.clock.now();
     await this.prisma.$transaction(async (tx) => {
+      if (approve) {
+        const moved = await tx.user.updateMany({
+          where: { id: current.userId, grade: current.fromGrade },
+          data: { grade: current.toGrade },
+        });
+        // Откат транзакции оставляет рекомендацию PENDING: грейд уже не тот, решение не записано.
+        if (moved.count !== 1) {
+          throw new ConflictException({
+            message: 'Грейд уже изменился',
+            code: 'GRADE_CHANGED',
+          });
+        }
+      }
       const updated = await tx.promotionRecommendation.updateMany({
         where: { id, status: PromotionStatus.PENDING },
         data: {
@@ -147,12 +167,6 @@ export class PromotionsService {
         throw new ConflictException({
           message: 'Рекомендация уже рассмотрена',
           code: 'PROMOTION_DECIDED',
-        });
-      }
-      if (approve) {
-        await tx.user.update({
-          where: { id: current.userId },
-          data: { grade: current.toGrade },
         });
       }
       await tx.auditLog.create({
@@ -243,7 +257,7 @@ export class PromotionsService {
     userId: string,
     rule: ReturnType<RulesService['gradeRules']>[number],
   ): Promise<string[] | null> {
-    const level = this.rules.levelFor(await activePoints(tx, userId, this.clock.now())).level;
+    const level = this.rules.levelFor(await lifetimePoints(tx, userId)).level;
     if (level < rule.minLevel) {
       return null;
     }
@@ -284,24 +298,18 @@ function isUuidSafe(value: string): boolean {
   }
 }
 
-async function activePoints(
-  tx: Prisma.TransactionClient,
-  userId: string,
-  now: Date,
-): Promise<number> {
+async function lifetimePoints(tx: Prisma.TransactionClient, userId: string): Promise<number> {
   const rows = await tx.pointLedger.findMany({
-    where: {
-      userId,
-      expiredAt: null,
-      OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
-    },
-    select: { amount: true },
+    where: { userId },
+    select: { amount: true, reason: true, expiresAt: true, expiredAt: true },
   });
-  let sum = 0;
-  for (const row of rows) {
-    sum += row.amount;
-  }
-  return Math.max(0, sum);
+  const ledger: LedgerRow[] = rows.map((row) => ({
+    amount: row.amount,
+    reason: row.reason,
+    expiresAt: row.expiresAt,
+    expiredAt: row.expiredAt,
+  }));
+  return lifetimeLevelPoints(ledger);
 }
 
 async function competencyFloor(tx: Prisma.TransactionClient, userId: string): Promise<number> {
@@ -319,21 +327,16 @@ async function passedCategories(
   tx: Prisma.TransactionClient,
   userId: string,
 ): Promise<Set<string>> {
-  const runs = await tx.run.findMany({
-    where: { userId, suspicious: false, outcome: 'completed' },
-    select: { decisions: { select: { scenarioId: true } } },
+  const decisions = await tx.runDecision.findMany({
+    where: { run: { userId, suspicious: false, outcome: 'completed' } },
+    distinct: ['scenarioId'],
+    select: { scenarioId: true },
   });
-  const scenarioIds = new Set<string>();
-  for (const run of runs) {
-    for (const decision of run.decisions) {
-      scenarioIds.add(decision.scenarioId);
-    }
-  }
-  if (scenarioIds.size === 0) {
+  if (decisions.length === 0) {
     return new Set();
   }
   const scenarios = await tx.scenario.findMany({
-    where: { id: { in: [...scenarioIds] } },
+    where: { id: { in: decisions.map((row) => row.scenarioId) } },
     select: { category: true },
   });
   return new Set(scenarios.map((row) => row.category));

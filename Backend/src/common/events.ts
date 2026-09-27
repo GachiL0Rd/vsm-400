@@ -25,6 +25,11 @@ export type RunRecordedPayload = {
   points: number;
   outcome: RunOutcome;
   suspicious: boolean;
+  /**
+   * ISO момента finishedAt. В рейтинг — только если эта неделя ещё текущая.
+   * Нет поля — слушатель считает рейс текущим сезоном (старые вызовы).
+   */
+  finishedAt?: string;
 };
 
 export const ACHIEVEMENT_GRANTED = 'achievement.granted' as const;

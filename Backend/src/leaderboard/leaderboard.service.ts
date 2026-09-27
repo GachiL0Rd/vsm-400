@@ -3,6 +3,7 @@ import { OnEvent } from '@nestjs/event-emitter';
 import { Cron } from '@nestjs/schedule';
 import type { AuthUser } from '../auth/auth-user';
 import { Clock } from '../common/clock';
+import { acquireCronLock, cronWindow } from '../common/cron-lock';
 import { RUN_RECORDED, type RunRecordedPayload } from '../common/events';
 import { NotificationKind, type Season } from '../generated/prisma/client';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -37,6 +38,20 @@ import { SeasonsService } from './seasons.service';
 
 /** Дольше сезона и срока баллов: повтор run.recorded не должен доначислить. */
 const APPLIED_TTL_SEC = 40 * 24 * 60 * 60;
+const CRON_SLOT_TTL_MS = 30 * 60_000;
+
+/**
+ * skip — подозрительный или нулевой рейс. Одобрение разбора имеет право занять ключ.
+ * pending/любое другое значение — очки уже учтены или учёт идёт.
+ */
+const CLAIM_APPLY = `
+local cur = redis.call('GET', KEYS[1])
+if cur == false or cur == 'skip' then
+  redis.call('SET', KEYS[1], 'pending', 'EX', ARGV[1])
+  return 1
+end
+return 0
+`;
 
 type ScoreFilter = {
   brigadeId?: string;
@@ -61,12 +76,16 @@ export class LeaderboardService {
     @Inject(Clock) private readonly clock: Clock,
   ) {}
 
-  @OnEvent(RUN_RECORDED, { async: true })
+  // suppressErrors: false — сбой Redis не должен ставить effectsAt, cron повторит.
+  @OnEvent(RUN_RECORDED, { async: true, promisify: true, suppressErrors: false })
   async onRunRecorded(payload: RunRecordedPayload): Promise<void> {
     const key = appliedRunKey(payload.runId);
-    const skip = payload.suspicious || payload.points <= 0;
-    const gate = await this.redis.set(key, skip ? 'skip' : 'pending', 'EX', APPLIED_TTL_SEC, 'NX');
-    if (gate !== 'OK' || skip) {
+    if (payload.suspicious || payload.points <= 0) {
+      await this.redis.set(key, 'skip', 'EX', APPLIED_TTL_SEC, 'NX');
+      return;
+    }
+    const claimed = await this.redis.eval(CLAIM_APPLY, 1, key, String(APPLIED_TTL_SEC));
+    if (Number(claimed) !== 1) {
       return;
     }
     try {
@@ -83,6 +102,20 @@ export class LeaderboardService {
     timeZone: 'Europe/Moscow',
     waitForCompletion: true,
   })
+  async closeSeasonJob(): Promise<void> {
+    const now = this.clock.now();
+    const locked = await acquireCronLock(
+      this.redis,
+      'social-season-close',
+      cronWindow(now, 'day'),
+      CRON_SLOT_TTL_MS,
+    );
+    if (!locked) {
+      return;
+    }
+    await this.closeSeason(now);
+  }
+
   async closeSeason(at?: Date): Promise<void> {
     const now = at ?? this.clock.now();
     const current = seasonWindow(now);
@@ -106,6 +139,20 @@ export class LeaderboardService {
     timeZone: 'Europe/Moscow',
     waitForCompletion: true,
   })
+  async snapshotRanksJob(): Promise<void> {
+    const now = this.clock.now();
+    const locked = await acquireCronLock(
+      this.redis,
+      'social-leaderboard-snap',
+      cronWindow(now, 'day'),
+      CRON_SLOT_TTL_MS,
+    );
+    if (!locked) {
+      return;
+    }
+    await this.snapshotRanks(now);
+  }
+
   async snapshotRanks(at?: Date): Promise<void> {
     const now = at ?? this.clock.now();
     const season = await this.seasons.current(now);
@@ -170,7 +217,10 @@ export class LeaderboardService {
   }
 
   private async applyRecorded(payload: RunRecordedPayload): Promise<void> {
-    const season = await this.seasons.current();
+    const season = await this.seasonFor(payload);
+    if (!season) {
+      return;
+    }
     const brigadeKey = payload.brigadeId ? brigadeBoardKey(season.id, payload.brigadeId) : null;
     const before = brigadeKey
       ? await this.readBoard(brigadeKey, season.id, { brigadeId: payload.brigadeId ?? undefined })
@@ -195,6 +245,23 @@ export class LeaderboardService {
     } catch (error) {
       this.logger.error(error instanceof Error ? error.message : String(error));
     }
+  }
+
+  /**
+   * Сезон недели finishedAt. Если неделя уже сменилась, в текущий ZSET не пишем:
+   * закрытый сезон не пересчитывается, леджер при этом уже хранит очки.
+   */
+  private async seasonFor(payload: RunRecordedPayload): Promise<Season | null> {
+    const finishedAt = payload.finishedAt ? new Date(payload.finishedAt) : this.clock.now();
+    if (Number.isNaN(finishedAt.getTime())) {
+      return null;
+    }
+    const current = seasonWindow(this.clock.now());
+    const run = seasonWindow(finishedAt);
+    if (run.startsAt.getTime() !== current.startsAt.getTime()) {
+      return null;
+    }
+    return this.seasons.current(finishedAt);
   }
 
   private async bumpBoards(payload: RunRecordedPayload, seasonId: string): Promise<string[]> {
