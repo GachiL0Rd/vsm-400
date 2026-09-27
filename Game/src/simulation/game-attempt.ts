@@ -13,6 +13,8 @@ import {
   createRequestItemActionHandler,
   createWaitActionHandler,
 } from './action-runtime';
+import { type AssessmentResult, AssessmentRuntime } from './assessment';
+import type { AssessmentConfig } from './assessment-config';
 import { BASELINE_ACTION_CONTENT } from './baseline-content';
 import {
   createEntityStore,
@@ -66,6 +68,8 @@ export interface EmergencyBrakeState {
   readonly activated: boolean;
 }
 
+export type PassengerBoardingDecision = 'pending' | 'admit' | 'reject';
+
 export interface ClimateObservation {
   readonly connection: 'connected' | 'disconnected';
   readonly temperatureC: number;
@@ -84,6 +88,10 @@ export interface GameAttemptSnapshot {
   readonly fields: readonly CellFieldState[];
   readonly climate: ClimateObservation;
   readonly emergencyBrake: EmergencyBrakeState;
+  readonly boardingDecisions: readonly {
+    readonly passengerId: EntityId;
+    readonly decision: PassengerBoardingDecision;
+  }[];
   readonly termination: AttemptTermination | null;
 }
 
@@ -92,6 +100,7 @@ export interface GameAttemptOptions {
   readonly level?: LoadedLevel;
   readonly scenario?: LoadedScenario;
   readonly actionContent?: ActionContent;
+  readonly assessmentConfig?: AssessmentConfig;
   readonly playerId?: EntityId;
   readonly microsecondsPerMovementCost?: number;
 }
@@ -125,15 +134,23 @@ export class GameAttempt {
   readonly catalog: ActionCatalog;
   readonly random: SimulationRandom;
 
+  private readonly assessmentRuntime: AssessmentRuntime;
+
   private readonly queue = new EventQueue<AttemptEvent>();
   private readonly activeRegions = new Set<string>();
   private readonly activePassengers = new Set<EntityId>();
+  private readonly pendingBoarding = new Set<EntityId>();
+  private readonly boardingDecisions = new Map<
+    EntityId,
+    Exclude<PassengerBoardingDecision, 'pending'>
+  >();
   private readonly platformRegionIds: ReadonlySet<string>;
   private readonly fixedRegionIds: readonly string[];
   private phaseState: AttemptPhase = { kind: 'pre-departure' };
   private preDepartureReady = false;
   private routeEndAt: SimTimeUs | null = null;
   private departureAt: SimTimeUs | null = null;
+  private originStopLeaveDueAt: SimTimeUs | null = null;
   private terminationState: AttemptTermination | null = null;
   private climateObservation: ClimateObservation = {
     connection: 'connected',
@@ -148,6 +165,7 @@ export class GameAttempt {
   constructor(options: GameAttemptOptions) {
     this.level = options.level ?? BASELINE_LEVEL;
     this.scenario = options.scenario ?? BASELINE_SCENARIO;
+    this.assessmentRuntime = new AssessmentRuntime(options.assessmentConfig);
     assertScenarioMatchesLevel(this.scenario, this.level);
     this.playerId = options.playerId ?? 'player';
     this.random = createSimulationRandom(options.rootSeed);
@@ -227,6 +245,11 @@ export class GameAttempt {
     return this.terminationState;
   }
 
+  assessmentResult(): AssessmentResult {
+    if (this.terminationState === null) throw new RangeError('Attempt is not finished');
+    return this.assessmentRuntime.result(this.terminationState);
+  }
+
   snapshot(): GameAttemptSnapshot {
     return {
       time: this.time,
@@ -238,6 +261,10 @@ export class GameAttempt {
       fields: this.fields.snapshot(),
       climate: this.climateObservation,
       emergencyBrake: this.emergencyBrakeState,
+      boardingDecisions: this.scenario.passengerIds.map((passengerId) => ({
+        passengerId,
+        decision: this.boardingDecision(passengerId),
+      })),
       termination: this.terminationState,
     };
   }
@@ -296,7 +323,12 @@ export class GameAttempt {
     const current = this.items.snapshot().journal;
     requireJournalReadyForSubmission(current);
     const returned = this.items.returnJournal(this.playerId);
-    if (acceptanceJournalHasCriticalProblem(returned)) {
+    const criticalProblem = acceptanceJournalHasCriticalProblem(returned);
+    this.assessmentRuntime.recordJournalSubmission({
+      sanitation: returned.sanitation,
+      criticalProblem,
+    });
+    if (criticalProblem) {
       this.signal('critical-predeparture-fault');
       return returned;
     }
@@ -305,6 +337,59 @@ export class GameAttempt {
       this.enterOriginStop(this.time);
     }
     return returned;
+  }
+
+  boardingDecision(passengerId: EntityId): PassengerBoardingDecision {
+    if (this.pendingBoarding.has(passengerId)) return 'pending';
+    return this.boardingDecisions.get(passengerId) ?? 'pending';
+  }
+
+  decidePassengerBoarding(
+    passengerId: EntityId,
+    decision: Exclude<PassengerBoardingDecision, 'pending'>,
+  ): PassengerBoardingDecision {
+    this.requireRunning();
+    if (this.phaseState.kind !== 'origin-stop') {
+      throw new RangeError('Passenger boarding decisions are only available at the origin stop');
+    }
+    if (!this.pendingBoarding.has(passengerId)) {
+      throw new RangeError(`Passenger ${passengerId} is not waiting for a boarding decision`);
+    }
+    const player = this.entities.get(this.playerId);
+    const passenger = this.entities.get(passengerId);
+    if (player.position.kind !== 'cell' || passenger.position.kind !== 'cell') {
+      throw new RangeError('Player and passenger must be in cells for document inspection');
+    }
+    this.requireCellInteractionRange(player.position.cellId, passenger.position.cellId);
+    this.pendingBoarding.delete(passengerId);
+    this.boardingDecisions.set(passengerId, decision);
+    const passengerDefinition = this.scenario.passenger(passengerId);
+    this.assessmentRuntime.recordBoardingDecision(
+      passengerId,
+      passengerDefinition.expectedBoardingDecision,
+      decision,
+    );
+
+    if (decision === 'admit') {
+      const definition = passengerDefinition;
+      this.spatial.removeEntity(passengerId);
+      this.entities.setPosition(passengerId, { kind: 'cell', cellId: definition.seatCellId });
+      this.spatial.addEntity(passengerId, definition.seatCellId);
+      this.activePassengers.add(passengerId);
+      this.applyNpcDecision(passengerId, this.time);
+    } else {
+      this.spatial.removeEntity(passengerId);
+      this.entities.remove(passengerId);
+    }
+
+    if (
+      this.pendingBoarding.size === 0 &&
+      this.originStopLeaveDueAt !== null &&
+      this.time >= this.originStopLeaveDueAt
+    ) {
+      this.leaveOriginStop(this.time);
+    }
+    return decision;
   }
 
   inspectExtinguisher() {
@@ -338,6 +423,7 @@ export class GameAttempt {
     const event = this.items.useExtinguisher(this.playerId, targetId);
     this.fields.setFireSource(cellId, 0);
     this.fields.reduceFire(cellId, 5);
+    this.assessmentRuntime.recordFireExtinguished(this.time);
     return event;
   }
 
@@ -355,6 +441,7 @@ export class GameAttempt {
       throw new RangeError('Emergency brake is already activated');
     }
     this.emergencyBrakeState = { ...this.emergencyBrakeState, seal: 'broken' };
+    this.assessmentRuntime.recordEmergencySealRemoved();
     return this.emergencyBrakeState;
   }
 
@@ -370,6 +457,7 @@ export class GameAttempt {
       throw new RangeError('Emergency brake is already activated');
     }
     this.emergencyBrakeState = { seal: 'broken', activated: true };
+    this.assessmentRuntime.recordEmergencyActivation(this.hasActiveSafetyIncident());
     const termination = this.signal('emergency-brake-used');
     if (termination === null)
       throw new RangeError('Emergency brake terminal rule is not configured');
@@ -400,9 +488,21 @@ export class GameAttempt {
   giveHeldItem(targetId: EntityId): ItemEvent {
     this.requireRunning();
     this.requireInteractionRange(this.playerId, targetId);
+    const targetBefore = this.entities.get(targetId);
+    const waitingAction = targetBefore.currentAction;
     const event = this.items.giveConsumable(this.playerId, targetId);
     this.actions.handleExternalEvent(event, this.time);
     this.advanceTo(this.time);
+    if (
+      waitingAction !== undefined &&
+      (waitingAction.actionId === 'request-food' || waitingAction.actionId === 'request-drink')
+    ) {
+      const passenger = this.scenario.passenger(targetId);
+      this.assessmentRuntime.recordServiceResolution(
+        passenger.serviceClass,
+        this.time - waitingAction.startedAt,
+      );
+    }
     return event;
   }
 
@@ -425,7 +525,17 @@ export class GameAttempt {
     const event = scheduled.payload;
     switch (event.kind) {
       case 'action': {
+        const currentBefore = this.entities.get(event.event.entityId).currentAction;
         const result = this.actions.apply(event.event, scheduled.at);
+        if (
+          result.status === 'finished' &&
+          result.outcome === 'timeout' &&
+          currentBefore !== undefined &&
+          (currentBefore.actionId === 'request-food' || currentBefore.actionId === 'request-drink')
+        ) {
+          const passenger = this.scenario.passenger(result.entityId);
+          this.assessmentRuntime.recordServiceTimeout(passenger.serviceClass);
+        }
         if (result.status === 'finished' && this.activePassengers.has(result.entityId)) {
           this.scheduleNpcDecision(result.entityId, scheduled.at);
         }
@@ -478,11 +588,21 @@ export class GameAttempt {
     }
     this.phaseState = { kind: 'origin-stop' };
     this.setTravelRegions(origin.platformRegionId);
-    this.applyPassengerFlow(origin.passengerFlow, at);
-    this.queue.schedule(addTime(at, origin.dwellUs), { kind: 'leave-origin-stop' });
+    this.stageOriginPassengerFlow(origin.passengerFlow);
+    this.originStopLeaveDueAt = addTime(at, origin.dwellUs);
+    this.queue.schedule(this.originStopLeaveDueAt, { kind: 'leave-origin-stop' });
   }
 
   private leaveOriginStop(at: SimTimeUs): void {
+    if (this.phaseState.kind !== 'origin-stop' || this.pendingBoarding.size > 0) return;
+    if (
+      this.originStopLeaveDueAt !== null &&
+      this.routeEndAt !== null &&
+      at > this.originStopLeaveDueAt
+    ) {
+      this.routeEndAt = addTime(this.routeEndAt, assertSimTimeUs(at - this.originStopLeaveDueAt));
+    }
+    this.originStopLeaveDueAt = null;
     this.departureAt = at;
     for (const incident of this.scenario.definition.incidents) {
       this.queue.schedule(addTime(at, incident.startAfterDepartureUs), {
@@ -548,6 +668,7 @@ export class GameAttempt {
     );
     if (location === undefined)
       throw new RangeError(`Unknown fire location ${incident.failureLocationId}`);
+    this.assessmentRuntime.recordFireStarted(at);
     this.fields.setFireSource(location.cellId, incident.sourcePerSecond);
     const events = this.fields.addFire(location.cellId, incident.initialFire);
     this.handleFieldEvents(events);
@@ -581,6 +702,7 @@ export class GameAttempt {
     this.updatePressureExposureTraits(incident, sourceCell.x, sourceCell.y, at);
     const measured = this.measureClimate(at);
     if (measured.pressureKPa <= incident.criticalCabinPressureKPa) {
+      this.assessmentRuntime.recordPressureCritical();
       this.signal('pressure-critical');
     }
   }
@@ -685,9 +807,33 @@ export class GameAttempt {
       if (location === undefined) continue;
       const field = fields.get(location.cellId);
       if (field !== undefined && field.fire >= incident.criticalFire) {
+        this.assessmentRuntime.recordFireCritical();
         this.signal('fire-unsalvageable');
         return;
       }
+    }
+  }
+
+  private stageOriginPassengerFlow(flow: {
+    readonly boardPassengerIds: readonly string[];
+    readonly leavePassengerIds: readonly string[];
+  }): void {
+    if (flow.leavePassengerIds.length > 0) {
+      throw new RangeError('Origin passenger flow cannot remove passengers before departure');
+    }
+    for (const passengerId of [...flow.boardPassengerIds].sort(compareIds)) {
+      if (this.activePassengers.has(passengerId) || this.pendingBoarding.has(passengerId)) {
+        throw new RangeError(`Passenger ${passengerId} is already present`);
+      }
+      const passenger = this.scenario.passenger(passengerId);
+      const traits = [passenger.serviceClass, ...passenger.traits];
+      this.entities.addPassenger({
+        id: passenger.id,
+        position: { kind: 'cell', cellId: passenger.boardingCellId },
+        traits,
+      });
+      this.spatial.addEntity(passenger.id, passenger.boardingCellId);
+      this.pendingBoarding.add(passenger.id);
     }
   }
 
@@ -755,6 +901,11 @@ export class GameAttempt {
     if (position.kind !== 'cell') throw new RangeError('Movement did not materialize to a cell');
     this.entities.setPosition(entityId, { kind: 'cell', cellId: position.cellId });
     this.refreshPressureExposure(this.time);
+  }
+
+  private hasActiveSafetyIncident(): boolean {
+    if (this.activePressureIncidentId !== null) return true;
+    return this.fields.snapshot().some((cell) => cell.fire > 0 || cell.fireSource > 0);
   }
 
   private requireInteractionRange(actorId: EntityId, targetId: EntityId): void {

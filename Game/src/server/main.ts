@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 import { parseServerConfig } from './config.ts';
-import { BaselineContentRegistry } from './content-registry.ts';
+import { FileGameContentRegistry } from './content-registry.ts';
 import { createGameHttpServer } from './http-server.ts';
 import { HttpPlatformGateway, MockPlatformGateway, mockMode } from './platform-gateway.ts';
 import { CommonGameProtocolAdapter } from './protocol-adapter.ts';
@@ -21,7 +21,7 @@ const platformGateway =
 
 const host = new GameSessionHost({
   platformGateway,
-  contentRegistry: new BaselineContentRegistry(),
+  contentRegistry: new FileGameContentRegistry(config.contentDirectory),
   resumeTokens: new InMemoryResumeTokenRegistry(),
   disconnectDebounceMs: config.disconnectDebounceMs,
   reconnectGraceMs: config.reconnectGraceMs,
@@ -52,9 +52,20 @@ process.once('SIGINT', () => void shutdown('SIGINT'));
 process.once('SIGTERM', () => void shutdown('SIGTERM'));
 
 function runtimeEnvironment(environment: NodeJS.ProcessEnv): Record<string, string | undefined> {
-  if (environment.GAME_STATIC_DIR !== undefined) return environment;
-  const bundledClientDirectory = fileURLToPath(new URL('../client/', import.meta.url));
-  const bundledIndex = fileURLToPath(new URL('../client/index.html', import.meta.url));
-  if (!existsSync(bundledIndex)) return environment;
-  return { ...environment, GAME_STATIC_DIR: bundledClientDirectory };
+  const resolved = { ...environment };
+  if (resolved.GAME_STATIC_DIR === undefined) {
+    const bundledClientDirectory = fileURLToPath(new URL('../client/', import.meta.url));
+    const bundledIndex = fileURLToPath(new URL('../client/index.html', import.meta.url));
+    if (existsSync(bundledIndex)) resolved.GAME_STATIC_DIR = bundledClientDirectory;
+  }
+  if (resolved.GAME_CONTENT_DIR === undefined) {
+    const bundledContent = fileURLToPath(new URL('../content/manifest.json', import.meta.url));
+    const sourceContent = fileURLToPath(new URL('../../content/manifest.json', import.meta.url));
+    if (existsSync(bundledContent)) {
+      resolved.GAME_CONTENT_DIR = fileURLToPath(new URL('../content/', import.meta.url));
+    } else if (existsSync(sourceContent)) {
+      resolved.GAME_CONTENT_DIR = fileURLToPath(new URL('../../content/', import.meta.url));
+    }
+  }
+  return resolved;
 }

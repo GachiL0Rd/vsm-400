@@ -106,6 +106,38 @@ function completeJournal(projection: PublicGameProjection): void {
   if (returned.result.status !== 'accepted') throw new Error('Journal return was rejected');
 }
 
+function decideBoarding(
+  projection: PublicGameProjection,
+  passengerId: string,
+  decision: 'admit' | 'reject',
+): void {
+  const offer = projection.queryActions({
+    protocolVersion: GAME_PROTOCOL_VERSION,
+    type: 'query-actions',
+    requestId: `query-documents-${passengerId}`,
+    knownRevision: projection.revision,
+    target: { kind: 'entity', entityId: passengerId },
+  });
+  const action = offer.actions.find((candidate) => candidate.form?.kind === 'passenger-documents');
+  if (action === undefined) throw new Error(`Missing passenger document action for ${passengerId}`);
+  const result = projection.invoke({
+    protocolVersion: GAME_PROTOCOL_VERSION,
+    type: 'invoke-action',
+    requestId: `decide-${passengerId}`,
+    knownRevision: projection.revision,
+    actionHandle: action.handle,
+    input: { decision },
+  });
+  if (result.result.status !== 'accepted')
+    throw new Error(`Boarding decision rejected for ${passengerId}`);
+}
+
+function resolveBaselineBoarding(projection: PublicGameProjection, admitThird = false): void {
+  decideBoarding(projection, 'passenger-1', 'admit');
+  decideBoarding(projection, 'passenger-2', 'admit');
+  decideBoarding(projection, 'passenger-3', admitThird ? 'admit' : 'reject');
+}
+
 describe('PublicGameProjection', () => {
   it('projects only observable state and validates the snapshot schema', () => {
     const projection = createProjection();
@@ -244,6 +276,7 @@ describe('PublicGameProjection', () => {
     projection.snapshot();
     completeJournal(projection);
     projection.advanceTo(secondsToSimTimeUs(5 * 60));
+    resolveBaselineBoarding(projection);
     for (const cellId of ['platform-origin.door', 'carriage.entry', 'carriage.cabin']) {
       moveToCell(projection, cellId);
     }
@@ -326,6 +359,7 @@ describe('PublicGameProjection', () => {
     projection.snapshot();
     completeJournal(projection);
     projection.advanceTo(secondsToSimTimeUs(5 * 60));
+    resolveBaselineBoarding(projection);
     for (const cellId of ['platform-origin.door', 'carriage.entry', 'carriage.cabin']) {
       moveToCell(projection, cellId);
     }
@@ -438,6 +472,7 @@ describe('PublicGameProjection', () => {
     projection.snapshot();
     completeJournal(projection);
     attempt.advanceTo(secondsToSimTimeUs(5 * 60));
+    resolveBaselineBoarding(projection);
     moveToServicePoint(projection);
 
     const offer = projection.queryActions({
@@ -483,6 +518,7 @@ describe('PublicGameProjection', () => {
     projection.snapshot();
     completeJournal(projection);
     projection.attempt.advanceTo(secondsToSimTimeUs(5 * 60));
+    resolveBaselineBoarding(projection);
     moveToCell(projection, 'platform-origin.door');
     moveToCell(projection, 'carriage.entry');
     projection.attempt.advanceTo(secondsToSimTimeUs(35 * 60));
@@ -539,12 +575,53 @@ describe('PublicGameProjection', () => {
     });
   });
 
+  it('exposes passenger documents without leaking the expected boarding decision', () => {
+    const projection = createProjection();
+    projection.snapshot();
+    completeJournal(projection);
+    projection.advanceTo(secondsToSimTimeUs(5 * 60));
+
+    const offer = projection.queryActions({
+      protocolVersion: GAME_PROTOCOL_VERSION,
+      type: 'query-actions',
+      requestId: 'query-passenger-documents',
+      knownRevision: projection.revision,
+      target: { kind: 'entity', entityId: 'passenger-3' },
+    });
+    const inspect = offer.actions[0];
+    expect(inspect?.form).toMatchObject({
+      kind: 'passenger-documents',
+      value: {
+        passengerId: 'passenger-3',
+        ticket: { passengerName: 'Алексей Сидоров', seat: '3A' },
+        identity: { passengerName: 'Андрей Сидоров' },
+        canAdmit: true,
+        canReject: true,
+      },
+    });
+    expect(JSON.stringify(offer)).not.toContain('expectedBoardingDecision');
+
+    const rejected = projection.invoke({
+      protocolVersion: GAME_PROTOCOL_VERSION,
+      type: 'invoke-action',
+      requestId: 'reject-passenger-3',
+      knownRevision: projection.revision,
+      actionHandle: inspect?.handle ?? 'missing',
+      input: { decision: 'reject' },
+    });
+    expect(rejected.result.status).toBe('accepted');
+    expect(rejected.snapshot?.state.entities.some((entity) => entity.id === 'passenger-3')).toBe(
+      false,
+    );
+  });
+
   it('offers a passenger transfer without exposing waiting traits/action ids', () => {
     const projection = createProjection();
     const attempt = projection.attempt;
     projection.snapshot();
     completeJournal(projection);
     attempt.advanceTo(secondsToSimTimeUs(5 * 60));
+    resolveBaselineBoarding(projection, true);
     moveToServicePoint(projection);
     const serviceOffer = projection.queryActions({
       protocolVersion: GAME_PROTOCOL_VERSION,

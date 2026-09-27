@@ -6,10 +6,10 @@ remain in `src/common`; `CommonGameProtocolAdapter` connects them to the
 `GameSessionWorker`/`PublicGameProjection` boundary.
 
 For source development, run the standalone server with `npm run server`. For a
-production-style distribution, `npm run build` creates `dist/server/main.mjs`
-and `dist/client/`; `npm run start:server` runs the compiled server. The compiled
-server automatically serves its sibling `dist/client/` unless `GAME_STATIC_DIR`
-is explicitly configured. Without `PLATFORM_API_URL` and
+production-style distribution, `npm run build` creates `dist/server/main.mjs`,
+`dist/client/`, and `dist/content/`; `npm run start:server` runs the compiled server.
+The compiled server automatically discovers its sibling client/content directories unless
+`GAME_STATIC_DIR` or `GAME_CONTENT_DIR` is explicitly configured. Without `PLATFORM_API_URL` and
 `PLATFORM_SERVICE_TOKEN`, it uses `MockPlatformGateway`; configuration is read
 once by `parseServerConfig`.
 
@@ -53,8 +53,9 @@ Operational boundaries are intentionally small and explicit:
 - `SIGINT` and `SIGTERM` stop acceptance, close WebSockets with `1001`, cancel live worker timers/resume state, and close the HTTP server.
 
 If `GAME_STATIC_DIR` is set, startup fails before listening unless the path is a
-directory containing `index.html`. Leaving it unset is valid for deployments that
-serve the browser client separately. Platform mode still requires
+directory containing `index.html`. `GAME_CONTENT_DIR` must contain a valid content
+manifest and referenced Level/Scenario/Actions/Assessment files; content is loaded
+fail-fast before the listener opens. The browser client may still be served separately. Platform mode still requires
 `PLATFORM_API_URL` and `PLATFORM_SERVICE_TOKEN` together; otherwise the server
 starts in explicit mock mode.
 

@@ -4,6 +4,7 @@ import type {
   ClimateControlValue,
   EmergencyBrakeValue,
   ExtinguisherInspectionValue,
+  PassengerDocumentsValue,
 } from '../../common';
 import type { InteractionController } from '../input/interaction-controller';
 import type { PresentationStore } from './presentation-store';
@@ -57,7 +58,98 @@ export class ActionOfferOverlay {
       this.showEmergencyBrakeForm(action.handle, form.value, interactions);
       return;
     }
+    if (form?.kind === 'passenger-documents') {
+      this.showPassengerDocumentsForm(action.handle, form.value, interactions);
+      return;
+    }
     interactions.invokeAction(action.handle);
+  }
+
+  private showPassengerDocumentsForm(
+    actionHandle: string,
+    value: PassengerDocumentsValue,
+    interactions: InteractionController,
+  ): void {
+    this.openDialog?.remove();
+    const dialog = document.createElement('dialog');
+    dialog.className = 'game-form-dialog';
+    const form = document.createElement('form');
+    form.method = 'dialog';
+    const title = document.createElement('h2');
+    title.textContent = 'Документы пассажира';
+    form.append(title);
+
+    const ticketTitle = document.createElement('h3');
+    ticketTitle.textContent = 'Билет';
+    form.append(ticketTitle);
+    const ticketRows: readonly [string, string][] = [
+      ['Пассажир', value.ticket.passengerName],
+      ['Поезд', value.ticket.train],
+      ['Дата', value.ticket.date],
+      ['Отправление', value.ticket.departureTime],
+      ['Вагон', value.ticket.carriage],
+      ['Место', value.ticket.seat],
+      ['Документ', `${value.ticket.documentType} ${value.ticket.documentNumberMasked}`],
+      ['Маршрут', value.ticket.route ?? '—'],
+    ];
+    for (const [label, text] of ticketRows) {
+      const row = document.createElement('p');
+      row.textContent = `${label}: ${text}`;
+      form.append(row);
+    }
+
+    const identityTitle = document.createElement('h3');
+    identityTitle.textContent = value.identity.type === 'passport' ? 'Паспорт' : 'Удостоверение';
+    form.append(identityTitle);
+    const identityRows: readonly [string, string][] = [
+      ['Имя', value.identity.passengerName],
+      ['Дата рождения', value.identity.birthDate],
+      ['Номер', value.identity.numberMasked],
+      ['Класс обслуживания', value.serviceClass],
+    ];
+    for (const [label, text] of identityRows) {
+      const row = document.createElement('p');
+      row.textContent = `${label}: ${text}`;
+      form.append(row);
+    }
+
+    const controls = document.createElement('div');
+    controls.className = 'game-form-dialog__controls';
+    const close = document.createElement('button');
+    close.type = 'button';
+    close.textContent = 'Закрыть';
+    close.addEventListener('click', () => dialog.close());
+    controls.append(close);
+
+    if (value.canReject) {
+      const reject = document.createElement('button');
+      reject.type = 'button';
+      reject.textContent = 'Отказать';
+      reject.addEventListener('click', () => {
+        interactions.invokeAction(actionHandle, { decision: 'reject' });
+        dialog.close();
+      });
+      controls.append(reject);
+    }
+    if (value.canAdmit) {
+      const admit = document.createElement('button');
+      admit.type = 'button';
+      admit.textContent = 'Допустить';
+      admit.addEventListener('click', () => {
+        interactions.invokeAction(actionHandle, { decision: 'admit' });
+        dialog.close();
+      });
+      controls.append(admit);
+    }
+    form.append(controls);
+    dialog.addEventListener('close', () => {
+      dialog.remove();
+      if (this.openDialog === dialog) this.openDialog = null;
+    });
+    dialog.append(form);
+    document.body.append(dialog);
+    this.openDialog = dialog;
+    dialog.showModal();
   }
 
   private showEmergencyBrakeForm(
