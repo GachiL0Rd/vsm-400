@@ -147,6 +147,32 @@ export const EndNodeSchema = z.strictObject({
 
 export const NodeSchema = z.union([EndNodeSchema, DecisionNodeSchema]);
 
+export const LlmModeSchema = z.enum(['pool', 'live']);
+export const LlmForbidSchema = z.enum(['medications', 'numbers', 'names', 'new-facts']);
+
+/** LLM переписывает формулировки. id, эффекты, next и вердикт сюда не входят. */
+export const LlmBlockSchema = z.strictObject({
+  enabled: z.boolean().describe('Включать перефразы для этого сценария'),
+  mode: LlmModeSchema.default('pool').describe(
+    'pool берёт готовый пул, live добирает вариант на сессию',
+  ),
+  keep: z
+    .array(z.string().min(1))
+    .min(1)
+    .optional()
+    .describe('Смысловые якоря, которые обязаны остаться в тексте'),
+  forbid: z
+    .array(LlmForbidSchema)
+    .min(1)
+    .optional()
+    .describe('Запреты валидатора: лекарства, цифры, имена, новые факты'),
+  personas: z
+    .array(z.string().min(1))
+    .min(1)
+    .optional()
+    .describe('Манеры пассажира: из них выбирается персона сессии'),
+});
+
 export const GatesSchema = z.strictObject({
   failIf: z
     .strictObject({
@@ -172,10 +198,14 @@ export const ScenarioGraphSchema = z.strictObject({
     safety: z.number().min(0).max(100),
   }),
   gates: GatesSchema.optional(),
+  llm: LlmBlockSchema.optional(),
   start: z.string().min(1),
   nodes: z.record(z.string(), NodeSchema),
 });
 
+export type LlmMode = z.infer<typeof LlmModeSchema>;
+export type LlmForbid = z.infer<typeof LlmForbidSchema>;
+export type LlmBlock = z.infer<typeof LlmBlockSchema>;
 export type Compare = z.infer<typeof CompareSchema>;
 export type EffectsIf = z.infer<typeof EffectsIfSchema>;
 export type ScenarioGraph = z.infer<typeof ScenarioGraphSchema>;

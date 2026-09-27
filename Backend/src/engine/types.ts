@@ -65,6 +65,15 @@ export type RunSummary = {
   };
 };
 
+/**
+ * Перефраз одного узла. id выборов обязаны совпасть с узлом,
+ * иначе движок оставляет текст YAML.
+ */
+export type TextVariant = {
+  text: string;
+  choices: { id: string; text: string }[];
+};
+
 /** Текст и доступные выборы. Эффектов, вердикта и better здесь нет. */
 export type NodeView = {
   nodeId: string;
