@@ -61,6 +61,21 @@ describe('PublicGameProjection', () => {
     expect(JSON.stringify(snapshot)).not.toContain('pressureTransferWeight');
   });
 
+  it('does not consume a public revision for idle time alone', () => {
+    const projection = createProjection();
+    projection.snapshot();
+
+    const update = projection.advanceTo(secondsToSimTimeUs(1));
+
+    expect(update).toMatchObject({
+      type: 'delta',
+      baseRevision: 0,
+      revision: 0,
+      changes: { timeUs: secondsToSimTimeUs(1) },
+    });
+    expect(projection.revision).toBe(0);
+  });
+
   it('produces a delta when public state changes', () => {
     const projection = createProjection();
     projection.snapshot();

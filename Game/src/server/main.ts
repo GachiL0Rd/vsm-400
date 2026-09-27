@@ -23,6 +23,8 @@ const host = new GameSessionHost({
   resumeTokens: new InMemoryResumeTokenRegistry(),
   disconnectDebounceMs: config.disconnectDebounceMs,
   reconnectGraceMs: config.reconnectGraceMs,
+  simulationStepMs: config.simulationStepMs,
+  maxCatchUpMs: config.maxCatchUpMs,
 });
 
 const application = createGameHttpServer(config, new CommonGameProtocolAdapter({ host }));

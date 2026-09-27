@@ -81,14 +81,20 @@ export class PublicGameProjection {
     };
   }
 
-  advanceTo(
-    target: SimTimeUs,
-    clock: PublicClockView = DEFAULT_CLOCK,
-  ): GameSnapshotMessage | GameDeltaMessage {
-    const before = this.lastState ?? this.project(clock);
+  advanceTo(target: SimTimeUs, clock: PublicClockView = DEFAULT_CLOCK): GameDeltaMessage {
     this.attempt.advanceTo(target);
+    return this.refresh(clock);
+  }
+
+  /**
+   * Re-projects current simulation state through the serialization gate.
+   * Pure passage of simulation time does not consume a public revision; state
+   * changes (including public clock state) do.
+   */
+  refresh(clock: PublicClockView = DEFAULT_CLOCK): GameDeltaMessage {
+    const before = this.lastState ?? this.project(clock);
     const projected = this.project(clock, this.revisionValue);
-    if (sameStateWithoutRevision(before, projected)) {
+    if (sameStateIgnoringRevisionAndTime(before, projected)) {
       this.lastState = projected;
       return {
         protocolVersion: GAME_PROTOCOL_VERSION,
@@ -457,8 +463,8 @@ function diffEntities(
   return { upsert, removeIds };
 }
 
-function sameStateWithoutRevision(left: PublicGameState, right: PublicGameState): boolean {
-  return sameJson({ ...left, revision: 0 }, { ...right, revision: 0 });
+function sameStateIgnoringRevisionAndTime(left: PublicGameState, right: PublicGameState): boolean {
+  return sameJson({ ...left, revision: 0, timeUs: 0 }, { ...right, revision: 0, timeUs: 0 });
 }
 
 function sameJson(left: unknown, right: unknown): boolean {

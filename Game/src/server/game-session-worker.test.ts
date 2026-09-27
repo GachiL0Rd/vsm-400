@@ -1,18 +1,24 @@
 import { describe, expect, it } from 'vitest';
+import type { ServerMessage } from '../common/game-wire.ts';
 import { PublicGameProjection } from '../projection/public-game-session.ts';
 import { GameAttempt } from '../simulation/game-attempt.ts';
 import { BaselineContentRegistry } from './content-registry.ts';
 import {
   GameSessionWorker,
+  type WorkerClock,
   type WorkerScheduler,
   type WorkerTimer,
 } from './game-session-worker.ts';
 import { MockPlatformGateway, mockMode } from './platform-gateway.ts';
 import { InMemoryResumeTokenRegistry } from './resume-token-registry.ts';
 
-class FakeScheduler implements WorkerScheduler {
+class FakeRuntime implements WorkerScheduler, WorkerClock {
   private now = 0;
   private readonly tasks: Array<{ at: number; active: boolean; callback: () => void }> = [];
+
+  nowMs(): number {
+    return this.now;
+  }
 
   after(delayMs: number, callback: () => void): WorkerTimer {
     const task = { at: this.now + delayMs, active: true, callback };
@@ -35,7 +41,11 @@ class FakeScheduler implements WorkerScheduler {
   }
 }
 
-function worker(scheduler: FakeScheduler, attempt = new GameAttempt({ rootSeed: 5 })) {
+function worker(
+  runtime: FakeRuntime,
+  attempt = new GameAttempt({ rootSeed: 5 }),
+  options: { simulationStepMs?: number; maxCatchUpMs?: number } = {},
+) {
   const registry = new InMemoryResumeTokenRegistry();
   const gateway = new MockPlatformGateway({
     attemptId: 'attempt-1',
@@ -55,10 +65,16 @@ function worker(scheduler: FakeScheduler, attempt = new GameAttempt({ rootSeed: 
       resumeTokens: registry,
       disconnectDebounceMs: 10,
       reconnectGraceMs: 20,
-      scheduler,
-      clock: { nowMs: () => 0 },
+      simulationStepMs: options.simulationStepMs ?? 50,
+      maxCatchUpMs: options.maxCatchUpMs ?? 1_000,
+      scheduler: runtime,
+      clock: runtime,
     }),
   };
+}
+
+async function flush(): Promise<void> {
+  await new Promise<void>((resolve) => setTimeout(resolve, 0));
 }
 
 describe('GameSessionWorker', () => {
@@ -74,46 +90,159 @@ describe('GameSessionWorker', () => {
     expect(registry.resolve(token, 11)).toBeNull();
   });
 
-  it('pauses only after disconnect debounce and resumes before grace expires', () => {
-    const scheduler = new FakeScheduler();
-    const { value } = worker(scheduler);
+  it('pauses only after disconnect debounce and resumes before grace expires without wall catch-up', () => {
+    const runtime = new FakeRuntime();
+    const { value } = worker(runtime, undefined, { maxCatchUpMs: 10_000 });
 
     value.attach('socket-1');
-    value.detach('socket-1');
-    scheduler.advanceBy(9);
-    expect(value.lifecycle).toBe('active');
+    runtime.advanceBy(100);
+    const beforeDetach = value.projection.attempt.snapshot().time;
+    expect(beforeDetach).toBe(100_000);
 
-    scheduler.advanceBy(1);
+    value.detach('socket-1');
+    runtime.advanceBy(10);
     expect(value.lifecycle).toBe('paused');
-    expect(value.connectionLifecycle).toBe('detached');
+    const pausedAt = value.projection.attempt.snapshot().time;
+    expect(pausedAt).toBe(110_000);
+
+    runtime.advanceBy(15);
+    expect(value.projection.attempt.snapshot().time).toBe(pausedAt);
 
     value.attach('socket-2');
     expect(value.lifecycle).toBe('active');
     expect(value.connectionLifecycle).toBe('attached');
+    runtime.advanceBy(100);
+    expect(value.projection.attempt.snapshot().time).toBe(pausedAt + 100_000);
   });
 
   it('aborts after the reconnect grace period and revokes resume tokens', () => {
-    const scheduler = new FakeScheduler();
-    const { value, registry } = worker(scheduler);
+    const runtime = new FakeRuntime();
+    const { value, registry } = worker(runtime);
     const attachment = value.attach('socket-1');
     value.detach('socket-1');
 
-    scheduler.advanceBy(30);
+    runtime.advanceBy(30);
     expect(value.lifecycle).toBe('aborted');
-    expect(registry.validate(attachment.resumeToken, 'attempt-1', 0)).toBe(false);
+    expect(registry.validate(attachment.resumeToken, 'attempt-1', runtime.nowMs())).toBe(false);
   });
 
-  it('finalizes a terminal attempt exactly once', async () => {
-    const scheduler = new FakeScheduler();
-    const attempt = new GameAttempt({ rootSeed: 12 });
-    attempt.advanceTo(attempt.scenario.normalEndTimeUs);
-    const { value, gateway } = worker(scheduler, attempt);
+  it('advances scenario state from the server loop and publishes only meaningful public deltas', () => {
+    const runtime = new FakeRuntime();
+    const attempt = new GameAttempt({ rootSeed: 7 });
+    const { value } = worker(runtime, attempt, { maxCatchUpMs: 10 * 60 * 1_000 });
+    const publications: ServerMessage[] = [];
+    value.subscribePublications((message) => publications.push(message));
+    value.attach('socket-1');
+    value.projection.snapshot(value.publicClock());
+
+    runtime.advanceBy(1_000);
+    expect(attempt.snapshot().time).toBe(1_000_000);
+    expect(value.projection.revision).toBe(0);
+    expect(publications).toEqual([]);
+
+    runtime.advanceBy(5 * 60 * 1_000 - 1_000);
+    expect(attempt.phase).toEqual({ kind: 'origin-stop' });
+    expect(value.projection.revision).toBe(1);
+    expect(publications).toHaveLength(1);
+    expect(publications[0]).toMatchObject({
+      type: 'delta',
+      baseRevision: 0,
+      revision: 1,
+      changes: { phase: { kind: 'origin-stop' } },
+    });
+  });
+
+  it('changes time scale without a discontinuity and exposes the clock through the projection', () => {
+    const runtime = new FakeRuntime();
+    const { value } = worker(runtime, undefined, { maxCatchUpMs: 10_000 });
+    const publications: ServerMessage[] = [];
+    value.subscribePublications((message) => publications.push(message));
+    value.attach('socket-1');
+    value.projection.snapshot(value.publicClock());
+
+    runtime.advanceBy(100);
+    expect(value.projection.attempt.snapshot().time).toBe(100_000);
+    value.setTimeScale(2);
+    expect(value.publicClock()).toEqual({ timeScale: 2, paused: false });
+    expect(publications.at(-1)).toMatchObject({
+      type: 'delta',
+      changes: { clock: { timeScale: 2, paused: false } },
+    });
+
+    runtime.advanceBy(100);
+    expect(value.projection.attempt.snapshot().time).toBe(300_000);
+    expect(() => value.setTimeScale(3)).toThrow(/Unsupported time scale/);
+  });
+
+  it('drops an excessive scheduler gap instead of catching up the whole wall interval', () => {
+    const runtime = new FakeRuntime();
+    const { value } = worker(runtime, undefined, { maxCatchUpMs: 500 });
     value.attach('socket-1');
 
-    const [first, second] = await Promise.all([value.finish(), value.finish()]);
-    expect(first).toEqual(second);
+    runtime.advanceBy(5_000);
+    expect(value.projection.attempt.snapshot().time).toBe(0);
+    runtime.advanceBy(100);
+    expect(value.projection.attempt.snapshot().time).toBe(100_000);
+  });
+
+  it('automatically finalizes a terminal attempt exactly once and publishes finishing/finished', async () => {
+    const runtime = new FakeRuntime();
+    const attempt = new GameAttempt({ rootSeed: 12 });
+    const { value, gateway } = worker(runtime, attempt, {
+      maxCatchUpMs: attempt.scenario.normalEndTimeUs / 1_000 + 1_000,
+    });
+    const publications: ServerMessage[] = [];
+    value.subscribePublications((message) => publications.push(message));
+    value.attach('socket-1');
+    value.projection.snapshot(value.publicClock());
+
+    runtime.advanceBy(attempt.scenario.normalEndTimeUs / 1_000);
+    await flush();
+
     expect(value.lifecycle).toBe('finished');
     expect(gateway.finished).toHaveLength(1);
     expect(gateway.finished[0]?.rootSeed).toBe('12');
+    expect(
+      publications.map((message) => message.type === 'session-state' && message.state),
+    ).toContain('finishing');
+    expect(publications.at(-1)).toMatchObject({
+      type: 'session-state',
+      state: 'finished',
+      redirectUrl: 'http://localhost/results/attempt-1',
+    });
+
+    await value.finish();
+    expect(gateway.finished).toHaveLength(1);
+  });
+
+  it('records accepted input order together with authoritative simulation time', async () => {
+    const runtime = new FakeRuntime();
+    const attempt = new GameAttempt({ rootSeed: 21 });
+    const { value, gateway } = worker(runtime, attempt, { maxCatchUpMs: 10_000 });
+    value.attach('socket-1');
+
+    runtime.advanceBy(100);
+    value.synchronizeNow();
+    value.recordUserInput({ kind: 'take-consumable', itemKind: 'drink' });
+    runtime.advanceBy(50);
+    value.synchronizeNow();
+    value.recordUserInput({ kind: 'take-consumable', itemKind: 'food' });
+    attempt.signal('emergency-brake-used');
+    value.synchronizeNow();
+    await flush();
+
+    expect(gateway.finished).toHaveLength(1);
+    expect(gateway.finished[0]?.userInputs).toEqual([
+      {
+        at: 100_000,
+        sequence: 0,
+        command: { kind: 'take-consumable', itemKind: 'drink' },
+      },
+      {
+        at: 150_000,
+        sequence: 1,
+        command: { kind: 'take-consumable', itemKind: 'food' },
+      },
+    ]);
   });
 });

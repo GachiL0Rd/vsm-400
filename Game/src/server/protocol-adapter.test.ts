@@ -124,6 +124,45 @@ describe('CommonGameProtocolAdapter', () => {
     expect(connection.sent[2]).toMatchObject({ type: 'delta', baseRevision: 0, revision: 1 });
   });
 
+  it('applies an allowed time scale through the worker and publishes the clock delta', async () => {
+    const { adapter } = setup();
+    const connection = new FakeConnection('socket-scale');
+    adapter.open(connection);
+    connection.receive({
+      protocolVersion: GAME_PROTOCOL_VERSION,
+      type: 'hello',
+      requestId: 'hello-scale',
+      sessionKey: 'platform-key',
+    });
+    await flush();
+    const ready = connection.sent[0];
+    if (ready?.type !== 'session-ready') throw new Error('Expected session-ready');
+
+    connection.receive({
+      protocolVersion: GAME_PROTOCOL_VERSION,
+      type: 'set-time-scale',
+      requestId: 'scale-1',
+      knownRevision: ready.snapshot.state.revision,
+      scale: 2,
+    });
+
+    expect(connection.sent.slice(1).map((message) => message.type)).toEqual([
+      'delta',
+      'command-result',
+    ]);
+    expect(connection.sent[1]).toMatchObject({
+      type: 'delta',
+      baseRevision: 0,
+      revision: 1,
+      changes: { clock: { timeScale: 2, paused: false } },
+    });
+    expect(connection.sent[2]).toMatchObject({
+      type: 'command-result',
+      status: 'accepted',
+      revision: 1,
+    });
+  });
+
   it('resumes by game-server token without asking the client for an attempt id', async () => {
     const { adapter } = setup();
     const first = new FakeConnection('socket-1');

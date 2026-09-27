@@ -24,18 +24,18 @@ This batch should be completed before expanding visuals or documenting protocol 
 - [x] **Wire validation/error handling.** Invalid JSON/schema payloads, binary payloads where unsupported, repeated `hello`, unauthenticated commands and unsupported commands must fail predictably without crashing a worker.
 - [x] **Integrated contract test.** Cover `hello → session-ready/snapshot → move → delta → query-actions → action-offer → invoke-action → delta` through the same common schemas used by browser and server.
 
-## H2 — Authoritative runtime/lifecycle: second batch
+## H2 — Authoritative runtime/lifecycle: complete
 
 This is the main remaining server-integration gap. Simulation already supports explicit `advanceTo`; the worker must own wall-clock mapping and publication.
 
-- [ ] **Worker simulation loop.** While active, map wall time to `SimTimeUs` and advance the attempt on a bounded cadence. Do not tie simulation semantics to render FPS or WebSocket traffic.
-- [ ] **Pause/resume mapping.** Disconnect debounce/pause must stop advancement according to session policy and resume without a wall-time jump. Reconnect receives an authoritative snapshot before normal streaming continues.
-- [ ] **Time-scale state.** Implement worker-owned time scale (at least baseline `1x`; optional supported scales can follow) and make `publicClock` truthful. `set-time-scale` either works according to policy or is intentionally absent from advertised capabilities.
-- [ ] **Simulation-originated updates.** Changes caused by scheduled events/NPC decisions/scenario transitions must produce deltas even when no client command triggered them.
-- [ ] **Single publication path.** Command-induced and clock-induced state changes use the same projection/revision machinery; no competing revision counters or direct serialization of simulation state.
-- [ ] **Terminal transition.** When `GameAttempt` reaches termination, worker calls idempotent `finishSession` once, publishes `session-state: finishing/finished`, and exposes the platform redirect/result receipt without requiring another gameplay command.
-- [ ] **Disconnect/reconnect lifecycle test.** Exercise active → detached → paused → resumed, plus expiry/abort behavior, with deterministic fake clock/scheduler.
-- [ ] **Deterministic command journal.** Accepted gameplay commands retain authoritative simulation time/order suitable for the later replay source; rejected/stale commands are not recorded as accepted input.
+- [x] **Worker simulation loop.** While active, map wall time to `SimTimeUs` and advance the attempt on a bounded cadence. Do not tie simulation semantics to render FPS or WebSocket traffic.
+- [x] **Pause/resume mapping.** Disconnect debounce/pause must stop advancement according to session policy and resume without a wall-time jump. Reconnect receives an authoritative snapshot before normal streaming continues.
+- [x] **Time-scale state.** Implement worker-owned time scale (at least baseline `1x`; optional supported scales can follow) and make `publicClock` truthful. `set-time-scale` either works according to policy or is intentionally absent from advertised capabilities.
+- [x] **Simulation-originated updates.** Changes caused by scheduled events/NPC decisions/scenario transitions must produce deltas even when no client command triggered them.
+- [x] **Single publication path.** Command-induced and clock-induced state changes use the same projection/revision machinery; no competing revision counters or direct serialization of simulation state.
+- [x] **Terminal transition.** When `GameAttempt` reaches termination, worker calls idempotent `finishSession` once, publishes `session-state: finishing/finished`, and exposes the platform redirect/result receipt without requiring another gameplay command.
+- [x] **Disconnect/reconnect lifecycle test.** Exercise active → detached → paused → resumed, plus expiry/abort behavior, with deterministic fake clock/scheduler.
+- [x] **Deterministic command journal.** Accepted gameplay commands retain authoritative simulation time/order suitable for the later replay source; rejected/stale commands are not recorded as accepted input.
 
 ## H3 — Transport/operational hardening: third batch
 

@@ -5,6 +5,7 @@ import type { GameContentRegistry } from './content-registry.ts';
 import {
   GameSessionWorker,
   type SessionAttachment,
+  systemWorkerClock,
   type WorkerClock,
   type WorkerScheduler,
 } from './game-session-worker.ts';
@@ -17,6 +18,9 @@ export interface GameSessionHostOptions {
   readonly resumeTokens: ResumeTokenRegistry;
   readonly disconnectDebounceMs: number;
   readonly reconnectGraceMs: number;
+  readonly simulationStepMs?: number;
+  readonly maxCatchUpMs?: number;
+  readonly allowedTimeScales?: readonly number[];
   readonly clock?: WorkerClock;
   readonly scheduler?: WorkerScheduler;
 }
@@ -24,8 +28,11 @@ export interface GameSessionHostOptions {
 /** Maps authenticated platform attempts to durable-in-memory workers. */
 export class GameSessionHost {
   private readonly workers = new Map<string, GameSessionWorker>();
+  private readonly clock: WorkerClock;
 
-  constructor(private readonly options: GameSessionHostOptions) {}
+  constructor(private readonly options: GameSessionHostOptions) {
+    this.clock = options.clock ?? systemWorkerClock;
+  }
 
   async attachWithSessionKey(sessionKey: string, connectionId: string): Promise<SessionAttachment> {
     const resolved = await this.options.platformGateway.resolveSession(sessionKey);
@@ -50,7 +57,16 @@ export class GameSessionHost {
         resumeTokens: this.options.resumeTokens,
         disconnectDebounceMs: this.options.disconnectDebounceMs,
         reconnectGraceMs: this.options.reconnectGraceMs,
-        ...(this.options.clock === undefined ? {} : { clock: this.options.clock }),
+        ...(this.options.simulationStepMs === undefined
+          ? {}
+          : { simulationStepMs: this.options.simulationStepMs }),
+        ...(this.options.maxCatchUpMs === undefined
+          ? {}
+          : { maxCatchUpMs: this.options.maxCatchUpMs }),
+        ...(this.options.allowedTimeScales === undefined
+          ? {}
+          : { allowedTimeScales: this.options.allowedTimeScales }),
+        clock: this.clock,
         ...(this.options.scheduler === undefined ? {} : { scheduler: this.options.scheduler }),
         onAborted: (attemptId) => this.workers.delete(attemptId),
       });
@@ -60,7 +76,7 @@ export class GameSessionHost {
   }
 
   attachWithResumeToken(resumeToken: string, connectionId: string): SessionAttachment {
-    const nowMs = this.options.clock?.nowMs() ?? Date.now();
+    const nowMs = this.clock.nowMs();
     const attemptId = this.options.resumeTokens.resolve(resumeToken, nowMs);
     if (attemptId === null) throw new Error('Invalid or expired resume token');
     const worker = this.workers.get(attemptId);

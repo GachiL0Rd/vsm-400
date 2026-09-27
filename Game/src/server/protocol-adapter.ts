@@ -131,7 +131,15 @@ export class CommonGameProtocolAdapter implements GameProtocolAdapter {
         previous.close(1008, 'session resumed from another connection');
       }
       this.activeConnections.set(attachment.attemptId, connection);
-      Object.assign(state, { phase: 'authenticated', attemptId: attachment.attemptId, worker });
+      const unsubscribe = worker.subscribePublications((message) => {
+        if (worker.isAttachedConnection(connection.id)) send(connection, message);
+      });
+      Object.assign(state, {
+        phase: 'authenticated',
+        attemptId: attachment.attemptId,
+        worker,
+        unsubscribe,
+      });
       send(connection, {
         protocolVersion: GAME_PROTOCOL_VERSION,
         type: 'session-ready',
@@ -156,6 +164,7 @@ export class CommonGameProtocolAdapter implements GameProtocolAdapter {
     worker: GameSessionWorker,
     command: Exclude<ClientCommand, { type: 'hello' }>,
   ): void {
+    worker.synchronizeNow();
     const projection = worker.projection;
     switch (command.type) {
       case 'resync':
@@ -183,15 +192,22 @@ export class CommonGameProtocolAdapter implements GameProtocolAdapter {
         return;
       }
       case 'set-time-scale':
-        send(connection, {
-          protocolVersion: GAME_PROTOCOL_VERSION,
-          type: 'command-result',
-          requestId: command.requestId,
-          status: 'rejected',
-          revision: projection.revision,
-          code: 'unsupported-command',
-          message: 'time scale control is not implemented yet',
-        });
+        if (command.knownRevision !== projection.revision) {
+          send(connection, stale(command.requestId, projection.revision));
+          return;
+        }
+        try {
+          const revision = worker.setTimeScale(command.scale);
+          send(connection, {
+            protocolVersion: GAME_PROTOCOL_VERSION,
+            type: 'command-result',
+            requestId: command.requestId,
+            status: 'accepted',
+            revision,
+          });
+        } catch (error) {
+          send(connection, rejected(command.requestId, projection.revision, errorMessage(error)));
+        }
         return;
     }
   }
@@ -202,12 +218,12 @@ export class CommonGameProtocolAdapter implements GameProtocolAdapter {
     result: ReturnType<PublicGameProjection['invoke']>,
   ): void {
     send(connection, result.result);
-    if (result.recordedCommand !== undefined) worker.recordUserInput(result.recordedCommand);
-    if (result.delta !== undefined) send(connection, result.delta);
+    worker.acceptProjectionResult(result);
   }
 
   private closed(connection: GameProtocolConnection, state: ConnectionState): void {
     if (state.phase !== 'authenticated') return;
+    state.unsubscribe();
     if (this.activeConnections.get(state.attemptId)?.id === connection.id) {
       this.activeConnections.delete(state.attemptId);
     }
@@ -220,6 +236,7 @@ type AuthenticatedState = {
   phase: 'authenticated';
   attemptId: string;
   worker: GameSessionWorker;
+  unsubscribe: () => void;
 };
 type ConnectionState = AwaitingHelloState | AuthenticatedState;
 
