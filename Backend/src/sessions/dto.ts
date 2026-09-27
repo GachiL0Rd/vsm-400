@@ -2,11 +2,10 @@ import { createZodDto } from 'nestjs-zod';
 import { z } from 'zod';
 import { CarClassSchema } from '../engine/schema';
 
-const transportSchema = z.enum(['REST', 'WS']);
 const sessionStatusSchema = z.enum(['PENDING', 'ACTIVE', 'COMPLETED', 'ABORTED', 'EXPIRED']);
 
 export const openSessionSchema = z.strictObject({
-  transport: transportSchema,
+  transport: z.literal('WS').optional().default('WS'),
   carClass: CarClassSchema.optional(),
 });
 
@@ -87,13 +86,6 @@ export const openedSessionSchema = z.strictObject({
 });
 
 export class OpenedSessionDto extends createZodDto(openedSessionSchema) {}
-
-export const revealSchema = z.strictObject({
-  seed: z.string().regex(/^[0-9a-f]{64}$/),
-  commit: z.string().regex(/^[0-9a-f]{64}$/),
-});
-
-export class RevealDto extends createZodDto(revealSchema) {}
 
 export const abortResultSchema = z.strictObject({
   status: z.literal('ABORTED'),

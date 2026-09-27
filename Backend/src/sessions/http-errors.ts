@@ -28,13 +28,6 @@ export function sessionClosed(): ConflictException {
   return new ConflictException({ message: 'Смена уже закрыта', code: 'SESSION_CLOSED' });
 }
 
-export function revealClosed(): ConflictException {
-  return new ConflictException({
-    message: 'Seed раскрывается после завершения смены',
-    code: 'REVEAL_CLOSED',
-  });
-}
-
 export function sessionNotActive(): ConflictException {
   return new ConflictException({
     message: 'Отчёт принимается только для активной смены',

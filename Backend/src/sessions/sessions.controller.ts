@@ -1,7 +1,6 @@
 import {
   Body,
   Controller,
-  Get,
   HttpCode,
   HttpStatus,
   Inject,
@@ -25,16 +24,7 @@ import type { AuthUser } from '../auth/auth-user';
 import type { CookieReply } from '../auth/cookies';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { APP_CONFIG, type AppConfig } from '../config/env';
-import { ActorType } from '../generated/prisma/client';
-import {
-  AbortResultDto,
-  DecisionDto,
-  DecisionViewDto,
-  OpenedSessionDto,
-  OpenSessionDto,
-  RevealDto,
-  SessionViewDto,
-} from './dto';
+import { AbortResultDto, OpenedSessionDto, OpenSessionDto } from './dto';
 import { GAME_COOKIE, gameCookieOptions } from './game-cookie';
 import { SessionsService } from './sessions.service';
 
@@ -68,50 +58,12 @@ export class SessionsController {
     return opened;
   }
 
-  @Get(':id')
-  @ApiOperation({
-    summary: 'Текущий узел смены. Просроченный дедлайн REST сервер закрывает сам',
-  })
-  @ApiOkResponse({ type: SessionViewDto })
-  view(@CurrentUser() user: AuthUser, @Param('id') id: string) {
-    return this.sessions.viewSession(user.id, id);
-  }
-
-  @Post(':id/decisions')
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Ход REST-смены. Повтор того же seq и choiceId отдаёт прежний ответ' })
-  @ApiBody({ type: DecisionDto })
-  @ApiOkResponse({ type: DecisionViewDto })
-  decide(
-    @CurrentUser() user: AuthUser,
-    @Param('id') id: string,
-    @Body(new ZodValidationPipe(DecisionDto)) body: DecisionDto,
-    @Req() request: HttpRequest,
-  ) {
-    return this.sessions.decide({
-      sessionId: id,
-      seq: body.seq,
-      choiceId: body.choiceId,
-      clientTs: body.clientTs,
-      ownerId: user.id,
-      transport: 'REST',
-      actor: { type: ActorType.USER, id: user.id, ip: readIp(request) },
-    });
-  }
-
   @Post(':id/abort')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Прервать смену. Рейс не пишется' })
   @ApiOkResponse({ type: AbortResultDto })
   abort(@CurrentUser() user: AuthUser, @Param('id') id: string, @Req() request: HttpRequest) {
     return this.sessions.abort(user.id, id, readIp(request));
-  }
-
-  @Get(':id/reveal')
-  @ApiOperation({ summary: 'Раскрыть seed после завершённой смены' })
-  @ApiOkResponse({ type: RevealDto })
-  reveal(@CurrentUser() user: AuthUser, @Param('id') id: string) {
-    return this.sessions.reveal(user.id, id);
   }
 }
 

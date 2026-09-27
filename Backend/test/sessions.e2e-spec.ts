@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import { Test } from '@nestjs/testing';
@@ -18,19 +17,12 @@ import { APP_CONFIG, type AppConfig, loadConfig } from '../src/config/env';
 import { configureApp } from '../src/configure-app';
 import { commitOf, createRng } from '../src/engine/rng';
 import type { ScenarioGraph } from '../src/engine/schema';
-import { orderChoices } from '../src/engine/text';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { ScenariosService } from '../src/scenarios/scenarios.service';
-import type { DecisionView, OpenedSession, RunReport, SessionView } from '../src/sessions/dto';
+import type { DecisionView, OpenedSession, RunReport } from '../src/sessions/dto';
 import { decryptSeed } from '../src/sessions/seed-box';
 import { SessionsService } from '../src/sessions/sessions.service';
-import {
-  orderRng,
-  personaOf,
-  pickApprovedId,
-  readTextPlan,
-  textPlanKey,
-} from '../src/sessions/text-plan';
+import { personaOf, pickApprovedId, readTextPlan, textPlanKey } from '../src/sessions/text-plan';
 import { randomCallsign } from '../src/users/callsign';
 import { testDatabaseUrl, testRedisUrl } from './databases';
 import { HeaderAccessGuard } from './header-access.guard';
@@ -420,11 +412,34 @@ describe('игровые сессии', () => {
 
   async function open(
     userId: string,
-    body: { transport: 'REST' | 'WS'; carClass?: 'ECONOMY' } = { transport: 'REST' },
+    body: { carClass?: 'ECONOMY' } = {},
   ): Promise<{ response: LightMyRequestResponse; body: OpenedSession }> {
     const response = await inject('POST', '/api/v1/game-sessions', userId, body);
     expect(response.statusCode).toBe(200);
     return { response, body: response.json() as OpenedSession };
+  }
+
+  async function move(sessionId: string, seq: number, choiceId: string): Promise<DecisionView> {
+    clock.advance(1000);
+    const response = await inject(
+      'POST',
+      `/api/internal/v1/game-sessions/${sessionId}/decisions`,
+      undefined,
+      { seq, choiceId, clientTs: clock.current.getTime() },
+      { 'x-service-token': serviceToken },
+    );
+    expect(response.statusCode, response.body).toBe(200);
+    return response.json() as DecisionView;
+  }
+
+  async function journalOf(
+    sessionId: string,
+  ): Promise<{ situation: string; action: string; choiceId: string }[]> {
+    const row = await prisma.gameSession.findUniqueOrThrow({ where: { id: sessionId } });
+    const state = row.state as {
+      journal?: { situation: string; action: string; choiceId: string }[];
+    };
+    return state.journal ?? [];
   }
 
   function listen(channel: string): Promise<{
@@ -477,7 +492,10 @@ describe('игровые сессии', () => {
         status: 'PLANNED',
       },
     });
-    const first = await open(user.id, { transport: 'REST', carClass: 'ECONOMY' });
+    const rejected = await inject('POST', '/api/v1/game-sessions', user.id, { transport: 'REST' });
+    expect(rejected.statusCode).toBe(422);
+
+    const first = await open(user.id, { carClass: 'ECONOMY' });
     expect(first.body.wsUrl).toBe(config.publicGameWsUrl);
     expect(first.body.plan.segments).toBeGreaterThan(0);
     expect(first.body.plan.titles.length).toBe(first.body.plan.segments);
@@ -489,7 +507,9 @@ describe('игровые сессии', () => {
     expect(cookie.toLowerCase()).toContain('samesite=strict');
 
     const row = await prisma.gameSession.findUniqueOrThrow({ where: { id: first.body.sessionId } });
-    expect(row.status).toBe('ACTIVE');
+    expect(row.status).toBe('PENDING');
+    expect(row.transport).toBe('WS');
+    expect(row.startedAt).toBeNull();
     expect(row.shiftId).toBe(assignment.id);
     expect(row.seedEnc).not.toBe(row.seedCommit);
     expect(row.seedEnc.includes(row.seedCommit)).toBe(false);
@@ -501,7 +521,7 @@ describe('игровые сессии', () => {
     });
     expect(started.status).toBe('STARTED');
 
-    const anon = await inject('POST', '/api/v1/game-sessions', undefined, { transport: 'REST' });
+    const anon = await inject('POST', '/api/v1/game-sessions', undefined, {});
     expect(anon.statusCode).toBe(401);
 
     const second = await open(user.id);
@@ -525,6 +545,14 @@ describe('игровые сессии', () => {
     const opened = await open(user.id);
     const again = await open(user.id);
     expect(again.body.sessionId).toBe(opened.body.sessionId);
+    const verified = await inject(
+      'POST',
+      '/api/internal/v1/tickets/verify',
+      undefined,
+      { ticket: again.body.ticket },
+      { 'x-service-token': serviceToken },
+    );
+    expect(verified.statusCode, verified.body).toBe(200);
     const reported = await inject(
       'POST',
       `/api/internal/v1/game-sessions/${opened.body.sessionId}/report`,
@@ -551,343 +579,39 @@ describe('игровые сессии', () => {
     const other = await makeUser('other');
     const opened = await open(owner.id);
     const response = await inject(
-      'GET',
-      `/api/v1/game-sessions/${opened.body.sessionId}`,
+      'POST',
+      `/api/v1/game-sessions/${opened.body.sessionId}/abort`,
       other.id,
     );
     expect(response.statusCode).toBe(404);
     expect(response.json()).toMatchObject({ code: 'NOT_FOUND' });
-  });
-
-  it('повтор seq отдаёт тот же ответ, другой choiceId — 409', async () => {
-    const user = await makeUser('seq');
-    const opened = await open(user.id);
-    const view = await inject('GET', `/api/v1/game-sessions/${opened.body.sessionId}`, user.id);
-    expect(view.statusCode).toBe(200);
-    const current = view.json() as SessionView;
-    const choice = current.view.choices[0];
-    expect(choice).toBeTruthy();
-    clock.advance(1000);
-    const payload = { seq: current.seq, choiceId: choice?.id, clientTs: clock.current.getTime() };
-    const first = await inject(
-      'POST',
-      `/api/v1/game-sessions/${opened.body.sessionId}/decisions`,
-      user.id,
-      payload,
-    );
-    expect(first.statusCode).toBe(200);
-    const second = await inject(
-      'POST',
-      `/api/v1/game-sessions/${opened.body.sessionId}/decisions`,
-      user.id,
-      payload,
-    );
-    expect(second.statusCode).toBe(200);
-    expect(second.json()).toEqual(first.json());
-    const mismatch = await inject(
-      'POST',
-      `/api/v1/game-sessions/${opened.body.sessionId}/decisions`,
-      user.id,
-      { seq: current.seq, choiceId: 'other-choice' },
-    );
-    expect(mismatch.statusCode).toBe(409);
-    expect(mismatch.json()).toMatchObject({ code: 'SEQ_MISMATCH' });
-    const events = await prisma.gameEvent.count({
-      where: { sessionId: opened.body.sessionId, type: 'decision' },
-    });
-    expect(events).toBe(1);
-  });
-
-  it('телеметрия seq=1 не блокирует ход seq=1', async () => {
-    const user = await makeUser('telemetry');
-    const opened = await open(user.id);
-    const id = opened.body.sessionId;
-    const headers = { 'x-service-token': serviceToken };
-    const current = (
-      await inject('GET', `/api/v1/game-sessions/${id}`, user.id)
-    ).json() as SessionView;
-    const posted = await inject(
-      'POST',
-      `/api/internal/v1/game-sessions/${id}/events`,
-      undefined,
-      { events: [{ seq: 1, type: 'focus', payload: { zone: 'door' } }] },
-      headers,
-    );
-    expect(posted.statusCode).toBe(200);
-    expect(posted.json()).toEqual({ accepted: 1, duplicates: 0 });
-
-    let seq = current.seq;
-    let choices = current.view.choices;
-    let guard = 0;
-    while (seq < 1 && guard < 8) {
-      const choice = choices[0];
-      expect(choice).toBeTruthy();
-      clock.advance(1000);
-      const response = await inject('POST', `/api/v1/game-sessions/${id}/decisions`, user.id, {
-        seq,
-        choiceId: choice?.id,
-      });
-      expect(response.statusCode, response.body).toBe(200);
-      const body = response.json() as DecisionView;
-      seq = body.seq;
-      choices = body.view.choices;
-      guard += 1;
-      if (body.finished) {
-        break;
-      }
-    }
-    expect(seq).toBe(1);
-    const choice = choices[0];
-    expect(choice).toBeTruthy();
-    clock.advance(1000);
-    const move = await inject('POST', `/api/v1/game-sessions/${id}/decisions`, user.id, {
-      seq: 1,
-      choiceId: choice?.id,
-    });
-    expect(move.statusCode, move.body).toBe(200);
-    const decision = await prisma.gameEvent.findUnique({
-      where: { sessionId_seq: { sessionId: id, seq: 1 } },
-    });
-    expect(decision?.type).toBe('decision');
-    const telemetry = await prisma.gameTelemetry.findUnique({
-      where: { sessionId_seq: { sessionId: id, seq: 1 } },
-    });
-    expect(telemetry?.type).toBe('focus');
-  });
-
-  it('ход после дедлайна становится timeout', async () => {
-    const user = await makeUser('late');
-    const opened = await open(user.id);
-    const view = (
-      await inject('GET', `/api/v1/game-sessions/${opened.body.sessionId}`, user.id)
-    ).json() as SessionView;
-    expect(view.view.timerSec).toBeGreaterThan(0);
-    expect(view.deadlineAt).toBeTruthy();
-    const deadline = new Date(view.deadlineAt ?? 0);
-    clock.current = new Date(deadline.getTime() + 600);
-    const response = await inject(
-      'POST',
-      `/api/v1/game-sessions/${opened.body.sessionId}/decisions`,
-      user.id,
-      { seq: view.seq, choiceId: view.view.choices[0]?.id },
-    );
-    expect(response.statusCode).toBe(200);
-    const body = response.json() as DecisionView;
-    expect(body.applied).toBe('timeout');
-    const row = await prisma.gameSession.findUniqueOrThrow({
-      where: { id: opened.body.sessionId },
-    });
-    const state = row.state as { journal: { choiceId: string }[] };
-    expect(state.journal.at(-1)?.choiceId).toBe('timeout');
-    expect(row.flags).toContain('decision-after-deadline');
-    const reported = await inject(
-      'POST',
-      `/api/internal/v1/game-sessions/${opened.body.sessionId}/report`,
-      undefined,
-      reportBody(),
-      { 'x-service-token': serviceToken },
-    );
-    expect(reported.statusCode).toBe(200);
-    const mine = completed.filter((event) => event.sessionId === opened.body.sessionId);
-    expect(mine[0]?.suspicious).toBe(false);
-    const run = await prisma.run.findUniqueOrThrow({
-      where: { sessionId: opened.body.sessionId },
-    });
-    expect(run.suspicious).toBe(false);
-  });
-
-  it('GET сам применяет timeout, когда дедлайн прошёл', async () => {
-    const user = await makeUser('lazy');
-    const opened = await open(user.id);
-    const before = (
-      await inject('GET', `/api/v1/game-sessions/${opened.body.sessionId}`, user.id)
-    ).json() as SessionView;
-    clock.current = new Date(new Date(before.deadlineAt ?? 0).getTime() + 600);
-    const after = (
-      await inject('GET', `/api/v1/game-sessions/${opened.body.sessionId}`, user.id)
-    ).json() as SessionView;
-    expect(after.seq).toBeGreaterThan(before.seq);
-    const row = await prisma.gameSession.findUniqueOrThrow({
-      where: { id: opened.body.sessionId },
-    });
-    const state = row.state as { journal: { choiceId: string }[] };
-    expect(state.journal.at(-1)?.choiceId).toBe('timeout');
-    expect(row.flags).not.toContain('decision-after-deadline');
-  });
-
-  it('clientTs на минуту раньше не ставит флаг', async () => {
-    const user = await makeUser('skew');
-    const opened = await open(user.id);
-    const id = opened.body.sessionId;
-    const view = (
-      await inject('GET', `/api/v1/game-sessions/${id}`, user.id)
-    ).json() as SessionView;
-    const choice = view.view.choices[0];
-    expect(choice).toBeTruthy();
-    clock.advance(1000);
-    const clientTs = clock.current.getTime() - 60_000;
-    const response = await inject('POST', `/api/v1/game-sessions/${id}/decisions`, user.id, {
-      seq: view.seq,
-      choiceId: choice?.id,
-      clientTs,
-    });
-    expect(response.statusCode, response.body).toBe(200);
-    const row = await prisma.gameSession.findUniqueOrThrow({ where: { id } });
-    expect(row.flags).not.toContain('decision-before-show');
-    const event = await prisma.gameEvent.findFirst({
-      where: { sessionId: id, type: 'decision' },
-    });
-    expect(event?.clientAt?.getTime()).toBe(clientTs);
+    const missing = await inject('GET', `/api/v1/game-sessions/${opened.body.sessionId}`, owner.id);
+    expect(missing.statusCode).toBe(404);
   });
 
   it('clientTs за пределом Date — 422', async () => {
     const user = await makeUser('clock');
     const opened = await open(user.id);
-    const id = opened.body.sessionId;
-    const view = (
-      await inject('GET', `/api/v1/game-sessions/${id}`, user.id)
-    ).json() as SessionView;
-    const response = await inject('POST', `/api/v1/game-sessions/${id}/decisions`, user.id, {
-      seq: view.seq,
-      choiceId: view.view.choices[0]?.id,
-      clientTs: 9e15,
-    });
+    const response = await inject(
+      'POST',
+      `/api/internal/v1/game-sessions/${opened.body.sessionId}/decisions`,
+      undefined,
+      { seq: 0, choiceId: 'do', clientTs: 9e15 },
+      { 'x-service-token': serviceToken },
+    );
     expect(response.statusCode).toBe(422);
-    expect(await prisma.gameEvent.count({ where: { sessionId: id } })).toBe(0);
+    expect(await prisma.gameEvent.count({ where: { sessionId: opened.body.sessionId } })).toBe(0);
   });
-
-  it('ход REST и WS не подменяют канал друг друга', async () => {
-    const user = await makeUser('channel');
-    const ws = await open(user.id, { transport: 'WS' });
-    const wsId = ws.body.sessionId;
-    const screen = (
-      await inject('GET', `/api/v1/game-sessions/${wsId}`, user.id)
-    ).json() as SessionView;
-    const choice = screen.view.choices[0];
-    expect(choice).toBeTruthy();
-    const restMove = await inject('POST', `/api/v1/game-sessions/${wsId}/decisions`, user.id, {
-      seq: screen.seq,
-      choiceId: choice?.id,
-    });
-    expect(restMove.statusCode).toBe(409);
-    expect(restMove.json()).toMatchObject({ code: 'WRONG_TRANSPORT' });
-    clock.current = new Date(new Date(screen.deadlineAt ?? 0).getTime() + 600);
-    const later = (
-      await inject('GET', `/api/v1/game-sessions/${wsId}`, user.id)
-    ).json() as SessionView;
-    expect(later.seq).toBe(screen.seq);
-    const headers = { 'x-service-token': serviceToken };
-    const internal = await inject(
-      'POST',
-      `/api/internal/v1/game-sessions/${wsId}/decisions`,
-      undefined,
-      { seq: screen.seq, choiceId: choice?.id },
-      headers,
-    );
-    expect(internal.statusCode, internal.body).toBe(200);
-
-    const other = await makeUser('channel-rest');
-    const rest = await open(other.id);
-    const restView = (
-      await inject('GET', `/api/v1/game-sessions/${rest.body.sessionId}`, other.id)
-    ).json() as SessionView;
-    const wrong = await inject(
-      'POST',
-      `/api/internal/v1/game-sessions/${rest.body.sessionId}/decisions`,
-      undefined,
-      { seq: restView.seq, choiceId: restView.view.choices[0]?.id },
-      headers,
-    );
-    expect(wrong.statusCode).toBe(409);
-    expect(wrong.json()).toMatchObject({ code: 'WRONG_TRANSPORT' });
-    clock.advance(1000);
-    const ok = await inject(
-      'POST',
-      `/api/v1/game-sessions/${rest.body.sessionId}/decisions`,
-      other.id,
-      { seq: restView.seq, choiceId: restView.view.choices[0]?.id },
-    );
-    expect(ok.statusCode, ok.body).toBe(200);
-  });
-
-  it('REST-прогон доходит до финала и раскрывает seed', async () => {
-    const user = await makeUser('play');
-    const opened = await open(user.id);
-    const id = opened.body.sessionId;
-    for (let step = 0; step < 48; step += 1) {
-      const current = (
-        await inject('GET', `/api/v1/game-sessions/${id}`, user.id)
-      ).json() as SessionView;
-      if (current.status === 'COMPLETED' || current.view.finished) {
-        break;
-      }
-      const choice = current.view.choices[0];
-      expect(choice).toBeTruthy();
-      clock.advance(1000);
-      const decided = await inject('POST', `/api/v1/game-sessions/${id}/decisions`, user.id, {
-        seq: current.seq,
-        choiceId: choice?.id,
-        clientTs: clock.current.getTime(),
-      });
-      expect(decided.statusCode).toBe(200);
-      const body = decided.json() as DecisionView;
-      if (body.finished || body.status === 'COMPLETED') {
-        break;
-      }
-      if (step === 47) {
-        throw new Error('финал не достигнут');
-      }
-    }
-    const mine = completed.filter((event) => event.sessionId === id);
-    expect(mine).toHaveLength(1);
-    expect(mine[0]?.userId).toBe(user.id);
-    expect(mine[0]?.summary.outcome).toEqual(expect.any(String));
-    expect(mine[0]?.suspicious).toBe(false);
-    const run = await prisma.run.findUnique({ where: { sessionId: id } });
-    expect(run?.id).toBe(mine[0]?.runId);
-    const stored = await prisma.gameSession.findUniqueOrThrow({ where: { id } });
-    const result = stored.result as {
-      runId: string;
-      suspicious: boolean;
-      summary: { outcome: string };
-    };
-    expect(result).toMatchObject({ runId: mine[0]?.runId, suspicious: false });
-    expect(result.summary.outcome).toEqual(expect.any(String));
-    const completedAudit = await prisma.auditLog.findFirst({
-      where: { action: 'session.completed', target: id },
-    });
-    expect(completedAudit?.meta).toEqual({ runId: result.runId, suspicious: false });
-    const last = await prisma.gameEvent.findFirst({
-      where: { sessionId: id, type: 'decision' },
-      orderBy: { seq: 'desc' },
-    });
-    const replayPayload = last?.payload as { choiceId?: string } | null;
-    expect(typeof replayPayload?.choiceId).toBe('string');
-    await prisma.auditLog.deleteMany({ where: { action: 'session.completed', target: id } });
-    const replay = await inject('POST', `/api/v1/game-sessions/${id}/decisions`, user.id, {
-      seq: last?.seq,
-      choiceId: replayPayload?.choiceId,
-    });
-    expect(replay.statusCode, replay.body).toBe(200);
-    expect(completed.filter((event) => event.sessionId === id)).toHaveLength(1);
-
-    const reveal = await inject('GET', `/api/v1/game-sessions/${id}/reveal`, user.id);
-    expect(reveal.statusCode).toBe(200);
-    const revealed = reveal.json() as { seed: string; commit: string };
-    const seed = Buffer.from(revealed.seed, 'hex');
-    expect(createHash('sha256').update(seed).digest('hex')).toBe(revealed.commit);
-    expect(revealed.commit).toBe(opened.body.seedCommit);
-  }, 30_000);
 
   it('билет одноразовый и переводит PENDING в ACTIVE', async () => {
     const user = await makeUser('ticket');
-    const opened = await open(user.id, { transport: 'WS' });
+    const opened = await open(user.id);
     const pending = await prisma.gameSession.findUniqueOrThrow({
       where: { id: opened.body.sessionId },
     });
     expect(pending.status).toBe('PENDING');
     const looked = await inject('GET', `/api/v1/game-sessions/${opened.body.sessionId}`, user.id);
-    expect(looked.statusCode, looked.body).toBe(200);
+    expect(looked.statusCode).toBe(404);
     const stillPending = await prisma.gameSession.findUniqueOrThrow({
       where: { id: opened.body.sessionId },
     });
@@ -949,6 +673,14 @@ describe('игровые сессии', () => {
     const opened = await open(user.id);
     const id = opened.body.sessionId;
     const headers = { 'x-service-token': serviceToken };
+    const verified = await inject(
+      'POST',
+      '/api/internal/v1/tickets/verify',
+      undefined,
+      { ticket: opened.body.ticket },
+      headers,
+    );
+    expect(verified.statusCode, verified.body).toBe(200);
     const first = await inject(
       'POST',
       `/api/internal/v1/game-sessions/${id}/report`,
@@ -1139,7 +871,7 @@ describe('игровые сессии', () => {
     });
     const user = await makeUser('llm');
     await assignScenario(user.id, 'sess-llm');
-    const opened = await open(user.id, { transport: 'REST', carClass: 'ECONOMY' });
+    const opened = await open(user.id, { carClass: 'ECONOMY' });
     const row = await prisma.gameSession.findUniqueOrThrow({
       where: { id: opened.body.sessionId },
     });
@@ -1158,41 +890,16 @@ describe('игровые сессии', () => {
     expect(picked.uses).toBe(1);
     expect(picked.status).toBe('RETIRED');
     const payload = picked.payload as { text: string; choices: { id: string; text: string }[] };
-    const first = await inject('GET', `/api/v1/game-sessions/${opened.body.sessionId}`, user.id);
-    expect(first.statusCode, first.body).toBe(200);
-    const screen = first.json() as SessionView;
-    expect(screen.view.nodeId).toBe('pool-ask');
-    expect(screen.view.text).toBe(payload.text);
-    expect(screen.scales).toMatchObject({ loyalty: 60, safety: 60 });
-    const listed = ['do', 'skip'].map((id) => {
-      const choice = payload.choices.find((item) => item.id === id);
-      if (!choice) {
-        throw new Error('в варианте нет выбора');
-      }
-      return choice;
-    });
-    const expectedOrder = orderChoices(
-      listed,
-      orderRng(createRng(seed), 'sess-llm', 'pool-ask', screen.view.seq),
-    );
-    expect(screen.view.choices).toEqual(expectedOrder);
-    const again = await inject('GET', `/api/v1/game-sessions/${opened.body.sessionId}`, user.id);
-    expect((again.json() as SessionView).view.choices).toEqual(screen.view.choices);
-    expect((again.json() as SessionView).view.text).toBe(screen.view.text);
-
-    clock.advance(1000);
-    const doText = screen.view.choices.find((choice) => choice.id === 'do')?.text;
-    const decided = await inject(
-      'POST',
-      `/api/v1/game-sessions/${opened.body.sessionId}/decisions`,
-      user.id,
-      { seq: screen.seq, choiceId: 'do', clientTs: clock.current.getTime() },
-    );
-    expect(decided.statusCode, decided.body).toBe(200);
-    const stepBody = decided.json() as DecisionView;
+    const doText = payload.choices.find((choice) => choice.id === 'do')?.text;
+    const stepBody = await move(opened.body.sessionId, 0, 'do');
     expect(stepBody.scales).toMatchObject({ loyalty: 65, safety: 65 });
     expect(stepBody.view.nodeId).not.toBe('pool-ask');
     expect(stepBody.finished).toBe(false);
+    expect((await journalOf(opened.body.sessionId))[0]).toMatchObject({
+      situation: payload.text,
+      action: doText,
+      choiceId: 'do',
+    });
 
     let finished = false;
     let seq = stepBody.seq;
@@ -1203,15 +910,7 @@ describe('игровые сессии', () => {
       if (!choice) {
         break;
       }
-      clock.advance(1000);
-      const response = await inject(
-        'POST',
-        `/api/v1/game-sessions/${opened.body.sessionId}/decisions`,
-        user.id,
-        { seq, choiceId: choice.id, clientTs: clock.current.getTime() },
-      );
-      expect(response.statusCode, response.body).toBe(200);
-      const body = response.json() as DecisionView;
+      const body = await move(opened.body.sessionId, seq, choice.id);
       finished = body.finished;
       seq = body.seq;
       choices = body.view.choices;
@@ -1265,7 +964,7 @@ describe('игровые сессии', () => {
     try {
       const user = await makeUser('fallback');
       await assignScenario(user.id, 'sess-llm');
-      const opened = await open(user.id, { transport: 'REST', carClass: 'ECONOMY' });
+      const opened = await open(user.id, { carClass: 'ECONOMY' });
       const row = await prisma.gameSession.findUniqueOrThrow({
         where: { id: opened.body.sessionId },
       });
@@ -1277,16 +976,13 @@ describe('игровые сессии', () => {
         where: { id: pendingId },
       });
       expect(pending.uses).toBe(0);
-      const view = await inject('GET', `/api/v1/game-sessions/${opened.body.sessionId}`, user.id);
-      expect(view.statusCode, view.body).toBe(200);
-      const screen = view.json() as SessionView;
-      expect(screen.view.nodeId).toBe('pool-ask');
-      expect(screen.view.text).toBe('Исходная ситуация');
-      expect(screen.view.choices.map((choice) => choice.id)).toEqual(['do', 'skip']);
-      expect(screen.view.choices.map((choice) => choice.text)).toEqual([
-        'Сделать по регламенту',
-        'Пропустить',
-      ]);
+      const stepBody = await move(opened.body.sessionId, 0, 'do');
+      expect(stepBody.view.nodeId).not.toBe('pool-ask');
+      expect((await journalOf(opened.body.sessionId))[0]).toMatchObject({
+        situation: 'Исходная ситуация',
+        action: 'Сделать по регламенту',
+        choiceId: 'do',
+      });
     } finally {
       emitter.off(SESSION_TEXT_REQUESTED, onText);
     }
@@ -1296,7 +992,7 @@ describe('игровые сессии', () => {
     await resetLlm('sess-live', 'Живой перефраз');
     const user = await makeUser('live-pool');
     await assignScenario(user.id, 'sess-live');
-    const opened = await open(user.id, { transport: 'REST', carClass: 'ECONOMY' });
+    const opened = await open(user.id, { carClass: 'ECONOMY' });
     const row = await prisma.gameSession.findUniqueOrThrow({
       where: { id: opened.body.sessionId },
     });
@@ -1312,9 +1008,11 @@ describe('игровые сессии', () => {
       doText: 'Чужое действие пула',
       skipText: 'Чужой пропуск пула',
     });
-    const view = await inject('GET', `/api/v1/game-sessions/${opened.body.sessionId}`, user.id);
-    expect(view.statusCode, view.body).toBe(200);
-    expect((view.json() as SessionView).view.text).toBe('Исходная ситуация');
+    await move(opened.body.sessionId, 0, 'do');
+    expect((await journalOf(opened.body.sessionId))[0]).toMatchObject({
+      situation: 'Исходная ситуация',
+      action: 'Сделать по регламенту',
+    });
     expect(
       (await prisma.scenarioTextVariant.findUniqueOrThrow({ where: { id: poolId } })).uses,
     ).toBe(0);
@@ -1336,7 +1034,7 @@ describe('игровые сессии', () => {
     emitter.on(SESSION_TEXT_REQUESTED, onText);
     const user = await makeUser('live');
     await assignScenario(user.id, 'sess-live');
-    const opened = await open(user.id, { transport: 'REST', carClass: 'ECONOMY' });
+    const opened = await open(user.id, { carClass: 'ECONOMY' });
     const row = await prisma.gameSession.findUniqueOrThrow({
       where: { id: opened.body.sessionId },
     });
@@ -1381,17 +1079,12 @@ describe('игровые сессии', () => {
       skipText: 'Свежий чужой пропуск',
       createdAt: new Date('2020-01-05T00:00:00.000Z'),
     });
-    const first = await inject('GET', `/api/v1/game-sessions/${opened.body.sessionId}`, user.id);
-    expect(first.statusCode, first.body).toBe(200);
-    const screen = first.json() as SessionView;
-    expect(screen.view.text).toBe('Текст этой сессии');
-    const listed = [
-      { id: 'do', text: 'Действие этой сессии' },
-      { id: 'skip', text: 'Пропуск этой сессии' },
-    ];
-    expect(screen.view.choices).toEqual(
-      orderChoices(listed, orderRng(createRng(seed), 'sess-live', 'live-ask', screen.view.seq)),
-    );
+    await move(opened.body.sessionId, 0, 'do');
+    expect((await journalOf(opened.body.sessionId))[0]).toMatchObject({
+      situation: 'Текст этой сессии',
+      action: 'Действие этой сессии',
+      choiceId: 'do',
+    });
     const pinned = await prisma.gameSession.findUniqueOrThrow({
       where: { id: opened.body.sessionId },
     });
@@ -1416,9 +1109,10 @@ describe('игровые сессии', () => {
       sessionId: opened.body.sessionId,
       createdAt: new Date('2020-01-06T00:00:00.000Z'),
     });
-    const second = await inject('GET', `/api/v1/game-sessions/${opened.body.sessionId}`, user.id);
-    expect((second.json() as SessionView).view.text).toBe('Текст этой сессии');
-    expect((second.json() as SessionView).view.choices).toEqual(screen.view.choices);
+    const frozen = await prisma.gameSession.findUniqueOrThrow({
+      where: { id: opened.body.sessionId },
+    });
+    expect(readTextPlan(frozen.textPlan)?.nodes[key]).toBe(own);
     expect(
       (await prisma.scenarioTextVariant.findUniqueOrThrow({ where: { id: after } })).uses,
     ).toBe(0);

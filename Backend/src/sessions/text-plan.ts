@@ -15,7 +15,7 @@ export function textPlanKey(scenarioId: string, nodeId: string): string {
 
 export type StoredTextPlan = {
   nodes: Record<string, string | null>;
-  /** Узлы, которые игрок уже видел. Повторный GET не меняет текст. */
+  /** Узлы, которые сессия уже показала. Повтор того же узла не меняет текст. */
   shown: readonly string[];
 };
 

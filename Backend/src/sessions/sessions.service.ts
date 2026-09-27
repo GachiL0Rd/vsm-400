@@ -30,26 +30,17 @@ import {
   addedFlags,
   FLAG_SEQ_JUMP,
   FLAG_TICKET_REUSED,
-  isPastDeadline,
   isSuspicious,
   mergeFlags,
   reactionFlag,
 } from './anti-cheat';
 import { computeNext } from './compute-next';
-import type {
-  DecisionView,
-  GameEventsBody,
-  OpenedSession,
-  RunReport,
-  SessionView,
-  VerifyResult,
-} from './dto';
+import type { DecisionView, GameEventsBody, OpenedSession, RunReport, VerifyResult } from './dto';
 import { weakest } from './focus';
 import { SESSION_TTL_MS } from './game-cookie';
 import {
   fromEngine,
   notFound,
-  revealClosed,
   runMissing,
   seqMismatch,
   sessionClosed,
@@ -58,7 +49,7 @@ import {
   wrongTransport,
 } from './http-errors';
 import { gameLaunchUrl } from './platform-url';
-import { decisionBody, presentView, readReplay } from './present';
+import { decisionBody, readReplay } from './present';
 import { reportToSummary } from './report-map';
 import { loadRoutesFile } from './routes-file';
 import { decryptSeed, encryptSeed } from './seed-box';
@@ -87,10 +78,8 @@ import {
 import type { TicketClaims } from './ticket.service';
 import { TicketService } from './ticket.service';
 
-const LAZY_STEPS = 16;
-
 type OpenBody = {
-  transport: 'REST' | 'WS';
+  transport: 'WS';
   carClass?: ShiftPlan['carClass'];
 };
 
@@ -164,30 +153,6 @@ export class SessionsService {
     }
     const ticket = await this.tickets.sign(user.id, saved.row.id);
     return this.opened(saved.row, ticket, draft.plan, draft.titles);
-  }
-
-  async viewSession(userId: string, sessionId: string): Promise<SessionView> {
-    for (let attempt = 0; attempt < LAZY_STEPS; attempt += 1) {
-      const session = await this.owned(userId, sessionId);
-      const now = this.clock.now();
-      const restTimeout =
-        session.transport === 'REST' &&
-        isPlayable(session.status) &&
-        isPastDeadline(deadlineMs(session), now.getTime());
-      // WS-смену в ACTIVE переводит только погашенный билет, не просмотр игрока.
-      if (!restTimeout) {
-        return this.presentSession(session);
-      }
-      await this.decide({
-        sessionId,
-        seq: session.seq,
-        choiceId: 'timeout',
-        ownerId: userId,
-        transport: 'REST',
-        actor: { type: ActorType.SYSTEM, id: null, ip: null },
-      });
-    }
-    throw sessionClosed();
   }
 
   async decide(command: DecideCommand): Promise<DecisionView> {
@@ -265,22 +230,6 @@ export class SessionsService {
     await this.publish(session.id, 'abort', now);
     await this.releaseVariants(session.id);
     return { status: 'ABORTED' };
-  }
-
-  async reveal(userId: string, sessionId: string): Promise<{ seed: string; commit: string }> {
-    const session = await this.owned(userId, sessionId);
-    if (session.status !== 'COMPLETED') {
-      throw revealClosed();
-    }
-    const seed = this.decrypt(session.seedEnc);
-    const commit = commitOf(seed);
-    if (commit !== session.seedCommit) {
-      throw new InternalServerErrorException({
-        message: 'Commit seed не сошёлся',
-        code: 'SEED_COMMIT',
-      });
-    }
-    return { seed: seed.toString('hex'), commit };
   }
 
   async acceptEvents(
@@ -488,7 +437,7 @@ export class SessionsService {
       data: {
         userId,
         shiftId,
-        status: transport === 'REST' ? 'ACTIVE' : 'PENDING',
+        status: 'PENDING',
         transport,
         plan: toJson(draft.plan),
         ...(draft.textPlan ? { textPlan: toJson(draft.textPlan) } : {}),
@@ -497,7 +446,7 @@ export class SessionsService {
         state: toJson(draft.state),
         seq: draft.state.seq,
         nodeDeadlineAt: draft.deadline,
-        startedAt: transport === 'REST' ? draft.now : null,
+        startedAt: null,
         expiresAt: new Date(draft.now.getTime() + SESSION_TTL_MS),
         flags: [],
       },
@@ -644,24 +593,6 @@ export class SessionsService {
       throw seqMismatch();
     }
     return response;
-  }
-
-  private async presentSession(session: GameSession): Promise<SessionView> {
-    const plan = readPlan(session.plan);
-    const graphs = await this.graphsFor(plan);
-    const split = splitState(session.state);
-    const graph = currentGraph(split.state, graphs);
-    const shown = await this.presentation(session, split.state, graph);
-    return presentView({
-      status: session.status,
-      state: split.state,
-      shownAt: split.shownAt,
-      deadline: session.nodeDeadlineAt,
-      graph,
-      now: this.clock.now(),
-      textVariant: shown.variant,
-      rng: shown.rng,
-    });
   }
 
   /**
@@ -995,10 +926,6 @@ export class SessionsService {
 
 function isPlayable(status: GameSession['status']): boolean {
   return status === 'PENDING' || status === 'ACTIVE';
-}
-
-function deadlineMs(session: GameSession): number | null {
-  return session.nodeDeadlineAt ? session.nodeDeadlineAt.getTime() : null;
 }
 
 async function claimShift(
