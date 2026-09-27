@@ -85,6 +85,16 @@ enum ScenarioStatus {
   @@map("scenario_status")
 }
 
+// В сессию попадает только APPROVED. RETIRED — ротация после maxUses.
+enum TextVariantStatus {
+  PENDING_REVIEW
+  APPROVED
+  REJECTED
+  RETIRED
+
+  @@map("text_variant_status")
+}
+
 enum ShiftStatus {
   PLANNED
   STARTED
@@ -214,6 +224,7 @@ model User {
   promotionRecommendations  PromotionRecommendation[] @relation("PromotionSubject")
   decidedPromotions         PromotionRecommendation[] @relation("PromotionDecider")
   scenarioVersions          ScenarioVersion[]
+  reviewedTextVariants      ScenarioTextVariant[]     @relation("TextVariantReview")
 
   @@index([brigadeId])
   @@map("user")
@@ -310,12 +321,39 @@ model ScenarioVersion {
   createdAt   DateTime @default(now())
   createdById String?  @db.Uuid
 
-  scenario  Scenario @relation(fields: [scenarioId], references: [id])
-  createdBy User?    @relation(fields: [createdById], references: [id])
+  scenario     Scenario             @relation(fields: [scenarioId], references: [id])
+  createdBy    User?                @relation(fields: [createdById], references: [id])
+  textVariants ScenarioTextVariant[]
 
   @@id([scenarioId, version])
   @@index([createdById])
   @@map("scenario_version")
+}
+
+// Пул перефразов. payload — только тексты; эффекты и переходы живут в графе.
+model ScenarioTextVariant {
+  id            String            @id @default(uuid(7)) @db.Uuid
+  scenarioId    String
+  version       Int
+  nodeId        String
+  persona       String
+  promptVersion String
+  model         String
+  payload       Json              @db.JsonB
+  status        TextVariantStatus @default(PENDING_REVIEW)
+  uses          Int               @default(0)
+  maxUses       Int
+  createdAt     DateTime          @default(now())
+  reviewedById  String?           @db.Uuid
+  reviewedAt    DateTime?
+  rejectReason  String?
+
+  scenarioVersion ScenarioVersion @relation(fields: [scenarioId, version], references: [scenarioId, version])
+  reviewedBy      User?           @relation("TextVariantReview", fields: [reviewedById], references: [id])
+
+  @@index([scenarioId, version, nodeId, status])
+  @@index([reviewedById])
+  @@map("scenario_text_variant")
 }
 
 model ShiftAssignment {
@@ -350,6 +388,8 @@ model GameSession {
   status         GameSessionStatus @default(PENDING)
   transport      Transport
   plan           Json              @db.JsonB
+  // Ключ узла → id варианта или null. null — показать текст из YAML.
+  textPlan       Json?             @db.JsonB
   seedCommit     String
   seedEnc        String
   state          Json              @db.JsonB
