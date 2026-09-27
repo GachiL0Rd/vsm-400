@@ -8,17 +8,29 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { AppModule } from '../src/app.module';
 import { AccessGuard } from '../src/auth/access.guard';
 import { Clock } from '../src/common/clock';
-import type { RunCompletedPayload } from '../src/common/events';
-import { RUN_COMPLETED } from '../src/common/events';
+import {
+  RUN_COMPLETED,
+  type RunCompletedPayload,
+  SESSION_TEXT_REQUESTED,
+  type SessionTextRequestedPayload,
+} from '../src/common/events';
 import { APP_CONFIG, type AppConfig, loadConfig } from '../src/config/env';
 import { configureApp } from '../src/configure-app';
-import { commitOf } from '../src/engine/rng';
+import { commitOf, createRng } from '../src/engine/rng';
 import type { ScenarioGraph } from '../src/engine/schema';
+import { orderChoices } from '../src/engine/text';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { ScenariosService } from '../src/scenarios/scenarios.service';
 import type { DecisionView, OpenedSession, RunReport, SessionView } from '../src/sessions/dto';
 import { decryptSeed } from '../src/sessions/seed-box';
 import { SessionsService } from '../src/sessions/sessions.service';
+import {
+  orderRng,
+  personaOf,
+  pickApprovedId,
+  readTextPlan,
+  textPlanKey,
+} from '../src/sessions/text-plan';
 import { randomCallsign } from '../src/users/callsign';
 import { testDatabaseUrl, testRedisUrl } from './databases';
 import { HeaderAccessGuard } from './header-access.guard';
@@ -71,10 +83,63 @@ function linear(
   };
 }
 
+function llmGraph(id: string, nodeId: string, mode: 'pool' | 'live'): ScenarioGraph {
+  return {
+    id,
+    title: id,
+    category: 'service',
+    stage: 'acceptance',
+    carClasses: ['ECONOMY'],
+    difficulty: 1,
+    competencies: ['service'],
+    init: { loyalty: 60, safety: 60 },
+    llm: {
+      enabled: true,
+      mode,
+      personas: ['тихий', 'раздражённый'],
+    },
+    start: nodeId,
+    nodes: {
+      [nodeId]: {
+        text: 'Исходная ситуация',
+        timer: 30,
+        choices: [
+          {
+            id: 'do',
+            text: 'Сделать по регламенту',
+            effects: { safety: 5, loyalty: 5 },
+            skills: { service: 1 },
+            verdict: 'best',
+            next: 'end',
+          },
+          {
+            id: 'skip',
+            text: 'Пропустить',
+            effects: { safety: -5 },
+            verdict: 'worse',
+            next: 'end',
+          },
+        ],
+        onTimeout: {
+          effects: { safety: -5, loyalty: -5 },
+          verdict: 'missed',
+          next: 'end',
+        },
+      },
+      end: { end: 'completed', text: 'Готово' },
+    },
+  };
+}
+
+const llmPool = llmGraph('sess-llm', 'pool-ask', 'pool');
+const llmLive = llmGraph('sess-live', 'live-ask', 'live');
+
 const fixtureGraphs = [
   linear('sess-accept', 'Приёмка', 'acceptance', 20),
   linear('sess-ride', 'Перегон', 'enroute', 15),
   linear('sess-hand', 'Сдача', 'handover', 12),
+  llmPool,
+  llmLive,
 ];
 
 const fixtureScenarios = {
@@ -220,6 +285,13 @@ describe('игровые сессии', () => {
 
   afterAll(async () => {
     await wipe(prisma, userIds);
+    await prisma.scenarioTextVariant.deleteMany({
+      where: { scenarioId: { in: ['sess-llm', 'sess-live'] } },
+    });
+    await prisma.scenarioVersion.deleteMany({
+      where: { scenarioId: { in: ['sess-llm', 'sess-live'] } },
+    });
+    await prisma.scenario.deleteMany({ where: { id: { in: ['sess-llm', 'sess-live'] } } });
     const redis = new Redis(redisUrl);
     const keys = await redis.keys('vsm:ticket:*');
     if (keys.length > 0) {
@@ -269,6 +341,78 @@ describe('игровые сессии', () => {
         headers,
         payload: payload === undefined ? undefined : JSON.stringify(payload),
       });
+  }
+
+  async function assignScenario(userId: string, scenarioId: string): Promise<void> {
+    await prisma.shiftAssignment.create({
+      data: {
+        userId,
+        train: 'ВСМ 701',
+        fromStation: 'Москва',
+        toStation: 'Санкт-Петербург',
+        stops: [],
+        car: 1,
+        carClass: 'ECONOMY',
+        departureAt: new Date('2020-06-01T06:20:00.000Z'),
+        focus: [],
+        scenarioIds: [scenarioId],
+        status: 'PLANNED',
+      },
+    });
+  }
+
+  async function resetLlm(id: string, title: string): Promise<void> {
+    await prisma.scenarioTextVariant.deleteMany({ where: { scenarioId: id } });
+    await prisma.scenarioVersion.deleteMany({ where: { scenarioId: id } });
+    await prisma.scenario.deleteMany({ where: { id } });
+    await prisma.scenario.create({
+      data: {
+        id,
+        title,
+        category: 'service',
+        carClasses: ['ECONOMY'],
+        difficulty: 1,
+        competencies: ['service'],
+        status: 'PUBLISHED',
+        currentVersion: 1,
+        versions: { create: { version: 1, graph: {}, checksum: 'llm-play' } },
+      },
+    });
+  }
+
+  async function putVariant(input: {
+    id: string;
+    scenarioId: string;
+    nodeId: string;
+    persona: string;
+    text: string;
+    doText: string;
+    skipText: string;
+    status?: 'APPROVED' | 'PENDING_REVIEW';
+    maxUses?: number;
+    createdAt?: Date;
+  }): Promise<void> {
+    await prisma.scenarioTextVariant.create({
+      data: {
+        id: input.id,
+        scenarioId: input.scenarioId,
+        version: 1,
+        nodeId: input.nodeId,
+        persona: input.persona,
+        promptVersion: 'test',
+        model: 'none',
+        payload: {
+          text: input.text,
+          choices: [
+            { id: 'do', text: input.doText },
+            { id: 'skip', text: input.skipText },
+          ],
+        },
+        status: input.status ?? 'APPROVED',
+        maxUses: input.maxUses ?? 20,
+        ...(input.createdAt ? { createdAt: input.createdAt } : {}),
+      },
+    });
   }
 
   async function open(
@@ -692,6 +836,319 @@ describe('игровые сессии', () => {
     expect(expireMessage).toMatchObject({ type: 'expire', sessionId: row.id });
     await expireEar.close();
   });
+
+  it('сид фиксирует текст и порядок, вариант не меняет очки, журнал хранит показ', async () => {
+    await resetLlm('sess-llm', 'Перефраз');
+    const quietA = '00000000-0000-4000-8000-0000000000b1';
+    const quietB = '00000000-0000-4000-8000-0000000000b2';
+    const loudA = '00000000-0000-4000-8000-0000000000c1';
+    const loudB = '00000000-0000-4000-8000-0000000000c2';
+    await putVariant({
+      id: quietA,
+      scenarioId: 'sess-llm',
+      nodeId: 'pool-ask',
+      persona: 'тихий',
+      text: 'Тихий просит воду',
+      doText: 'Налить воды',
+      skipText: 'Пройти мимо',
+      maxUses: 1,
+    });
+    await putVariant({
+      id: quietB,
+      scenarioId: 'sess-llm',
+      nodeId: 'pool-ask',
+      persona: 'тихий',
+      text: 'Тихий показывает билет',
+      doText: 'Проверить билет',
+      skipText: 'Махнуть рукой',
+      maxUses: 1,
+    });
+    await putVariant({
+      id: loudA,
+      scenarioId: 'sess-llm',
+      nodeId: 'pool-ask',
+      persona: 'раздражённый',
+      text: 'Громкий спор у двери',
+      doText: 'Снизить голос',
+      skipText: 'Закрыть дверь',
+      maxUses: 1,
+    });
+    await putVariant({
+      id: loudB,
+      scenarioId: 'sess-llm',
+      nodeId: 'pool-ask',
+      persona: 'раздражённый',
+      text: 'Громкая жалоба на место',
+      doText: 'Предложить другое место',
+      skipText: 'Спорить в проходе',
+      maxUses: 1,
+    });
+    const user = await makeUser('llm');
+    await assignScenario(user.id, 'sess-llm');
+    const opened = await open(user.id, { transport: 'REST', carClass: 'ECONOMY' });
+    const row = await prisma.gameSession.findUniqueOrThrow({
+      where: { id: opened.body.sessionId },
+    });
+    const seed = decryptSeed(row.seedEnc, config.seedEncKey);
+    const persona = personaOf(createRng(seed), llmPool);
+    const approved = persona === 'тихий' ? [quietA, quietB] : [loudA, loudB];
+    const expectedId = pickApprovedId(createRng(seed), 'sess-llm', 'pool-ask', approved);
+    if (expectedId === null) {
+      throw new Error('пул пуст');
+    }
+    const key = textPlanKey('sess-llm', 'pool-ask');
+    expect(readTextPlan(row.textPlan)?.nodes[key]).toBe(expectedId);
+    const picked = await prisma.scenarioTextVariant.findUniqueOrThrow({
+      where: { id: expectedId },
+    });
+    expect(picked.uses).toBe(1);
+    expect(picked.status).toBe('RETIRED');
+    const payload = picked.payload as { text: string; choices: { id: string; text: string }[] };
+    const first = await inject('GET', `/api/v1/game-sessions/${opened.body.sessionId}`, user.id);
+    expect(first.statusCode, first.body).toBe(200);
+    const screen = first.json() as SessionView;
+    expect(screen.view.nodeId).toBe('pool-ask');
+    expect(screen.view.text).toBe(payload.text);
+    expect(screen.scales).toMatchObject({ loyalty: 60, safety: 60 });
+    const listed = ['do', 'skip'].map((id) => {
+      const choice = payload.choices.find((item) => item.id === id);
+      if (!choice) {
+        throw new Error('в варианте нет выбора');
+      }
+      return choice;
+    });
+    const expectedOrder = orderChoices(
+      listed,
+      orderRng(createRng(seed), 'sess-llm', 'pool-ask', screen.view.seq),
+    );
+    expect(screen.view.choices).toEqual(expectedOrder);
+    const again = await inject('GET', `/api/v1/game-sessions/${opened.body.sessionId}`, user.id);
+    expect((again.json() as SessionView).view.choices).toEqual(screen.view.choices);
+    expect((again.json() as SessionView).view.text).toBe(screen.view.text);
+
+    clock.advance(1000);
+    const doText = screen.view.choices.find((choice) => choice.id === 'do')?.text;
+    const decided = await inject(
+      'POST',
+      `/api/v1/game-sessions/${opened.body.sessionId}/decisions`,
+      user.id,
+      { seq: screen.seq, choiceId: 'do', clientTs: clock.current.getTime() },
+    );
+    expect(decided.statusCode, decided.body).toBe(200);
+    const stepBody = decided.json() as DecisionView;
+    expect(stepBody.scales).toMatchObject({ loyalty: 65, safety: 65 });
+    expect(stepBody.view.nodeId).not.toBe('pool-ask');
+    expect(stepBody.finished).toBe(false);
+
+    let finished = false;
+    let seq = stepBody.seq;
+    let choices = stepBody.view.choices;
+    let guard = 0;
+    while (!finished && guard < 8) {
+      const choice = choices[0];
+      if (!choice) {
+        break;
+      }
+      clock.advance(1000);
+      const response = await inject(
+        'POST',
+        `/api/v1/game-sessions/${opened.body.sessionId}/decisions`,
+        user.id,
+        { seq, choiceId: choice.id, clientTs: clock.current.getTime() },
+      );
+      expect(response.statusCode, response.body).toBe(200);
+      const body = response.json() as DecisionView;
+      finished = body.finished;
+      seq = body.seq;
+      choices = body.view.choices;
+      guard += 1;
+    }
+    expect(finished).toBe(true);
+    const run = await prisma.run.findUnique({ where: { sessionId: opened.body.sessionId } });
+    if (!run) {
+      throw new Error('рейс не записан');
+    }
+    const detail = await inject('GET', `/api/v1/me/runs/${run.id}`, user.id);
+    expect(detail.statusCode, detail.body).toBe(200);
+    const shown = (
+      detail.json() as {
+        decisions: {
+          situation: string;
+          action: string;
+          loyalty: number;
+          safety: number;
+          verdict: string;
+        }[];
+      }
+    ).decisions.find((decision) => decision.situation === payload.text);
+    expect(shown).toMatchObject({
+      action: doText,
+      loyalty: 5,
+      safety: 5,
+      verdict: 'best',
+    });
+  }, 30_000);
+
+  it('нет APPROVED — исходный текст и авторский порядок, pending не расходуется', async () => {
+    await resetLlm('sess-llm', 'Перефраз');
+    const pendingId = '00000000-0000-4000-8000-0000000000aa';
+    await putVariant({
+      id: pendingId,
+      scenarioId: 'sess-llm',
+      nodeId: 'pool-ask',
+      persona: 'тихий',
+      text: 'Это ещё не одобрено',
+      doText: 'Чужое действие',
+      skipText: 'Чужой пропуск',
+      status: 'PENDING_REVIEW',
+    });
+    const seen: SessionTextRequestedPayload[] = [];
+    const emitter = app.get(EventEmitter2);
+    const onText = (payload: SessionTextRequestedPayload) => {
+      seen.push(payload);
+    };
+    emitter.on(SESSION_TEXT_REQUESTED, onText);
+    try {
+      const user = await makeUser('fallback');
+      await assignScenario(user.id, 'sess-llm');
+      const opened = await open(user.id, { transport: 'REST', carClass: 'ECONOMY' });
+      const row = await prisma.gameSession.findUniqueOrThrow({
+        where: { id: opened.body.sessionId },
+      });
+      expect(readTextPlan(row.textPlan)?.nodes[textPlanKey('sess-llm', 'pool-ask')]).toBeNull();
+      expect(
+        seen.flatMap((event) => event.items).some((item) => item.scenarioId === 'sess-llm'),
+      ).toBe(false);
+      const pending = await prisma.scenarioTextVariant.findUniqueOrThrow({
+        where: { id: pendingId },
+      });
+      expect(pending.uses).toBe(0);
+      const view = await inject('GET', `/api/v1/game-sessions/${opened.body.sessionId}`, user.id);
+      expect(view.statusCode, view.body).toBe(200);
+      const screen = view.json() as SessionView;
+      expect(screen.view.nodeId).toBe('pool-ask');
+      expect(screen.view.text).toBe('Исходная ситуация');
+      expect(screen.view.choices.map((choice) => choice.id)).toEqual(['do', 'skip']);
+      expect(screen.view.choices.map((choice) => choice.text)).toEqual([
+        'Сделать по регламенту',
+        'Пропустить',
+      ]);
+    } finally {
+      emitter.off(SESSION_TEXT_REQUESTED, onText);
+    }
+  }, 30_000);
+
+  it('live закрепляет последний APPROVED персоны до показа и больше его не меняет', async () => {
+    await resetLlm('sess-live', 'Живой перефраз');
+    const seen: SessionTextRequestedPayload[] = [];
+    const emitter = app.get(EventEmitter2);
+    const onText = (payload: SessionTextRequestedPayload) => {
+      seen.push(payload);
+    };
+    emitter.on(SESSION_TEXT_REQUESTED, onText);
+    const user = await makeUser('live');
+    await assignScenario(user.id, 'sess-live');
+    const opened = await open(user.id, { transport: 'REST', carClass: 'ECONOMY' });
+    const row = await prisma.gameSession.findUniqueOrThrow({
+      where: { id: opened.body.sessionId },
+    });
+    const seed = decryptSeed(row.seedEnc, config.seedEncKey);
+    const persona = personaOf(createRng(seed), llmLive);
+    const other = persona === 'тихий' ? 'раздражённый' : 'тихий';
+    const key = textPlanKey('sess-live', 'live-ask');
+    expect(readTextPlan(row.textPlan)?.nodes[key]).toBeNull();
+    expect(seen).toContainEqual(
+      expect.objectContaining({
+        sessionId: opened.body.sessionId,
+        items: expect.arrayContaining([
+          expect.objectContaining({
+            scenarioId: 'sess-live',
+            version: 1,
+            nodeId: 'live-ask',
+            persona,
+          }),
+        ]),
+      }),
+    );
+    const older = '00000000-0000-4000-8000-0000000000d1';
+    const newer = '00000000-0000-4000-8000-0000000000d2';
+    const decoy = '00000000-0000-4000-8000-0000000000d3';
+    const after = '00000000-0000-4000-8000-0000000000d4';
+    await putVariant({
+      id: older,
+      scenarioId: 'sess-live',
+      nodeId: 'live-ask',
+      persona,
+      text: 'Старый живой текст',
+      doText: 'Старое действие',
+      skipText: 'Старый пропуск',
+      createdAt: new Date('2020-01-02T00:00:00.000Z'),
+    });
+    await putVariant({
+      id: newer,
+      scenarioId: 'sess-live',
+      nodeId: 'live-ask',
+      persona,
+      text: 'Свежий живой текст',
+      doText: 'Свежее действие',
+      skipText: 'Свежий пропуск',
+      createdAt: new Date('2020-01-03T00:00:00.000Z'),
+    });
+    await putVariant({
+      id: decoy,
+      scenarioId: 'sess-live',
+      nodeId: 'live-ask',
+      persona: other,
+      text: 'Чужая персона',
+      doText: 'Чужое действие',
+      skipText: 'Чужой пропуск',
+      createdAt: new Date('2020-01-05T00:00:00.000Z'),
+    });
+    const first = await inject('GET', `/api/v1/game-sessions/${opened.body.sessionId}`, user.id);
+    expect(first.statusCode, first.body).toBe(200);
+    const screen = first.json() as SessionView;
+    expect(screen.view.text).toBe('Свежий живой текст');
+    const listed = [
+      { id: 'do', text: 'Свежее действие' },
+      { id: 'skip', text: 'Свежий пропуск' },
+    ];
+    expect(screen.view.choices).toEqual(
+      orderChoices(listed, orderRng(createRng(seed), 'sess-live', 'live-ask', screen.view.seq)),
+    );
+    const pinned = await prisma.gameSession.findUniqueOrThrow({
+      where: { id: opened.body.sessionId },
+    });
+    const plan = readTextPlan(pinned.textPlan);
+    expect(plan?.nodes[key]).toBe(newer);
+    expect(plan?.shown).toContain(key);
+    expect(
+      (await prisma.scenarioTextVariant.findUniqueOrThrow({ where: { id: newer } })).uses,
+    ).toBe(1);
+    expect(
+      (await prisma.scenarioTextVariant.findUniqueOrThrow({ where: { id: older } })).uses,
+    ).toBe(0);
+    expect(
+      (await prisma.scenarioTextVariant.findUniqueOrThrow({ where: { id: decoy } })).uses,
+    ).toBe(0);
+
+    await putVariant({
+      id: after,
+      scenarioId: 'sess-live',
+      nodeId: 'live-ask',
+      persona,
+      text: 'Текст после показа',
+      doText: 'Позднее действие',
+      skipText: 'Поздний пропуск',
+      createdAt: new Date('2020-01-06T00:00:00.000Z'),
+    });
+    const second = await inject('GET', `/api/v1/game-sessions/${opened.body.sessionId}`, user.id);
+    expect((second.json() as SessionView).view.text).toBe('Свежий живой текст');
+    expect((second.json() as SessionView).view.choices).toEqual(screen.view.choices);
+    expect(
+      (await prisma.scenarioTextVariant.findUniqueOrThrow({ where: { id: after } })).uses,
+    ).toBe(0);
+    emitter.off(SESSION_TEXT_REQUESTED, onText);
+  }, 30_000);
 });
 
 async function wipe(prisma: PrismaService, ids: string[]): Promise<void> {
