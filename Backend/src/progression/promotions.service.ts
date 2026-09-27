@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import type { AuthUser } from '../auth/auth-user';
+import { type LedgerRow, lifetimeLevelPoints } from '../cabinet/points';
 import { Clock } from '../common/clock';
 import { PROMOTION_RECOMMENDED } from '../common/events';
 import {
@@ -243,7 +244,7 @@ export class PromotionsService {
     userId: string,
     rule: ReturnType<RulesService['gradeRules']>[number],
   ): Promise<string[] | null> {
-    const level = this.rules.levelFor(await activePoints(tx, userId, this.clock.now())).level;
+    const level = this.rules.levelFor(await lifetimePoints(tx, userId)).level;
     if (level < rule.minLevel) {
       return null;
     }
@@ -284,24 +285,18 @@ function isUuidSafe(value: string): boolean {
   }
 }
 
-async function activePoints(
-  tx: Prisma.TransactionClient,
-  userId: string,
-  now: Date,
-): Promise<number> {
+async function lifetimePoints(tx: Prisma.TransactionClient, userId: string): Promise<number> {
   const rows = await tx.pointLedger.findMany({
-    where: {
-      userId,
-      expiredAt: null,
-      OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
-    },
-    select: { amount: true },
+    where: { userId },
+    select: { amount: true, reason: true, expiresAt: true, expiredAt: true },
   });
-  let sum = 0;
-  for (const row of rows) {
-    sum += row.amount;
-  }
-  return Math.max(0, sum);
+  const ledger: LedgerRow[] = rows.map((row) => ({
+    amount: row.amount,
+    reason: row.reason,
+    expiresAt: row.expiresAt,
+    expiredAt: row.expiredAt,
+  }));
+  return lifetimeLevelPoints(ledger);
 }
 
 async function competencyFloor(tx: Prisma.TransactionClient, userId: string): Promise<number> {

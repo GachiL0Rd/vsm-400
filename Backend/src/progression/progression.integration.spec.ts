@@ -11,6 +11,7 @@ import { testDatabaseUrl, testRedisUrl } from '../../test/databases';
 import { AchievementsModule } from '../achievements/achievements.module';
 import { AchievementsService } from '../achievements/achievements.service';
 import type { AuthUser } from '../auth/auth-user';
+import { lifetimeLevelPoints } from '../cabinet/points';
 import { ClockModule } from '../common/clock';
 import type { RunCompletedPayload } from '../common/events';
 import { ProblemFilter } from '../common/problem.filter';
@@ -403,6 +404,14 @@ describe('прогрессия в базе', () => {
       data: {
         userId: user.id,
         amount: 400,
+        reason: 'RUN',
+        expiresAt: new Date(Date.now() + 30 * 86_400_000),
+      },
+    });
+    await prisma.pointLedger.create({
+      data: {
+        userId: user.id,
+        amount: 5000,
         reason: 'ADJUST',
         expiresAt: new Date(Date.now() + 30 * 86_400_000),
       },
@@ -465,10 +474,24 @@ describe('прогрессия в базе', () => {
     await promotions.consider(user.id);
 
     const rows = await prisma.pointLedger.findMany({ where: { userId: user.id } });
-    const base = rows
-      .filter((row) => row.reason === 'RUN' || row.reason === 'ADJUST')
-      .reduce((sum, row) => sum + row.amount, 0);
-    expect(base).toBeLessThan(450);
+    const asLedger = (
+      source: typeof rows,
+    ): {
+      amount: number;
+      reason: (typeof rows)[number]['reason'];
+      expiresAt: Date | null;
+      expiredAt: Date | null;
+    }[] =>
+      source.map((row) => ({
+        amount: row.amount,
+        reason: row.reason,
+        expiresAt: row.expiresAt,
+        expiredAt: row.expiredAt,
+      }));
+    expect(lifetimeLevelPoints(asLedger(rows))).toBeGreaterThanOrEqual(450);
+    expect(
+      lifetimeLevelPoints(asLedger(rows.filter((row) => row.reason !== 'ACHIEVEMENT'))),
+    ).toBeLessThan(450);
     const recommendation = await prisma.promotionRecommendation.findFirst({
       where: { userId: user.id, status: 'PENDING' },
     });
