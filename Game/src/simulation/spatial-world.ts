@@ -47,6 +47,7 @@ export interface SpatialWorld {
   readonly time: SimTimeUs;
   readonly microsecondsPerCostUnit: number;
   addEntity(id: EntityId, cellId: string): void;
+  removeEntity(id: EntityId): void;
   attach(entityId: EntityId, anchorId: string): void;
   detach(entityId: EntityId, cellId: string): void;
   startMovement(entityId: EntityId, edgeId: string, at: SimTimeUs): MovementReservation;
@@ -135,6 +136,15 @@ class SpatialRuntime implements SpatialWorld {
     }
     this.entities.set(entityId, { id: entityId, place: { kind: 'cell', cellId } });
     bucket(this.cellIndex, cellId).add(entityId);
+  }
+
+  removeEntity(id: EntityId): void {
+    const entity = this.requireEntity(id);
+    if (entity.place.kind === 'cell') bucket(this.cellIndex, entity.place.cellId).delete(entity.id);
+    else if (entity.place.kind === 'moving')
+      bucket(this.edgeIndex, entity.place.edgeId).delete(entity.id);
+    else bucket(this.attachmentIndex, entity.place.anchorId).delete(entity.id);
+    this.entities.delete(entity.id);
   }
 
   attach(entityId: EntityId, anchorId: string): void {

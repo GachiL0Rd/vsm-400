@@ -129,6 +129,7 @@ export type NpcDecision =
     };
 
 export interface ActionCatalog {
+  definition(actionId: string): ActionDefinition;
   evaluate(entity: EntityState, context: DecisionContext): EvaluatedCandidates;
   chooseNpcAction(
     random: SimulationRandom,
@@ -191,6 +192,14 @@ class Catalog implements ActionCatalog {
       readonly passenger: readonly string[];
     },
   ) {}
+
+  definition(actionId: string): ActionDefinition {
+    const action = this.requireAction(actionId);
+    return {
+      ...action,
+      params: { ...action.params },
+    };
+  }
 
   evaluate(entity: EntityState, context: DecisionContext): EvaluatedCandidates {
     const now = assertSimTimeUs(context.now);

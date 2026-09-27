@@ -1,4 +1,4 @@
-import type { CurrentAction, EntityId, EntityStore, ItemId } from './entity-store';
+import type { EntityId, EntityStore, ItemId } from './entity-store';
 
 export type CheckState = 'unset' | 'ok' | 'problem';
 export type SanitationCheckState = 'unset' | 'clean' | 'issue';
@@ -73,7 +73,6 @@ export interface ItemGiven {
   readonly targetId: EntityId;
   readonly itemId: ItemId;
   readonly itemKind: ConsumableKind;
-  readonly waitingActionGeneration: number | null;
 }
 
 export interface ExtinguisherUsed {
@@ -144,12 +143,6 @@ interface MutableConsumable {
 
 export function createItemStore(entities: EntityStore, config: ItemWorldConfig): ItemStore {
   return new ItemRuntime(entities, cloneConfig(validateConfig(config)));
-}
-
-export function itemGivenMatchesWaitingAction(event: ItemGiven, action: CurrentAction): boolean {
-  if (action.phase.kind !== 'waiting') return false;
-  const expected = event.itemKind === 'drink' ? 'request-drink' : 'request-food';
-  return action.actionId === expected && event.waitingActionGeneration === action.generation;
 }
 
 class ItemRuntime implements ItemStore {
@@ -335,24 +328,14 @@ class ItemRuntime implements ItemStore {
       }
       if (target.kind !== 'passenger')
         throw new RangeError('Food and drink are given to a passenger');
-      this.requireSameCell(actorId, targetId);
     });
     if (item === undefined) throw new RangeError('Player is not holding food or drink');
-    const waiting = target.currentAction;
-    const expectedAction = item.kind === 'drink' ? 'request-drink' : 'request-food';
-    const waitingActionGeneration =
-      waiting !== undefined &&
-      waiting.phase.kind === 'waiting' &&
-      waiting.actionId === expectedAction
-        ? waiting.generation
-        : null;
     const event: ItemGiven = {
       type: 'item-given',
       giverId: actorId,
       targetId,
       itemId: item.id,
       itemKind: item.kind,
-      waitingActionGeneration,
     };
     this.release(actorId, () => {
       item.location = 'given';
@@ -427,17 +410,6 @@ class ItemRuntime implements ItemStore {
       throw new RangeError('Player is not at the item');
     }
     return actor;
-  }
-
-  private requireSameCell(actorId: EntityId, targetId: EntityId): void {
-    const actor = this.requirePlayer(actorId);
-    const target = this.entities.get(targetId);
-    if (actor.position.kind !== 'cell' || target.position.kind !== 'cell') {
-      throw new RangeError('Player is not beside the passenger');
-    }
-    if (actor.position.cellId !== target.position.cellId) {
-      throw new RangeError('Player is not beside the passenger');
-    }
   }
 
   private requireFreeHand(actorId: EntityId): void {

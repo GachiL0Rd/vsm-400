@@ -1,11 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { type CurrentAction, createEntityStore, type EntityStore } from './entity-store';
-import {
-  createItemStore,
-  type ItemStore,
-  type ItemWorldConfig,
-  itemGivenMatchesWaitingAction,
-} from './item-store';
+import { createEntityStore, type EntityStore } from './entity-store';
+import { createItemStore, type ItemStore, type ItemWorldConfig } from './item-store';
 
 const config: ItemWorldConfig = {
   journal: { id: 'journal', homeAnchorId: 'platform.acceptance-desk', homeCellId: 'platform' },
@@ -18,10 +13,6 @@ const config: ItemWorldConfig = {
   },
   servicePoint: { id: 'service-point', cellId: 'service' },
 };
-
-function waiting(actionId: string, generation: number): CurrentAction {
-  return { actionId, generation, startedAt: 0, phase: { kind: 'waiting', timeoutAt: 1_000 } };
-}
 
 function setup(): { entities: EntityStore; items: ItemStore } {
   const entities = createEntityStore({
@@ -136,7 +127,7 @@ describe('item store', () => {
     expect(entities.get('player').heldItemId).toBe('extinguisher');
   });
 
-  it('issues deterministic food and drink ids and gives them only beside the passenger', () => {
+  it('issues deterministic food and drink ids while leaving proximity to the attempt', () => {
     const { entities, items } = setup();
     entities.setPosition('player', { kind: 'cell', cellId: 'platform' });
     expect(() => items.takeDrink('player')).toThrow(RangeError);
@@ -151,11 +142,6 @@ describe('item store', () => {
     expect(() => items.takeFood('player')).toThrow(RangeError);
     expect(items.snapshot().consumables.map((item) => item.id)).toEqual(['drink-1']);
 
-    entities.setCurrentAction('passenger', waiting('request-drink', 4));
-    expect(() => items.giveConsumable('player', 'passenger')).toThrow(RangeError);
-    expect(entities.get('player').heldItemId).toBe('drink-1');
-
-    entities.setPosition('player', { kind: 'cell', cellId: 'seat' });
     const given = items.giveConsumable('player', 'passenger');
     expect(given).toEqual({
       type: 'item-given',
@@ -163,11 +149,7 @@ describe('item store', () => {
       targetId: 'passenger',
       itemId: 'drink-1',
       itemKind: 'drink',
-      waitingActionGeneration: 4,
     });
-    expect(itemGivenMatchesWaitingAction(given, waiting('request-drink', 4))).toBe(true);
-    expect(itemGivenMatchesWaitingAction(given, waiting('request-food', 4))).toBe(false);
-    expect(itemGivenMatchesWaitingAction(given, waiting('request-drink', 5))).toBe(false);
     expect(entities.get('player').heldItemId).toBeUndefined();
     expect(entities.get('passenger').heldItemId).toBeUndefined();
     expect(items.snapshot().consumables[0]).toMatchObject({
@@ -179,10 +161,8 @@ describe('item store', () => {
     entities.setPosition('player', { kind: 'cell', cellId: 'service' });
     expect(items.takeFood('player').id).toBe('food-1');
     expect(() => items.takeDrink('player')).toThrow(RangeError);
-    entities.setPosition('player', { kind: 'cell', cellId: 'seat' });
     const food = items.giveConsumable('player', 'passenger');
     expect(food.itemId).toBe('food-1');
-    expect(food.waitingActionGeneration).toBeNull();
     entities.setPosition('player', { kind: 'cell', cellId: 'service' });
     expect(items.takeDrink('player').id).toBe('drink-2');
   });

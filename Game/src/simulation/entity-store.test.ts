@@ -82,6 +82,21 @@ describe('entity store', () => {
     expect(JSON.stringify(listed[1])).not.toContain('grantedAt');
   });
 
+  it('keeps trait grant times private but available to the decision runtime', () => {
+    const { store } = harness();
+    store.addPassenger({ id: 'p1', position: cell('a'), traits: ['basic', 'awake'] });
+    expect(store.traitGrantedAt('p1')).toEqual({ awake: 0, basic: 0 });
+
+    store.grantTrait('p1', 'hungry', 250);
+    expect(store.traitGrantedAt('p1')).toEqual({ awake: 0, basic: 0, hungry: 250 });
+
+    store.grantTrait('p1', 'hungry', 500, 1_000);
+    expect(store.traitGrantedAt('p1').hungry).toBe(250);
+
+    store.removeTrait('p1', 'hungry');
+    expect(store.traitGrantedAt('p1')).toEqual({ awake: 0, basic: 0 });
+  });
+
   it('expires traits on the shared queue and ignores a stale regrant', () => {
     const { store, advance } = harness();
     store.addPassenger({ id: 'p1', position: cell('a'), traits: ['basic'] });
