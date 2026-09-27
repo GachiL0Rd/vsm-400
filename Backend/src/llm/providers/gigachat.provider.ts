@@ -7,7 +7,7 @@ import {
   GIGACHAT_TOKEN_SKEW_MS,
   gigachatTokenKey,
 } from '../llm.constants';
-import { LLM_MAX_TOKENS, LLM_TEMPERATURE } from '../prompt';
+import { LLM_MAX_TOKENS } from '../prompt';
 import type { LlmCompleteInput, LlmCompleteResult, LlmProvider } from '../provider';
 import { type FetchLike, parseJsonBody, readChatContent, requestText } from './http';
 
@@ -27,6 +27,8 @@ export class GigaChatProvider implements LlmProvider {
       scope: string;
       model: string;
       timeoutMs: number;
+      temperature?: number;
+      topP?: number;
       cache: TokenCache;
       caPem?: string | Buffer;
       caFile?: string;
@@ -61,7 +63,8 @@ export class GigaChatProvider implements LlmProvider {
         body: JSON.stringify({
           model: this.options.model,
           messages: input.messages,
-          temperature: LLM_TEMPERATURE,
+          temperature: input.temperature ?? this.options.temperature ?? 0.7,
+          top_p: input.topP ?? this.options.topP ?? 0.8,
           max_tokens: LLM_MAX_TOKENS,
           // Форма GigaChat, не OpenAI: schema лежит рядом с type.
           response_format: {

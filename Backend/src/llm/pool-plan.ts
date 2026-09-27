@@ -9,6 +9,27 @@ export function personaAt(personas: readonly string[] | undefined, index: number
   return persona && persona.trim().length > 0 ? persona : DEFAULT_PERSONA;
 }
 
+/**
+ * Примеры «не повторяй» для задачи: сначала та же персона, что у job, потом чужие.
+ * Внутри группы порядок входного списка сохраняется (вызывающий даёт свежие первыми).
+ */
+export function avoidForJob<T extends { persona: string }>(
+  rows: readonly T[],
+  persona: string,
+  limit = 5,
+): T[] {
+  const same: T[] = [];
+  const other: T[] = [];
+  for (const row of rows) {
+    if (row.persona === persona) {
+      same.push(row);
+    } else {
+      other.push(row);
+    }
+  }
+  return [...same, ...other].slice(0, limit);
+}
+
 /** Сколько ещё задач поставить, чтобы APPROVED + уже стоящие в очереди добрали цель. */
 export function seedDeficit(target: number, approved: number, inflight: number): number {
   return Math.max(0, target - approved - inflight);

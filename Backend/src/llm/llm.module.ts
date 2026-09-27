@@ -6,6 +6,7 @@ import { RedisService } from '../redis/redis.service';
 import { LLM_BACKOFF_MS, LLM_JOB_ATTEMPTS, LLM_PROVIDER, LLM_QUEUE } from './llm.constants';
 import { LlmStatusController, LlmVariantsController } from './llm.controller';
 import { LlmProcessor } from './llm.processor';
+import { LlmSessionListener } from './llm-session.listener';
 import { createLlmProvider } from './providers/create-provider';
 import { VariantPoolService } from './variant-pool.service';
 
@@ -34,6 +35,7 @@ import { VariantPoolService } from './variant-pool.service';
   controllers: [LlmVariantsController, LlmStatusController],
   providers: [
     LlmProcessor,
+    LlmSessionListener,
     VariantPoolService,
     {
       provide: LLM_PROVIDER,

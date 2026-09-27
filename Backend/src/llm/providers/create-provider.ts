@@ -19,6 +19,9 @@ export function createLlmProvider(config: AppConfig, redis: RedisTokenStore): Ll
       model: required(config.llmModel, 'LLM_MODEL'),
       apiKey: config.llmApiKey,
       timeoutMs: config.llmTimeoutMs,
+      temperature: config.llmTemperature,
+      topP: config.llmTopP,
+      topK: config.llmTopK,
     });
   }
   return new GigaChatProvider({
@@ -27,6 +30,8 @@ export function createLlmProvider(config: AppConfig, redis: RedisTokenStore): Ll
     model: required(config.llmModel, 'LLM_MODEL'),
     caFile: required(config.gigachatCaFile, 'GIGACHAT_CA_FILE'),
     timeoutMs: config.llmTimeoutMs,
+    temperature: config.llmTemperature,
+    topP: config.llmTopP,
     cache: redisTokenCache(redis),
   });
 }

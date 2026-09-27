@@ -1,4 +1,4 @@
-import { LLM_MAX_TOKENS, LLM_TEMPERATURE } from '../prompt';
+import { LLM_MAX_TOKENS } from '../prompt';
 import type { LlmCompleteInput, LlmCompleteResult, LlmProvider } from '../provider';
 import {
   chatCompletionsUrl,
@@ -17,6 +17,9 @@ export class OpenAiCompatibleProvider implements LlmProvider {
       model: string;
       apiKey?: string;
       timeoutMs: number;
+      temperature?: number;
+      topP?: number;
+      topK?: number;
       fetchImpl?: FetchLike;
     },
   ) {}
@@ -40,8 +43,16 @@ export class OpenAiCompatibleProvider implements LlmProvider {
         body: JSON.stringify({
           model: this.options.model,
           messages: input.messages,
-          temperature: LLM_TEMPERATURE,
+          temperature: input.temperature ?? this.options.temperature ?? 0.7,
+          top_p: input.topP ?? this.options.topP ?? 0.8,
+          top_k: this.options.topK ?? 20,
+          min_p: 0,
+          repeat_penalty: 1,
+          presence_penalty: 0,
+          frequency_penalty: 0,
           max_tokens: LLM_MAX_TOKENS,
+          reasoning_effort: 'none',
+          chat_template_kwargs: { enable_thinking: false },
           response_format: {
             type: 'json_schema',
             json_schema: {

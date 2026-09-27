@@ -81,6 +81,14 @@ describe('loadConfig', () => {
     expect(config.llmProvider).toBe('none');
     expect(config.llmTimeoutMs).toBe(90_000);
     expect(config.llmConcurrency).toBe(2);
+    expect(config.llmTemperature).toBe(0.7);
+    expect(config.llmTopP).toBe(0.8);
+    expect(config.llmTopK).toBe(20);
+    expect(config.llmJudge).toBe(true);
+    expect(loadConfig({ ...valid, LLM_JUDGE: 'off' }).llmJudge).toBe(false);
+    expect(
+      loadConfig({ ...valid, LLM_TEMPERATURE: '0.4', LLM_TOP_P: '0.9', LLM_TOP_K: '40' }),
+    ).toMatchObject({ llmTemperature: 0.4, llmTopP: 0.9, llmTopK: 40 });
     expect(config.gigachatScope).toBe('GIGACHAT_API_PERS');
 
     expect(() => loadConfig({ ...valid, LLM_PROVIDER: 'gigachat', LLM_MODEL: 'GigaChat' })).toThrow(

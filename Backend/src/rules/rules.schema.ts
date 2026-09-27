@@ -110,7 +110,7 @@ function checkGradeStep(grades: GradeDraft[], index: number, ctx: IssueSink): vo
 }
 
 export const LlmRulesSchema = z.strictObject({
-  autoApprove: z.boolean().describe('Валидный перефраз сразу APPROVED, без методиста'),
+  autoApprove: z.boolean().describe('APPROVED сразу, только если судья включён и прошёл'),
   poolTarget: z.number().int().positive().describe('Сколько APPROVED держать на каждый узел'),
   maxUses: z.number().int().positive().describe('После стольких выдач вариант становится RETIRED'),
   liveTimeoutMs: z
@@ -118,6 +118,11 @@ export const LlmRulesSchema = z.strictObject({
     .int()
     .positive()
     .describe('Сколько ждать live-вариант до показа узла, дальше пул или YAML'),
+  maxSimilarity: z
+    .number()
+    .gt(0)
+    .lte(1)
+    .describe('Jaccard по словам: строже этого порога вариант отклоняется'),
 });
 
 const GradesSchema = z.array(GradeStepSchema).superRefine((grades, ctx) => {

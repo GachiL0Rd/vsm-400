@@ -28,6 +28,20 @@ export const LLM_PROVIDER = Symbol('LLM_PROVIDER');
 
 export type LlmProviderName = 'openai-compatible' | 'gigachat' | 'none';
 export type LlmJobReason = 'seed' | 'refill' | 'live' | 'manual';
+export type TextVariantReasonName = 'SEED' | 'REFILL' | 'LIVE' | 'MANUAL';
+
+export function variantReason(reason: LlmJobReason): TextVariantReasonName {
+  if (reason === 'seed') {
+    return 'SEED';
+  }
+  if (reason === 'refill') {
+    return 'REFILL';
+  }
+  if (reason === 'live') {
+    return 'LIVE';
+  }
+  return 'MANUAL';
+}
 
 export type LlmJobData = {
   scenarioId: string;

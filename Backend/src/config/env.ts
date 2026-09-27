@@ -49,6 +49,50 @@ const llmConcurrencySchema = z.preprocess(
   z.coerce.number().int().min(1).max(32),
 );
 
+const llmTemperatureSchema = z.preprocess(
+  (value: unknown) => (value === undefined || value === '' ? 0.7 : value),
+  z.coerce.number().min(0).max(2),
+);
+
+const llmTopPSchema = z.preprocess(
+  (value: unknown) => (value === undefined || value === '' ? 0.8 : value),
+  z.coerce.number().gt(0).lte(1),
+);
+
+const llmTopKSchema = z.preprocess(
+  (value: unknown) => (value === undefined || value === '' ? 20 : value),
+  z.coerce.number().int().min(1).max(200),
+);
+
+const llmJudgeSchema = z.preprocess((value: unknown) => {
+  if (value === undefined || value === '') {
+    return true;
+  }
+  if (typeof value === 'boolean') {
+    return value;
+  }
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (
+      normalized === 'false' ||
+      normalized === '0' ||
+      normalized === 'off' ||
+      normalized === 'no'
+    ) {
+      return false;
+    }
+    if (
+      normalized === 'true' ||
+      normalized === '1' ||
+      normalized === 'on' ||
+      normalized === 'yes'
+    ) {
+      return true;
+    }
+  }
+  return value;
+}, z.boolean());
+
 const gigachatScopeSchema = z.preprocess(
   (value: unknown) => (value === undefined || value === '' ? 'GIGACHAT_API_PERS' : value),
   z.enum(['GIGACHAT_API_PERS', 'GIGACHAT_API_B2B', 'GIGACHAT_API_CORP']),
@@ -95,6 +139,10 @@ const EnvSchema = z
     LLM_API_KEY: optionalText,
     LLM_TIMEOUT_MS: llmTimeoutSchema,
     LLM_CONCURRENCY: llmConcurrencySchema,
+    LLM_TEMPERATURE: llmTemperatureSchema,
+    LLM_TOP_P: llmTopPSchema,
+    LLM_TOP_K: llmTopKSchema,
+    LLM_JUDGE: llmJudgeSchema,
     GIGACHAT_AUTH_KEY: optionalText,
     GIGACHAT_SCOPE: gigachatScopeSchema,
     GIGACHAT_CA_FILE: optionalText,
@@ -143,6 +191,10 @@ const EnvSchema = z
     llmApiKey: env.LLM_API_KEY,
     llmTimeoutMs: env.LLM_TIMEOUT_MS,
     llmConcurrency: env.LLM_CONCURRENCY,
+    llmTemperature: env.LLM_TEMPERATURE,
+    llmTopP: env.LLM_TOP_P,
+    llmTopK: env.LLM_TOP_K,
+    llmJudge: env.LLM_JUDGE,
     gigachatAuthKey: env.GIGACHAT_AUTH_KEY,
     gigachatScope: env.GIGACHAT_SCOPE,
     gigachatCaFile: env.GIGACHAT_CA_FILE,

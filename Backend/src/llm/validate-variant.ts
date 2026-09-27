@@ -19,6 +19,11 @@ export type ValidateResult =
 
 type Parsed = { ok: true; payload: VariantPayload } | { ok: false; reasons: string[] };
 
+export function readVariantPayload(value: unknown): VariantPayload | null {
+  const parsed = parsePayload(value);
+  return parsed.ok ? parsed.payload : null;
+}
+
 export function unwrapJson(raw: string): string {
   const trimmed = raw.trim();
   const fenced = /^```(?:json)?\s*([\s\S]*?)\s*```$/i.exec(trimmed);

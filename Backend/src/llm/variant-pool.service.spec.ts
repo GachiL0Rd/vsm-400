@@ -36,11 +36,15 @@ function harness(name: LlmProvider['name'] = 'openai-compatible') {
     scenarioVersion: { findUnique: vi.fn() },
     scenarioTextVariant: {
       findMany: vi.fn(),
+      findFirst: vi.fn(),
       count: vi.fn(),
       update: vi.fn(),
       updateMany: vi.fn(),
       groupBy: vi.fn(),
     },
+    gameSession: { findUnique: vi.fn(), update: vi.fn() },
+    $queryRaw: vi.fn(),
+    $transaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => fn(prisma)),
   };
   const rules = {
     llm: () => ({ autoApprove: true, poolTarget: 2, maxUses: 3, liveTimeoutMs: 8000 }),
@@ -90,7 +94,35 @@ describe('VariantPoolService', () => {
       payload: { text: 'два', choices: [] },
     });
     expect(prisma.scenarioTextVariant.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: expect.objectContaining({ status: 'APPROVED' }) }),
+      expect.objectContaining({
+        where: expect.objectContaining({ status: 'APPROVED', sessionId: null }),
+      }),
+    );
+  });
+
+  it('pick общей выдачи не берёт вариант, привязанный к сессии, и фильтрует персону', async () => {
+    const { pool, prisma } = harness();
+    prisma.scenarioTextVariant.findMany.mockResolvedValue([]);
+    await pool.pick(
+      'ride-pressure',
+      1,
+      'open',
+      { pick: (items) => items[0] as never },
+      {
+        persona: 'тихо',
+      },
+    );
+    expect(prisma.scenarioTextVariant.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          scenarioId: 'ride-pressure',
+          version: 1,
+          nodeId: 'open',
+          status: 'APPROVED',
+          sessionId: null,
+          persona: 'тихо',
+        },
+      }),
     );
   });
 
@@ -192,5 +224,74 @@ describe('VariantPoolService', () => {
       expect.objectContaining({ reason: 'live', sessionId: 'sess-1' }),
       { priority: 1 },
     );
+  });
+
+  it('releaseSession снимает sessionId только у APPROVED', async () => {
+    const { pool, prisma } = harness();
+    prisma.scenarioTextVariant.updateMany.mockResolvedValue({ count: 1 });
+    await expect(pool.releaseSession('sess-1')).resolves.toBe(1);
+    expect(prisma.scenarioTextVariant.updateMany).toHaveBeenCalledWith({
+      where: { sessionId: 'sess-1', status: 'APPROVED' },
+      data: { sessionId: null },
+    });
+  });
+
+  it('bindLive берёт вариант своей сессии и не спрашивает чужую персону', async () => {
+    const { pool, prisma } = harness();
+    prisma.gameSession.findUnique.mockResolvedValue({
+      textPlan: { 'ride-pressure:open': null },
+    });
+    prisma.scenarioTextVariant.findFirst.mockResolvedValue({ id: 'session-var' });
+    prisma.scenarioTextVariant.update.mockResolvedValue({
+      id: 'session-var',
+      scenarioId: 'ride-pressure',
+      version: 1,
+      nodeId: 'open',
+      persona: 'тихо',
+      status: 'APPROVED',
+      uses: 1,
+      maxUses: 25,
+    });
+    const plan = await pool.bindLive({
+      sessionId: 'sess-1',
+      scenarioId: 'ride-pressure',
+      version: 1,
+      nodeId: 'open',
+    });
+    expect(prisma.scenarioTextVariant.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          sessionId: 'sess-1',
+          scenarioId: 'ride-pressure',
+          version: 1,
+          nodeId: 'open',
+          status: 'APPROVED',
+        },
+      }),
+    );
+    const where = prisma.scenarioTextVariant.findFirst.mock.calls[0]?.[0].where as {
+      persona?: string;
+    };
+    expect(where.persona).toBeUndefined();
+    expect(plan?.nodes['ride-pressure:open']).toBe('session-var');
+    expect(plan?.shown).toContain('ride-pressure:open');
+    expect(prisma.scenarioTextVariant.update).toHaveBeenCalled();
+  });
+
+  it('bindLive без варианта сессии замораживает YAML и не тратит чужой пул', async () => {
+    const { pool, prisma } = harness();
+    prisma.gameSession.findUnique.mockResolvedValue({
+      textPlan: { 'ride-pressure:open': null },
+    });
+    prisma.scenarioTextVariant.findFirst.mockResolvedValue(null);
+    const plan = await pool.bindLive({
+      sessionId: 'sess-1',
+      scenarioId: 'ride-pressure',
+      version: 1,
+      nodeId: 'open',
+    });
+    expect(plan?.nodes['ride-pressure:open']).toBeNull();
+    expect(plan?.shown).toEqual(['ride-pressure:open']);
+    expect(prisma.scenarioTextVariant.update).not.toHaveBeenCalled();
   });
 });

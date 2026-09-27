@@ -31,6 +31,7 @@ describe('rules.yaml', () => {
       poolTarget: 8,
       maxUses: 25,
       liveTimeoutMs: 8000,
+      maxSimilarity: 0.75,
     });
     expect(rules.gradeRules().map((rule) => [rule.from, rule.to])).toEqual([
       ['TRAINEE', 'CONDUCTOR'],

@@ -20,6 +20,7 @@ import { createState } from '../engine/step';
 import type { EngineState, RunSummary, ShiftPlan, TextVariant } from '../engine/types';
 import { view } from '../engine/view';
 import { ActorType, type GameSession, type Prisma } from '../generated/prisma/client';
+import { VariantPoolService } from '../llm/variant-pool.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { ScenariosService } from '../scenarios/scenarios.service';
@@ -59,7 +60,7 @@ import { decisionBody, presentView, readReplay } from './present';
 import { reportToSummary } from './report-map';
 import { loadRoutesFile } from './routes-file';
 import { decryptSeed, encryptSeed } from './seed-box';
-import { lockSession, lockUserSessions } from './session-lock';
+import { lockUserSessions } from './session-lock';
 import {
   attachShown,
   currentGraph,
@@ -73,13 +74,10 @@ import {
 } from './state-json';
 import {
   buildTextPlan,
-  claimVariant,
   livePinTarget,
   llmMode,
   orderRng,
   payloadVariant,
-  personaOf,
-  pinLiveNode,
   readTextPlan,
   selectedVariantIds,
   textPlanKey,
@@ -142,6 +140,7 @@ export class SessionsService {
     @Inject(EventEmitter2) private readonly events: EventEmitter2,
     @Inject(APP_CONFIG) private readonly config: AppConfig,
     @Inject(Clock) private readonly clock: Clock,
+    @Inject(VariantPoolService) private readonly pool: VariantPoolService,
   ) {}
 
   async open(user: AuthUser, body: OpenBody, ip: string | null): Promise<OpenedSession> {
@@ -254,6 +253,7 @@ export class SessionsService {
       ip,
     });
     await this.publish(session.id, 'abort', now);
+    await this.releaseVariants(session.id);
     return { status: 'ABORTED' };
   }
 
@@ -407,7 +407,16 @@ export class SessionsService {
     if (!node) {
       throw fromEngine(new EngineError('NODE_MISSING'));
     }
-    const assembly = await buildTextPlan(this.prisma, createRng(seed), plan, graphs);
+    const assembly = await buildTextPlan(createRng(seed), plan, graphs, async (query, fork) => {
+      const chosen = await this.pool.pick(
+        query.scenarioId,
+        query.version,
+        query.nodeId,
+        fork,
+        query.persona.length > 0 ? { persona: query.persona } : undefined,
+      );
+      return chosen?.id ?? null;
+    });
     return {
       seedEnc: encryptSeed(seed, this.config.seedEncKey),
       seedCommit: commitOf(seed),
@@ -479,9 +488,7 @@ export class SessionsService {
       },
     });
     if (draft.textPlan) {
-      for (const id of selectedVariantIds(draft.textPlan)) {
-        await claimVariant(tx, id);
-      }
+      await this.pool.markUsed(selectedVariantIds(draft.textPlan), tx);
     }
     await tx.auditLog.create({
       data: {
@@ -648,7 +655,7 @@ export class SessionsService {
   }
 
   /**
-   * До показа живого узла с пустым слотом закрепляем свежий APPROVED.
+   * До показа живого узла с пустым слотом закрепляем вариант этой сессии.
    * Без варианта rng не передаём: порядок выборов остаётся авторским.
    */
   private async presentation(
@@ -673,25 +680,11 @@ export class SessionsService {
       const shift = readPlan(row.plan);
       const planned = shift.scenarios.find((item) => item.scenarioId === state.scenarioId);
       if (planned) {
-        const seed = this.decrypt(row.seedEnc);
-        const pinned = await this.prisma.$transaction(async (tx) => {
-          await lockSession(tx, session.id);
-          const locked = await tx.gameSession.findUnique({
-            where: { id: session.id },
-            select: { textPlan: true },
-          });
-          const current = readTextPlan(locked?.textPlan);
-          if (!current || !livePinTarget(current, key, mode)) {
-            return current;
-          }
-          return pinLiveNode(tx, {
-            sessionId: session.id,
-            plan: current,
-            scenarioId: state.scenarioId,
-            version: planned.version,
-            nodeId: state.nodeId,
-            persona: personaOf(createRng(seed), graph),
-          });
+        const pinned = await this.pool.bindLive({
+          sessionId: session.id,
+          scenarioId: state.scenarioId,
+          version: planned.version,
+          nodeId: state.nodeId,
         });
         if (pinned) {
           stored = pinned;
@@ -840,7 +833,17 @@ export class SessionsService {
       target: id,
     });
     await this.publish(id, 'expire', now);
+    await this.releaseVariants(id);
     return true;
+  }
+
+  private async releaseVariants(sessionId: string): Promise<void> {
+    try {
+      await this.pool.releaseSession(sessionId);
+    } catch (error) {
+      const text = error instanceof Error ? error.message : String(error);
+      this.logger.warn(`не отпустить варианты сессии ${sessionId}: ${text}`);
+    }
   }
 
   private async publish(sessionId: string, type: 'abort' | 'expire', at: Date): Promise<void> {

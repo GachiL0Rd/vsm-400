@@ -2,7 +2,7 @@ import type { SessionTextRequestItem } from '../common/events';
 import type { Rng } from '../engine/rng';
 import { isEndNode, type ScenarioGraph } from '../engine/schema';
 import type { ShiftPlan, TextVariant } from '../engine/types';
-import type { Prisma, PrismaClient } from '../generated/prisma/client';
+import type { Prisma } from '../generated/prisma/client';
 import { isRecord, toJson } from './state-json';
 
 /**
@@ -93,8 +93,8 @@ export function readTextPlan(raw: unknown): StoredTextPlan | null {
 }
 
 /**
- * _shown лежит рядом с картой узлов: после первого показа null уже не живой слот,
- * а зафиксированный YAML. В строке варианта нет связи с сессией.
+ * _shown лежит рядом с картой узлов: после закрепления null уже не живой слот,
+ * а зафиксированный YAML. Вариант живой сессии ищется по sessionId, не по персоне.
  */
 export function writeTextPlan(plan: StoredTextPlan): Prisma.InputJsonValue {
   const body: Record<string, unknown> = { ...plan.nodes };
@@ -178,77 +178,34 @@ export function assembleTextPlan(
   return { textPlan: nodes, live };
 }
 
+export type VariantPicker = (query: ApprovedQuery, rng: Rng) => Promise<string | null>;
+
+/** Выбор id делает VariantPoolService.pick: здесь только сборка плана и live-слотов. */
 export async function buildTextPlan(
-  db: PrismaClient,
   rng: Rng,
   shift: ShiftPlan,
   graphs: readonly ScenarioGraph[],
+  pick: VariantPicker,
 ): Promise<TextAssembly> {
   const planned = plannedNodes(rng, shift, graphs);
-  const cache = new Map<string, readonly string[]>();
+  if (planned.length === 0) {
+    return { textPlan: null, live: [] };
+  }
+  const nodes: Record<string, string | null> = {};
+  const live: SessionTextRequestItem[] = [];
   for (const node of planned) {
-    const key = queryKey(node);
-    if (cache.has(key)) {
-      continue;
+    const id = await pick(node, rng.fork(`text:${node.scenarioId}:${node.nodeId}`));
+    nodes[textPlanKey(node.scenarioId, node.nodeId)] = id;
+    if (id === null && node.mode === 'live') {
+      live.push({
+        scenarioId: node.scenarioId,
+        version: node.version,
+        nodeId: node.nodeId,
+        persona: node.persona,
+      });
     }
-    cache.set(key, await loadApprovedIds(db, node));
   }
-  return assembleTextPlan(rng, shift, graphs, (query) => cache.get(queryKey(query)) ?? []);
-}
-
-/** Потолок выводит строку из пула. Досоздание — очередь llm-core, не сессия. */
-export async function claimVariant(tx: Prisma.TransactionClient, id: string): Promise<void> {
-  const row = await tx.scenarioTextVariant.update({
-    where: { id },
-    data: { uses: { increment: 1 } },
-    select: { uses: true, maxUses: true, status: true },
-  });
-  if (row.status === 'APPROVED' && row.uses >= row.maxUses) {
-    await tx.scenarioTextVariant.update({
-      where: { id },
-      data: { status: 'RETIRED' },
-    });
-  }
-}
-
-/**
- * В модели нет reason и sessionId. Берём последний APPROVED той же персоны
- * и сразу помечаем узел показанным, чтобы следующий GET не подменил текст.
- */
-export async function pinLiveNode(
-  tx: Prisma.TransactionClient,
-  input: {
-    sessionId: string;
-    plan: StoredTextPlan;
-    scenarioId: string;
-    version: number;
-    nodeId: string;
-    persona: string;
-  },
-): Promise<StoredTextPlan> {
-  const fresh = await tx.scenarioTextVariant.findFirst({
-    where: approvedWhere({
-      scenarioId: input.scenarioId,
-      version: input.version,
-      nodeId: input.nodeId,
-      persona: input.persona,
-    }),
-    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-    select: { id: true },
-  });
-  const next = markShown(
-    input.plan,
-    textPlanKey(input.scenarioId, input.nodeId),
-    fresh?.id ?? null,
-  );
-  if (fresh) {
-    await claimVariant(tx, fresh.id);
-  }
-  await tx.gameSession.update({
-    where: { id: input.sessionId },
-    data: { textPlan: writeTextPlan(next) },
-  });
-  return next;
+  return { textPlan: nodes, live };
 }
 
 function plannedNodes(rng: Rng, shift: ShiftPlan, graphs: readonly ScenarioGraph[]): PlannedNode[] {
@@ -281,28 +238,6 @@ function choiceNodeIds(graph: ScenarioGraph): string[] {
     }
   }
   return ids;
-}
-
-function approvedWhere(query: ApprovedQuery): Prisma.ScenarioTextVariantWhereInput {
-  return {
-    scenarioId: query.scenarioId,
-    version: query.version,
-    nodeId: query.nodeId,
-    status: 'APPROVED',
-    ...(query.persona.length > 0 ? { persona: query.persona } : {}),
-  };
-}
-
-async function loadApprovedIds(db: PrismaClient, query: ApprovedQuery): Promise<readonly string[]> {
-  const rows = await db.scenarioTextVariant.findMany({
-    where: approvedWhere(query),
-    select: { id: true },
-  });
-  return rows.map((row) => row.id);
-}
-
-function queryKey(query: ApprovedQuery): string {
-  return JSON.stringify([query.scenarioId, query.version, query.nodeId, query.persona]);
 }
 
 function byId(left: string, right: string): number {

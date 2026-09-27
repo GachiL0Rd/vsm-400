@@ -1,30 +1,34 @@
 import type { LlmMessage } from './provider';
 
 /** Меняется, когда меняется инструкция. Пул хранит версию рядом с текстом. */
-export const PROMPT_VERSION = '2026-09-27.1';
+export const PROMPT_VERSION = '2026-09-27.2';
 
-export const LLM_TEMPERATURE = 0.8;
-export const LLM_MAX_TOKENS = 320;
+/** Бенч 2026-09-27: 256 хватает на узел из трёх коротких реплик. */
+export const LLM_MAX_TOKENS = 256;
 export const SCHEMA_NAME = 'scenario_text_variant';
 export const TEXT_LIMIT = 160;
 
 export const DEFAULT_PERSONA = 'говорит спокойно и по делу';
 
 /**
- * Отчёта llm-bench.md не было: инструкция собрана по §14.
- * Мало токенов специально: локальная модель на 4096 контекста и ~6 ток/с.
+ * Текст из llm-bench.md: два правила про подмену действия и должности
+ * добавлены после прогона, где таблетка стала пилкой, а зевота — топтанием.
  */
 export const SYSTEM_PROMPT = [
-  'Ты редактор учебных сценариев проводника РЖД и ВСМ.',
-  'Перефразируй реплику ситуации и тексты вариантов ответа. Смысл и логика те же.',
-  'Верни только JSON: {"text": string, "choices": [{"id": string, "text": string}]}.',
-  'id скопируй из задания, без новых и без пропусков.',
-  'Каждый text — живой разговорный русский, не длиннее 160 символов.',
-  'Сохрани якоря из задания: та же основа слова, регистр и «ё» не важны.',
-  'Не добавляй фактов, действий, мест, цифр, лекарств, имён людей и латинских букв.',
-  'Не копируй исходные фразы дословно.',
-  'Варианты — разные действия, не пересказ друг друга.',
-  'Персона задаёт только тон. Пояснений вне JSON не пиши.',
+  'Ты редактор учебных сценариев тренажёра проводника высокоскоростного поезда.',
+  'Перефразируй реплику ситуации и тексты вариантов ответа на живой разговорный русский.',
+  'Правила:',
+  '- Сохрани смысл каждого варианта, факты и последствия. Не добавляй новых фактов и действий.',
+  '- Не меняй конкретное действие и место факта: зевать остаётся зевотой, приоткрыть дверь остаётся приоткрыванием, уже во рту не становится в руке.',
+  '- Не подменяй должность: начальник поезда не водитель, не машинист и не диспетчер, если в исходнике этого нет.',
+  '- Не добавляй чисел, имён людей, названий лекарств, диагнозов и латиницы, если их не было в исходнике.',
+  '- Сохрани якоря смысла. Допустима другая форма того же слова.',
+  '- Не меняй id вариантов и их число. Не объединяй и не пропускай варианты.',
+  '- Не копируй формулировки дословно. Варианты не должны повторять друг друга.',
+  '- Если в задании есть блок «Не повторяй эти формулировки», не пересказывай их.',
+  '- Каждый text не длиннее 160 символов. Без канцелярита и без текста вне JSON.',
+  '- Персона пассажира в задании задаёт только тон реплики ситуации.',
+  'Верни только JSON: {"text":"...","choices":[{"id":"...","text":"..."}]}.',
 ].join('\n');
 
 export type PromptChoice = {
@@ -63,6 +67,7 @@ export function buildMessages(input: {
   forbid: readonly string[];
   text: string;
   choices: readonly PromptChoice[];
+  avoid?: readonly { text: string; choices: readonly PromptChoice[] }[];
 }): LlmMessage[] {
   const persona = input.persona.trim().length > 0 ? input.persona.trim() : DEFAULT_PERSONA;
   const anchors = input.keep.length > 0 ? input.keep.join(', ') : 'нет';
@@ -78,9 +83,26 @@ export function buildMessages(input: {
     '',
     'Варианты, id не менять:',
     ...choiceLines,
+    ...avoidLines(input.avoid ?? []),
   ].join('\n');
   return [
     { role: 'system', content: SYSTEM_PROMPT },
     { role: 'user', content: user },
   ];
+}
+
+function avoidLines(
+  samples: readonly { text: string; choices: readonly PromptChoice[] }[],
+): string[] {
+  if (samples.length === 0) {
+    return [];
+  }
+  const lines = ['', 'Не повторяй эти формулировки:'];
+  samples.forEach((sample, index) => {
+    const choices = sample.choices
+      .map((choice) => `${choice.id}: ${choice.text.trim()}`)
+      .join(' | ');
+    lines.push(`${index + 1}. ${sample.text.trim()} | ${choices}`);
+  });
+  return lines;
 }

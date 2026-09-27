@@ -36,6 +36,11 @@ describe('openai-совместимый провайдер', () => {
     const body = JSON.parse(init?.body ?? '{}') as {
       response_format: { type: string; json_schema: { name: string; strict: boolean } };
       temperature: number;
+      top_p: number;
+      top_k: number;
+      max_tokens: number;
+      reasoning_effort: string;
+      chat_template_kwargs: { enable_thinking: boolean };
     };
     expect(body.response_format.type).toBe('json_schema');
     expect(body.response_format.json_schema).toMatchObject({
@@ -43,7 +48,12 @@ describe('openai-совместимый провайдер', () => {
       strict: true,
       schema,
     });
-    expect(body.temperature).toBe(0.8);
+    expect(body.temperature).toBe(0.7);
+    expect(body.top_p).toBe(0.8);
+    expect(body.top_k).toBe(20);
+    expect(body.max_tokens).toBe(256);
+    expect(body.reasoning_effort).toBe('none');
+    expect(body.chat_template_kwargs.enable_thinking).toBe(false);
     expect(init?.headers?.authorization).toBe('Bearer local-key');
   });
 

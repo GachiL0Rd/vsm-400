@@ -9,6 +9,9 @@ export type LlmCompleteInput = {
   messages: readonly LlmMessage[];
   jsonSchema: Record<string, unknown>;
   schemaName: string;
+  /** Судья смысла зовёт ту же модель, но с нулевой температурой. */
+  temperature?: number;
+  topP?: number;
 };
 
 export type LlmCompleteResult = {

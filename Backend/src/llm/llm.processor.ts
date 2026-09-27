@@ -2,10 +2,18 @@ import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import type { Job } from 'bullmq';
 import { Clock } from '../common/clock';
+import { APP_CONFIG, type AppConfig } from '../config/env';
 import type { Prisma } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { RulesService } from '../rules/rules.service';
+import {
+  buildJudgeMessages,
+  JUDGE_SCHEMA_NAME,
+  judgeJsonSchema,
+  parseJudge,
+  reviewStatus,
+} from './judge';
 import {
   LLM_ERROR_LIMIT,
   LLM_ERRORS_KEY,
@@ -17,12 +25,18 @@ import {
   LLM_WORKER_CONCURRENCY,
   type LlmJobData,
   type LlmJobReason,
+  variantReason,
 } from './llm.constants';
+import { avoidForJob } from './pool-plan';
 import { buildMessages, PROMPT_VERSION, SCHEMA_NAME, variantJsonSchema } from './prompt';
 import type { LlmProvider } from './provider';
 import { bundleText, decisionNodes, parseStoredGraph, sourceOf } from './scenario-nodes';
+import { similarityHit, similarityReason } from './similarity';
 import { applicableKeep } from './text-norm';
-import { type VariantPayload, validateVariant } from './validate-variant';
+import { readVariantPayload, type VariantPayload, validateVariant } from './validate-variant';
+import { VariantPoolService } from './variant-pool.service';
+
+const EXISTING_LIMIT = 200;
 
 @Processor(LLM_QUEUE, {
   concurrency: LLM_WORKER_CONCURRENCY,
@@ -38,6 +52,8 @@ export class LlmProcessor extends WorkerHost {
     @Inject(LLM_PROVIDER) private readonly provider: LlmProvider,
     @Inject(RedisService) private readonly redis: RedisService,
     @Inject(Clock) private readonly clock: Clock,
+    @Inject(APP_CONFIG) private readonly config: AppConfig,
+    @Inject(VariantPoolService) private readonly pool: VariantPoolService,
   ) {
     super();
   }
@@ -51,12 +67,12 @@ export class LlmProcessor extends WorkerHost {
     if (!loaded) {
       return;
     }
+    const existing = await this.loadExisting(data);
     let generated: { content: string; model: string };
     try {
-      generated = await this.generate(data, loaded);
+      generated = await this.generate(data, loaded, existing);
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      await this.note(data, message, false);
+      await this.note(data, errorText(error), false);
       throw error;
     }
     const verdict = validateVariant(generated.content, {
@@ -67,9 +83,47 @@ export class LlmProcessor extends WorkerHost {
       await this.note(data, verdict.reasons.join('; '), true);
       return;
     }
-    const saved = await this.save(data, generated.model, verdict.payload);
-    if (data.reason === 'live' && data.sessionId) {
-      await this.pin(data.sessionId, data.nodeId, saved.id);
+    const similar = similarityHit(
+      verdict.payload,
+      loaded.source,
+      existing,
+      this.rules.llm().maxSimilarity,
+    );
+    if (similar) {
+      const reason = similarityReason(similar);
+      await this.save(data, generated.model, verdict.payload, 'REJECTED', reason);
+      await this.note(data, reason, true);
+      return;
+    }
+    const judgeEnabled = this.config.llmJudge;
+    if (judgeEnabled) {
+      let judged: { content: string };
+      try {
+        judged = await this.judge(loaded.source, verdict.payload);
+      } catch (error) {
+        await this.note(data, errorText(error), false);
+        throw error;
+      }
+      const parsed = parseJudge(
+        judged.content,
+        verdict.payload.choices.map((choice) => choice.id),
+      );
+      if (!parsed.ok || !parsed.passed) {
+        const reason = parsed.reason;
+        await this.save(data, generated.model, verdict.payload, 'REJECTED', reason);
+        await this.note(data, reason, true);
+        return;
+      }
+    }
+    const status = reviewStatus(this.rules.llm().autoApprove, judgeEnabled);
+    await this.save(data, generated.model, verdict.payload, status, null);
+    if (data.reason === 'live' && data.sessionId && status === 'APPROVED') {
+      await this.pool.bindLive({
+        sessionId: data.sessionId,
+        scenarioId: data.scenarioId,
+        version: data.version,
+        nodeId: data.nodeId,
+      });
     }
   }
 
@@ -97,10 +151,31 @@ export class LlmProcessor extends WorkerHost {
     };
   }
 
+  private async loadExisting(
+    data: LlmJobData,
+  ): Promise<{ id: string; persona: string; payload: VariantPayload }[]> {
+    const rows = await this.prisma.scenarioTextVariant.findMany({
+      where: { scenarioId: data.scenarioId, version: data.version, nodeId: data.nodeId },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: EXISTING_LIMIT,
+      select: { id: true, persona: true, payload: true },
+    });
+    const existing: { id: string; persona: string; payload: VariantPayload }[] = [];
+    for (const row of rows) {
+      const payload = readVariantPayload(row.payload);
+      if (payload) {
+        existing.push({ id: row.id, persona: row.persona, payload });
+      }
+    }
+    return existing;
+  }
+
   private async generate(
     data: LlmJobData,
     loaded: { source: ReturnType<typeof sourceOf>; keep: string[]; forbid: string[] },
+    existing: readonly { id: string; persona: string; payload: VariantPayload }[],
   ): Promise<{ content: string; model: string }> {
+    const avoid = avoidForJob(existing, data.persona).map((row) => row.payload);
     return this.provider.complete({
       messages: buildMessages({
         persona: data.persona,
@@ -108,9 +183,23 @@ export class LlmProcessor extends WorkerHost {
         forbid: loaded.forbid,
         text: loaded.source.text,
         choices: loaded.source.choices,
+        avoid,
       }),
       jsonSchema: variantJsonSchema(loaded.source.choices.map((choice) => choice.id)),
       schemaName: SCHEMA_NAME,
+    });
+  }
+
+  private judge(
+    source: ReturnType<typeof sourceOf>,
+    payload: VariantPayload,
+  ): Promise<{ content: string; model: string }> {
+    return this.provider.complete({
+      messages: buildJudgeMessages(source, payload),
+      jsonSchema: judgeJsonSchema(payload.choices.map((choice) => choice.id)),
+      schemaName: JUDGE_SCHEMA_NAME,
+      temperature: 0,
+      topP: 1,
     });
   }
 
@@ -118,6 +207,8 @@ export class LlmProcessor extends WorkerHost {
     data: LlmJobData,
     model: string,
     payload: VariantPayload,
+    status: 'APPROVED' | 'PENDING_REVIEW' | 'REJECTED',
+    rejectReason: string | null,
   ): Promise<{ id: string }> {
     const rules = this.rules.llm();
     return this.prisma.scenarioTextVariant.create({
@@ -129,26 +220,13 @@ export class LlmProcessor extends WorkerHost {
         promptVersion: PROMPT_VERSION,
         model,
         payload: payload as Prisma.InputJsonValue,
-        status: rules.autoApprove ? 'APPROVED' : 'PENDING_REVIEW',
+        status,
         maxUses: rules.maxUses,
+        reason: variantReason(data.reason),
+        sessionId: data.reason === 'live' ? (data.sessionId ?? null) : null,
+        rejectReason,
       },
       select: { id: true },
-    });
-  }
-
-  private async pin(sessionId: string, nodeId: string, variantId: string): Promise<void> {
-    const session = await this.prisma.gameSession.findUnique({ where: { id: sessionId } });
-    if (!session || nodeShown(session.state, nodeId)) {
-      return;
-    }
-    const plan = readPlan(session.textPlan);
-    if (typeof plan[nodeId] === 'string') {
-      return;
-    }
-    plan[nodeId] = variantId;
-    await this.prisma.gameSession.update({
-      where: { id: sessionId },
-      data: { textPlan: plan },
     });
   }
 
@@ -166,8 +244,7 @@ export class LlmProcessor extends WorkerHost {
       await this.redis.lpush(LLM_ERRORS_KEY, line);
       await this.redis.ltrim(LLM_ERRORS_KEY, 0, LLM_ERROR_LIMIT - 1);
     } catch (error) {
-      const text = error instanceof Error ? error.message : String(error);
-      this.logger.warn(`не записать ошибку LLM: ${text}`);
+      this.logger.warn(`не записать ошибку LLM: ${errorText(error)}`);
     }
   }
 }
@@ -195,34 +272,6 @@ export function readJob(data: unknown): LlmJobData | null {
   };
 }
 
-function readPlan(value: unknown): Record<string, string | null> {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-    return {};
-  }
-  const plan: Record<string, string | null> = {};
-  for (const [key, item] of Object.entries(value)) {
-    if (typeof item === 'string' || item === null) {
-      plan[key] = item;
-    }
-  }
-  return plan;
-}
-
-function nodeShown(state: unknown, nodeId: string): boolean {
-  if (typeof state !== 'object' || state === null) {
-    return false;
-  }
-  const record = state as { nodeId?: unknown; journal?: unknown };
-  if (record.nodeId === nodeId) {
-    return true;
-  }
-  if (!Array.isArray(record.journal)) {
-    return false;
-  }
-  return record.journal.some(
-    (entry) =>
-      typeof entry === 'object' &&
-      entry !== null &&
-      (entry as { nodeId?: unknown }).nodeId === nodeId,
-  );
+function errorText(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }

@@ -45,6 +45,8 @@ export const VariantViewSchema = z.strictObject({
   createdAt: z.string(),
   reviewedAt: z.string().nullable(),
   rejectReason: z.string().nullable(),
+  reason: z.enum(['SEED', 'REFILL', 'LIVE', 'MANUAL']),
+  sessionId: z.string().nullable(),
 });
 
 export const VariantListSchema = z.strictObject({

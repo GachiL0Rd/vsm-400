@@ -15,6 +15,15 @@ import type { Prisma, TextVariantStatus } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { RulesService } from '../rules/rules.service';
+import { lockSession } from '../sessions/session-lock';
+import {
+  livePinTarget,
+  markShown,
+  readTextPlan,
+  type StoredTextPlan,
+  textPlanKey,
+  writeTextPlan,
+} from '../sessions/text-plan';
 import {
   LLM_ERRORS_KEY,
   LLM_JOB_NAME,
@@ -45,6 +54,8 @@ export type VariantView = {
   createdAt: string;
   reviewedAt: string | null;
   rejectReason: string | null;
+  reason: 'SEED' | 'REFILL' | 'LIVE' | 'MANUAL';
+  sessionId: string | null;
 };
 
 export type PoolBucket = {
@@ -82,6 +93,8 @@ type VariantRow = {
   createdAt: Date;
   reviewedAt: Date | null;
   rejectReason: string | null;
+  reason: 'SEED' | 'REFILL' | 'LIVE' | 'MANUAL';
+  sessionId: string | null;
 };
 
 @Injectable()
@@ -122,15 +135,24 @@ export class VariantPoolService implements OnApplicationBootstrap {
     version: number,
     nodeId: string,
     rng: PickRng,
+    filter?: { persona?: string },
   ): Promise<{ id: string; payload: VariantPayload } | null> {
     const rows = await this.prisma.scenarioTextVariant.findMany({
-      where: { scenarioId, version, nodeId, status: 'APPROVED' },
+      where: {
+        scenarioId,
+        version,
+        nodeId,
+        status: 'APPROVED',
+        sessionId: null,
+        ...(filter?.persona ? { persona: filter.persona } : {}),
+      },
       orderBy: { id: 'asc' },
     });
     if (rows.length === 0) {
       return null;
     }
-    const chosen = rng.pick(rows);
+    const ordered = [...rows].sort(byVariantId);
+    const chosen = rng.pick(ordered);
     const payload = asPayload(chosen.payload);
     if (!payload) {
       return null;
@@ -138,10 +160,77 @@ export class VariantPoolService implements OnApplicationBootstrap {
     return { id: chosen.id, payload };
   }
 
-  async markUsed(ids: readonly string[]): Promise<void> {
+  async markUsed(ids: readonly string[], db: VariantStore = this.prisma): Promise<void> {
     for (const id of ids) {
-      await this.rotateOne(id);
+      const refill = await this.consume(db, id);
+      if (refill) {
+        await this.enqueue(refill);
+      }
     }
+  }
+
+  /**
+   * Пустой live-слот получает вариант именно этой сессии.
+   * Чужой APPROVED той же персоны не берётся. Нет строки — слот замерзает на YAML.
+   */
+  async bindLive(input: {
+    sessionId: string;
+    scenarioId: string;
+    version: number;
+    nodeId: string;
+  }): Promise<StoredTextPlan | null> {
+    const refills: LlmJobData[] = [];
+    const plan = await this.prisma.$transaction(async (tx) => {
+      await lockSession(tx, input.sessionId);
+      const session = await tx.gameSession.findUnique({
+        where: { id: input.sessionId },
+        select: { textPlan: true },
+      });
+      if (!session) {
+        return null;
+      }
+      const current = readTextPlan(session.textPlan);
+      const key = textPlanKey(input.scenarioId, input.nodeId);
+      if (!current || !livePinTarget(current, key, 'live')) {
+        return current;
+      }
+      const fresh = await tx.scenarioTextVariant.findFirst({
+        where: {
+          sessionId: input.sessionId,
+          scenarioId: input.scenarioId,
+          version: input.version,
+          nodeId: input.nodeId,
+          status: 'APPROVED',
+        },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        select: { id: true },
+      });
+      const next = markShown(current, key, fresh?.id ?? null);
+      if (fresh) {
+        const refill = await this.consume(tx, fresh.id);
+        if (refill) {
+          refills.push(refill);
+        }
+      }
+      await tx.gameSession.update({
+        where: { id: input.sessionId },
+        data: { textPlan: writeTextPlan(next) },
+      });
+      return next;
+    });
+    for (const refill of refills) {
+      await this.enqueue(refill);
+    }
+    return plan;
+  }
+
+  /** APPROVED живой сессии после её конца попадает в общий пул. Остальные статусы нет. */
+  async releaseSession(sessionId: string): Promise<number> {
+    const updated = await this.prisma.scenarioTextVariant.updateMany({
+      where: { sessionId, status: 'APPROVED' },
+      data: { sessionId: null },
+    });
+    return updated.count;
   }
 
   async enqueueLive(
@@ -265,7 +354,7 @@ export class VariantPoolService implements OnApplicationBootstrap {
   ): Promise<void> {
     const [approved, inflight] = await Promise.all([
       this.prisma.scenarioTextVariant.count({
-        where: { scenarioId, version, nodeId, status: 'APPROVED' },
+        where: { scenarioId, version, nodeId, status: 'APPROVED', sessionId: null },
       }),
       this.inflight(scenarioId, version, nodeId),
     ]);
@@ -291,29 +380,29 @@ export class VariantPoolService implements OnApplicationBootstrap {
     ).length;
   }
 
-  private async rotateOne(id: string): Promise<void> {
-    const row = await this.prisma.scenarioTextVariant.update({
+  private async consume(db: VariantStore, id: string): Promise<LlmJobData | null> {
+    const row = await db.scenarioTextVariant.update({
       where: { id },
       data: { uses: { increment: 1 } },
     });
     if (row.status !== 'APPROVED' || row.uses < row.maxUses) {
-      return;
+      return null;
     }
-    const retired = await this.prisma.scenarioTextVariant.updateMany({
+    const retired = await db.scenarioTextVariant.updateMany({
       where: { id, status: 'APPROVED' },
       data: { status: 'RETIRED' },
     });
     if (retired.count !== 1) {
-      return;
+      return null;
     }
-    await this.enqueue({
+    this.logger.log(`вариант ${id} исчерпан, в очередь refill ${row.nodeId}`);
+    return {
       scenarioId: row.scenarioId,
       version: row.version,
       nodeId: row.nodeId,
       persona: row.persona,
       reason: 'refill',
-    });
-    this.logger.log(`вариант ${id} исчерпан, в очередь refill ${row.nodeId}`);
+    };
   }
 
   private async enqueue(data: LlmJobData): Promise<void> {
@@ -410,7 +499,28 @@ export class VariantPoolService implements OnApplicationBootstrap {
         rejectReason: status === 'REJECTED' ? reason : null,
       },
     });
+    if (status === 'APPROVED' && updated.sessionId) {
+      const released = await this.releaseIfSessionClosed(updated.sessionId, updated.id);
+      if (released) {
+        return toView({ ...updated, sessionId: null });
+      }
+    }
     return toView(updated);
+  }
+
+  private async releaseIfSessionClosed(sessionId: string, variantId: string): Promise<boolean> {
+    const session = await this.prisma.gameSession.findUnique({
+      where: { id: sessionId },
+      select: { status: true },
+    });
+    if (session && (session.status === 'PENDING' || session.status === 'ACTIVE')) {
+      return false;
+    }
+    await this.prisma.scenarioTextVariant.update({
+      where: { id: variantId },
+      data: { sessionId: null },
+    });
+    return true;
   }
 }
 
@@ -431,7 +541,21 @@ function toView(row: VariantRow): VariantView {
     createdAt: row.createdAt.toISOString(),
     reviewedAt: row.reviewedAt ? row.reviewedAt.toISOString() : null,
     rejectReason: row.rejectReason,
+    reason: row.reason,
+    sessionId: row.sessionId,
   };
+}
+
+type VariantStore = PrismaService | Prisma.TransactionClient;
+
+function byVariantId(left: { id: string }, right: { id: string }): number {
+  if (left.id < right.id) {
+    return -1;
+  }
+  if (left.id > right.id) {
+    return 1;
+  }
+  return 0;
 }
 
 function asPayload(value: unknown): VariantPayload | null {

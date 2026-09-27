@@ -65,7 +65,7 @@ export type ScenarioPublishedPayload = {
 
 /**
  * Сессия в режиме live просит перефраз узлов, для которых в пуле не нашлось APPROVED.
- * Слушатель (llm-core) ставит генерацию. В этом модуле подписчика нет.
+ * LlmSessionListener ставит генерацию с sessionId этой сессии.
  */
 export const SESSION_TEXT_REQUESTED = 'session.text.requested' as const;
 
