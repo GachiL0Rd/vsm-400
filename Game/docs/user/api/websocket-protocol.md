@@ -33,7 +33,7 @@ A new socket starts unauthenticated. Its first valid application message MUST be
 `hello` MUST contain exactly one credential:
 
 - `sessionKey` — a one-shot credential issued through the Platform launch flow; or
-- `resumeToken` — a short-lived Game Server credential for reconnecting to an existing attempt.
+- `resumeToken` — an ephemeral, attempt-scoped Game Server credential for reconnecting to an existing attempt.
 
 New launch:
 
@@ -84,6 +84,7 @@ A new connection attached to an already connected attempt replaces the previous 
 | malformed JSON/schema or binary protocol payload | `error(code="invalid-message")` | `1007` |
 | first message is not `hello` | no required error payload | `1008` |
 | `hello` has zero or two credentials | `error(code="invalid-hello")` | `1008` |
+| another application frame arrives while `hello` authentication is still pending | no required error payload | `1008` |
 | credential resolution fails | `error(code="authentication-failed")` | `1008` |
 | `hello` is sent after authentication | `error(code="already-authenticated")` | `1008` |
 | socket is no longer attached to its attempt | no required error payload | `1008` |
@@ -341,7 +342,7 @@ The current adapter maps most projection/action exceptions to `action-rejected`;
 
 When the browser receives `stale-revision`, it clears the current offer and requests `resync`.
 
-An accepted client command may be followed by a delta. A delta may also arrive without any preceding command because simulation advances autonomously.
+For an accepted mutating command, the server sends its `command-result` before the delta caused by that command. A delta may also arrive without any preceding command because simulation advances autonomously.
 
 ## 8. Action offers and handles
 
@@ -630,13 +631,14 @@ Current adapter-level codes include:
 1. Initial launch connects using `sessionKey`.
 2. `session-ready` returns a Game Server `resumeToken`.
 3. The browser stores the resume token and drops the one-shot session key.
-4. A disconnected socket is detached from the worker.
-5. After disconnect debounce, the worker pauses; it is retained for reconnect grace.
-6. Reconnect sends `hello(resumeToken)`.
-7. Successful reconnect attaches to the same worker and receives a fresh `session-ready` snapshot.
-8. Simulation resumes without replaying the disconnected wall interval as a large catch-up jump.
+4. While that socket remains attached, the token remains valid for that live attempt; it does not expire merely because the player has been connected for longer than reconnect grace.
+5. On disconnect the worker starts the token expiry window for `disconnect debounce + reconnect grace`.
+6. After disconnect debounce, the worker pauses; it is retained for reconnect grace.
+7. Reconnect sends `hello(resumeToken)`.
+8. Successful reconnect attaches to the same worker, rotates the old token, and receives a fresh `session-ready` snapshot/token.
+9. Simulation resumes without replaying the disconnected wall interval as a large catch-up jump.
 
-A resume token is scoped to the attempt/worker. It does not authorize starting a new attempt.
+A resume token is scoped to the attempt/worker. It does not authorize starting a new attempt. Entering terminal `finishing` revokes resume credentials because terminal simulation cannot be reattached.
 
 ## 13. Autonomous simulation updates
 

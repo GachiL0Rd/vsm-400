@@ -47,7 +47,7 @@ export class CommonGameProtocolAdapter implements GameProtocolAdapter {
   constructor(private readonly options: CommonGameProtocolAdapterOptions) {}
 
   open(connection: GameProtocolConnection): void {
-    const state: ConnectionState = { phase: 'awaiting-hello' };
+    const state: ConnectionState = { phase: 'awaiting-hello', closed: false };
     connection.onMessage((data) => void this.receive(connection, state, data));
     connection.onClose(() => this.closed(connection, state));
   }
@@ -69,6 +69,7 @@ export class CommonGameProtocolAdapter implements GameProtocolAdapter {
     try {
       command = parseCommand(data);
     } catch (error) {
+      state.closed = true;
       send(connection, {
         protocolVersion: GAME_PROTOCOL_VERSION,
         type: 'error',
@@ -81,14 +82,23 @@ export class CommonGameProtocolAdapter implements GameProtocolAdapter {
 
     if (state.phase === 'awaiting-hello') {
       if (command.type !== 'hello') {
+        state.closed = true;
         connection.close(1008, 'hello must be the first game protocol message');
         return;
       }
+      Object.assign(state, { phase: 'authenticating' as const });
       await this.hello(connection, state, command);
       return;
     }
 
+    if (state.phase === 'authenticating') {
+      state.closed = true;
+      connection.close(1008, 'hello authentication is already in progress');
+      return;
+    }
+
     if (command.type === 'hello') {
+      state.closed = true;
       send(connection, {
         protocolVersion: GAME_PROTOCOL_VERSION,
         type: 'error',
@@ -110,10 +120,11 @@ export class CommonGameProtocolAdapter implements GameProtocolAdapter {
 
   private async hello(
     connection: GameProtocolConnection,
-    state: AwaitingHelloState,
+    state: { closed: boolean },
     command: Extract<ClientCommand, { type: 'hello' }>,
   ): Promise<void> {
     if ((command.sessionKey === undefined) === (command.resumeToken === undefined)) {
+      state.closed = true;
       send(connection, {
         protocolVersion: GAME_PROTOCOL_VERSION,
         type: 'error',
@@ -137,6 +148,10 @@ export class CommonGameProtocolAdapter implements GameProtocolAdapter {
         this.options.host.worker(attachment.attemptId),
         `worker ${attachment.attemptId}`,
       );
+      if (state.closed) {
+        this.options.host.detach(attachment.attemptId, connection.id);
+        return;
+      }
       const previous = this.activeConnections.get(attachment.attemptId);
       if (previous !== undefined && previous.id !== connection.id) {
         previous.close(1008, 'session resumed from another connection');
@@ -159,6 +174,8 @@ export class CommonGameProtocolAdapter implements GameProtocolAdapter {
         snapshot: worker.projection.snapshot(worker.publicClock()),
       });
     } catch (error) {
+      if (state.closed) return;
+      state.closed = true;
       send(connection, {
         protocolVersion: GAME_PROTOCOL_VERSION,
         type: 'error',
@@ -219,14 +236,15 @@ export class CommonGameProtocolAdapter implements GameProtocolAdapter {
           return;
         }
         try {
-          const revision = worker.setTimeScale(command.scale);
+          const delta = worker.setTimeScale(command.scale);
           send(connection, {
             protocolVersion: GAME_PROTOCOL_VERSION,
             type: 'command-result',
             requestId: command.requestId,
             status: 'accepted',
-            revision,
+            revision: delta.revision,
           });
+          worker.publishPublicDelta(delta);
         } catch (error) {
           send(connection, rejected(command.requestId, projection.revision, errorMessage(error)));
         }
@@ -244,6 +262,7 @@ export class CommonGameProtocolAdapter implements GameProtocolAdapter {
   }
 
   private closed(connection: GameProtocolConnection, state: ConnectionState): void {
+    state.closed = true;
     if (state.phase !== 'authenticated') return;
     state.unsubscribe();
     if (this.activeConnections.get(state.attemptId)?.id === connection.id) {
@@ -253,14 +272,16 @@ export class CommonGameProtocolAdapter implements GameProtocolAdapter {
   }
 }
 
-type AwaitingHelloState = { phase: 'awaiting-hello' };
+type AwaitingHelloState = { phase: 'awaiting-hello'; closed: boolean };
+type AuthenticatingState = { phase: 'authenticating'; closed: boolean };
 type AuthenticatedState = {
   phase: 'authenticated';
+  closed: boolean;
   attemptId: string;
   worker: GameSessionWorker;
   unsubscribe: () => void;
 };
-type ConnectionState = AwaitingHelloState | AuthenticatedState;
+type ConnectionState = AwaitingHelloState | AuthenticatingState | AuthenticatedState;
 
 function isGameplayCommand(
   command: Exclude<ClientCommand, { type: 'hello' }>,

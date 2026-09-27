@@ -109,11 +109,12 @@ attached / detached
 1. connection становится detached;
 2. короткий debounce переживает краткий сетевой сбой;
 3. после debounce simulation может перейти в paused;
-4. worker сохраняется на reconnect grace;
-5. новый socket предъявляет валидный `ResumeToken` (или проходит повторную platform validation, если transport implementation выбрала этот путь);
-6. socket attach к той же попытке;
-7. client получает актуальный snapshot;
-8. session продолжает работу.
+4. сохранённый `ResumeToken` получает expiry относительно disconnect (`debounce + reconnect grace`), а не относительно момента первоначального подключения;
+5. worker сохраняется на reconnect grace;
+6. новый socket предъявляет валидный `ResumeToken` (или проходит повторную platform validation, если transport implementation выбрала этот путь);
+7. socket attach к той же попытке и получает новый rotated token;
+8. client получает актуальный snapshot;
+9. session продолжает работу.
 
 Точные интервалы являются runtime config.
 
