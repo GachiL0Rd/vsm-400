@@ -1,5 +1,6 @@
 import { HttpException } from '@nestjs/common';
 import { ZodError } from 'zod';
+import { Prisma } from '../generated/prisma/client';
 
 export type ProblemError = {
   path: string;
@@ -124,13 +125,11 @@ function httpProblem(exception: HttpException): Problem {
   );
 }
 
-const prismaKnownErrorName = ['PrismaClient', 'KnownRequestError'].join('');
-
 function prismaCode(exception: unknown): string | undefined {
-  if (!isRecord(exception) || exception.name !== prismaKnownErrorName) {
+  if (!(exception instanceof Prisma.PrismaClientKnownRequestError)) {
     return undefined;
   }
-  return typeof exception.code === 'string' ? exception.code : undefined;
+  return exception.code;
 }
 
 export function toProblem(exception: unknown): Problem {

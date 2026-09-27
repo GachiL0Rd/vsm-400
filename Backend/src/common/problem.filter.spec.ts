@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
+import { Prisma } from '../generated/prisma/client';
 import type { Problem } from './problem';
 import { ProblemFilter } from './problem.filter';
 
@@ -100,9 +101,10 @@ describe('ProblemFilter', () => {
   });
 
   it('P2002 → 409 без текста драйвера', () => {
-    const error = new Error('Unique constraint failed on the fields: (`login`)');
-    error.name = ['PrismaClient', 'KnownRequestError'].join('');
-    Object.assign(error, { code: 'P2002' });
+    const error = new Prisma.PrismaClientKnownRequestError(
+      'Unique constraint failed on the fields: (`login`)',
+      { code: 'P2002', clientVersion: 'test' },
+    );
     const reply = new FakeReply();
     filter.catch(error, hostWith(reply));
     const body = bodyOf(reply);
@@ -112,9 +114,10 @@ describe('ProblemFilter', () => {
   });
 
   it('P2025 → 404', () => {
-    const error = new Error('Record to update not found');
-    error.name = ['PrismaClient', 'KnownRequestError'].join('');
-    Object.assign(error, { code: 'P2025' });
+    const error = new Prisma.PrismaClientKnownRequestError('Record to update not found', {
+      code: 'P2025',
+      clientVersion: 'test',
+    });
     const reply = new FakeReply();
     filter.catch(error, hostWith(reply));
     expect(bodyOf(reply)).toMatchObject({ status: 404, code: 'NOT_FOUND' });
