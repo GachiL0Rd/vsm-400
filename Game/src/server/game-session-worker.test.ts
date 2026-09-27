@@ -11,6 +11,7 @@ import {
 } from './game-session-worker.ts';
 import { MockPlatformGateway, mockMode } from './platform-gateway.ts';
 import { InMemoryResumeTokenRegistry } from './resume-token-registry.ts';
+import type { FinishedGameResult, FinishSessionResponse, PlatformGateway } from './types.ts';
 
 class FakeRuntime implements WorkerScheduler, WorkerClock {
   private now = 0;
@@ -44,7 +45,7 @@ class FakeRuntime implements WorkerScheduler, WorkerClock {
 function worker(
   runtime: FakeRuntime,
   attempt = new GameAttempt({ rootSeed: 5 }),
-  options: { simulationStepMs?: number; maxCatchUpMs?: number } = {},
+  options: { simulationStepMs?: number; maxCatchUpMs?: number; reconnectGraceMs?: number } = {},
 ) {
   const registry = new InMemoryResumeTokenRegistry();
   const gateway = new MockPlatformGateway({
@@ -64,7 +65,7 @@ function worker(
       platformGateway: gateway,
       resumeTokens: registry,
       disconnectDebounceMs: 10,
-      reconnectGraceMs: 20,
+      reconnectGraceMs: options.reconnectGraceMs ?? 20,
       simulationStepMs: options.simulationStepMs ?? 50,
       maxCatchUpMs: options.maxCatchUpMs ?? 1_000,
       scheduler: runtime,
@@ -75,6 +76,20 @@ function worker(
 
 async function flush(): Promise<void> {
   await new Promise<void>((resolve) => setTimeout(resolve, 0));
+}
+
+class FailOncePlatformGateway implements PlatformGateway {
+  finishAttempts = 0;
+
+  async resolveSession(): Promise<never> {
+    throw new Error('not used');
+  }
+
+  async finishSession(_result: FinishedGameResult): Promise<FinishSessionResponse> {
+    this.finishAttempts += 1;
+    if (this.finishAttempts === 1) throw new Error('platform unavailable');
+    return { resultId: 'result-1', redirectUrl: 'http://localhost/results/attempt-1' };
+  }
 }
 
 describe('GameSessionWorker', () => {
@@ -113,6 +128,51 @@ describe('GameSessionWorker', () => {
     expect(value.connectionLifecycle).toBe('attached');
     runtime.advanceBy(100);
     expect(value.projection.attempt.snapshot().time).toBe(pausedAt + 100_000);
+  });
+
+  it('freezes a running movement across disconnect pause and resumes from the same simulation instant', () => {
+    const runtime = new FakeRuntime();
+    const attempt = new GameAttempt({ rootSeed: 6 });
+    const { value } = worker(runtime, attempt, { maxCatchUpMs: 10_000, reconnectGraceMs: 10_000 });
+    value.attach('socket-1');
+    value.projection.snapshot(value.publicClock());
+
+    const moved = value.projection.moveTo(
+      {
+        protocolVersion: 1,
+        type: 'move-to',
+        requestId: 'move-1',
+        knownRevision: 0,
+        targetCellId: 'platform-origin.door',
+      },
+      value.publicClock(),
+    );
+    expect(moved.result.status).toBe('accepted');
+    value.acceptProjectionResult(moved);
+
+    runtime.advanceBy(100);
+    const beforeDetach = attempt.playerPosition();
+    expect(beforeDetach.kind).toBe('moving');
+    if (beforeDetach.kind !== 'moving') throw new Error('Expected player movement');
+
+    value.detach('socket-1');
+    runtime.advanceBy(10);
+    const paused = attempt.playerPosition();
+    expect(value.lifecycle).toBe('paused');
+    expect(paused.kind).toBe('moving');
+    if (paused.kind !== 'moving') throw new Error('Expected paused movement');
+    const pausedProgress = paused.progress;
+    const pausedTime = attempt.time;
+
+    runtime.advanceBy(5_000);
+    const stillPaused = attempt.playerPosition();
+    expect(attempt.time).toBe(pausedTime);
+    expect(stillPaused).toMatchObject({ kind: 'moving', progress: pausedProgress });
+
+    value.attach('socket-2');
+    runtime.advanceBy(890);
+    const completed = attempt.playerPosition();
+    expect(completed).toEqual({ kind: 'cell', cellId: 'platform-origin.door' });
   });
 
   it('shuts down timers, publications, and resume state without waiting for disconnect grace', () => {
@@ -229,6 +289,45 @@ describe('GameSessionWorker', () => {
 
     await value.finish();
     expect(gateway.finished).toHaveLength(1);
+  });
+
+  it('keeps a terminal attempt frozen when platform finalization fails and allows an explicit retry', async () => {
+    const runtime = new FakeRuntime();
+    const attempt = new GameAttempt({ rootSeed: 13 });
+    const gateway = new FailOncePlatformGateway();
+    const content = new BaselineContentRegistry().resolve('vsm-baseline-01');
+    const value = new GameSessionWorker({
+      attemptId: 'attempt-1',
+      mode: mockMode('live'),
+      content,
+      attempt,
+      projection: new PublicGameProjection({ attemptId: 'attempt-1', attempt }),
+      platformGateway: gateway,
+      resumeTokens: new InMemoryResumeTokenRegistry(),
+      disconnectDebounceMs: 10,
+      reconnectGraceMs: 20,
+      simulationStepMs: 50,
+      maxCatchUpMs: 10_000,
+      scheduler: runtime,
+      clock: runtime,
+    });
+    value.attach('socket-1');
+
+    attempt.signal('emergency-brake-used');
+    value.synchronizeNow();
+    await flush();
+
+    expect(gateway.finishAttempts).toBe(1);
+    expect(value.lifecycle).toBe('finishing');
+    const terminalTime = attempt.time;
+
+    runtime.advanceBy(10_000);
+    expect(attempt.time).toBe(terminalTime);
+    expect(value.lifecycle).toBe('finishing');
+
+    await value.finish();
+    expect(gateway.finishAttempts).toBe(2);
+    expect(value.lifecycle).toBe('finished');
   });
 
   it('records accepted input order together with authoritative simulation time', async () => {
