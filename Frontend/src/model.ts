@@ -35,6 +35,18 @@ export const WEAK_SCORE = 50;
 /** Порог провала шкалы рейса: безопасность и лояльность. */
 export const FAIL_SCORE = 30;
 
+/** От этого значения шкала рейса — хороший результат. */
+export const GOOD_SCORE = 75;
+
+export type ScoreGrade = 'good' | 'fair' | 'poor';
+
+/** Светофор шкалы рейса: хорошо от GOOD_SCORE, проседает ниже WEAK_SCORE. */
+export function scoreGrade(value: number): ScoreGrade {
+  if (value >= GOOD_SCORE) return 'good';
+  if (value >= WEAK_SCORE) return 'fair';
+  return 'poor';
+}
+
 export interface Profile {
   callsign: string;
   position: string;

@@ -4,6 +4,7 @@
   place-items: center;
   width: 52px;
   height: 52px;
+  border-radius: var(--radius-m);
 }
 
 .badge--earned {

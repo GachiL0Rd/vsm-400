@@ -12,24 +12,65 @@
 .streak {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
-  gap: 4px;
+  /* Без зазора: сцепки соседних вагонов сходятся. */
+  gap: 0;
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
-.streak__day {
-  height: 28px;
-  background: var(--cloud);
+/* День серии — вагон сбоку, масштабируется по ширине колонки. */
+.car {
+  display: block;
+  width: 100%;
+  height: auto;
 }
 
-.streak__day--done {
-  background: var(--ink);
+.car__body {
+  fill: var(--cloud);
 }
 
-.streak__day--today {
-  border: 2px dashed var(--smoke);
-  background: var(--white);
+.car__glass {
+  fill: var(--white);
+}
+
+.car__frame,
+.car__wheel,
+.car__coupler {
+  fill: var(--smoke);
+}
+
+.car__wheel {
+  stroke: var(--white);
+  stroke-width: 1.5;
+}
+
+.streak__day--done .car__body {
+  fill: var(--signal);
+}
+
+.streak__day--done .car__frame,
+.streak__day--done .car__wheel,
+.streak__day--done .car__coupler {
+  fill: var(--ink);
+}
+
+/* Сегодня — вагон ещё не прицеплен: пунктирный контур без окон. */
+.streak__day--today .car__body {
+  fill: var(--white);
+  stroke: var(--smoke);
+  stroke-width: 1.5;
+  stroke-dasharray: 4 3;
+}
+
+.streak__day--today .car__glass,
+.streak__day--today .car__coupler {
+  display: none;
+}
+
+.streak__day--today .car__frame,
+.streak__day--today .car__wheel {
+  fill: var(--cloud);
 }
 
 .stats {

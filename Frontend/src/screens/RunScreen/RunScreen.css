@@ -35,6 +35,15 @@
   line-height: 1;
 }
 
+/* Цифра шкалы: хорошо — зелёная, плохо — красная, середина — обычный графит. */
+.scale__value--good {
+  color: var(--ok);
+}
+
+.scale__value--poor {
+  color: var(--stop);
+}
+
 .scores__points {
   display: flex;
   flex-direction: column;

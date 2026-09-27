@@ -5,8 +5,9 @@
   flex-direction: column;
   gap: 24px;
   padding: 24px 20px;
+  /* Ровная рамка: толстая верхняя кромка ломает угол при скруглении. */
   border: 2px solid var(--ink);
-  border-top-width: 6px;
+  border-radius: var(--radius-l);
   background: var(--white);
 }
 
@@ -16,11 +17,16 @@
   font-weight: 500;
 }
 
+/* На телефоне время над городом: в одну строку «Санкт-Петербург» не помещается. */
 .departure__main {
   display: flex;
-  align-items: flex-start;
-  gap: 20px;
+  flex-direction: column;
+  gap: 8px;
   margin-top: -12px;
+}
+
+.departure__main > div {
+  min-width: 0;
 }
 
 .departure__time {
@@ -31,6 +37,7 @@
 }
 
 .departure__to {
+  overflow-wrap: anywhere;
   font-size: 26px;
   font-weight: 800;
   line-height: 1.1;
@@ -58,6 +65,12 @@
     padding: 32px;
   }
 
+  .departure__main {
+    flex-direction: row;
+    align-items: flex-start;
+    gap: 20px;
+  }
+
   .departure__time {
     font-size: 64px;
   }
@@ -83,37 +96,46 @@
 .line__stop {
   position: relative;
   flex: 1;
-  padding-top: 20px;
+  padding-top: 26px;
   color: var(--iron);
   font-size: 13px;
   text-align: center;
 }
 
+/* Сегменты стыкуются встык. Снаружи — торцы пилюли, на 10px дальше круга станции. */
 .line__stop::before {
   content: "";
   position: absolute;
-  top: 5px;
+  top: 4px;
   left: 0;
   right: 0;
-  height: 2px;
+  height: 8px;
   background: var(--line);
 }
 
+.line__stop + .line__stop::before {
+  left: -1px;
+}
+
 .line__stop:first-child::before {
-  left: 50%;
+  left: calc(50% - 18px);
+  border-radius: var(--radius-pill) 0 0 var(--radius-pill);
 }
 
 .line__stop:last-child::before {
-  right: 50%;
+  right: calc(50% - 18px);
+  border-radius: 0 var(--radius-pill) var(--radius-pill) 0;
 }
 
 .line__stop::after {
   content: "";
   position: absolute;
-  top: 1px;
-  left: calc(50% - 5px);
-  width: 10px;
-  height: 10px;
+  top: 2px;
+  left: calc(50% - 6px);
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--white);
+  border-radius: var(--radius-round);
   background: var(--iron);
 }
 
@@ -125,6 +147,10 @@
 
 .line__stop:first-child::after,
 .line__stop:last-child::after {
+  top: 0;
+  left: calc(50% - 8px);
+  width: 16px;
+  height: 16px;
   background: var(--ink);
 }
 
