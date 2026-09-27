@@ -4,8 +4,6 @@ import { GameScene } from './client/GameScene';
 import { InteractionController } from './client/input/interaction-controller';
 import { GameWebSocketClient } from './client/network/game-websocket-client';
 import { createBrowserSessionBootstrap } from './client/network/session-bootstrap';
-import { ActionOfferOverlay } from './client/presentation/action-offer-overlay';
-import { ConnectionStatus } from './client/presentation/connection-status';
 import { PresentationStore } from './client/presentation/presentation-store';
 import { GAME_WEBSOCKET_PATH } from './common';
 import './style.css';
@@ -101,13 +99,10 @@ const interactions = new InteractionController(
   (level, event, data) => logger.record(level, 'navigation', event, data),
 );
 
-new ConnectionStatus(gameRoot, store);
-new ActionOfferOverlay(gameRoot, store, interactions);
-
 export const game = new Phaser.Game({
   type: Phaser.AUTO,
   parent: gameRoot,
-  backgroundColor: '#10232c',
+  backgroundColor: '#10222c',
   scale: {
     mode: Phaser.Scale.RESIZE,
     width: window.innerWidth,

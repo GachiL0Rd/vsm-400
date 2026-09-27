@@ -26,6 +26,7 @@
 - [`environment-state.md`](environment-state.md) — санитарные overlays, подключаемый перрон и presentation состояния поездки.
 - [`service-levels.md`](service-levels.md) — уровни обслуживания, допустимые/неположенные запросы и требования к качеству.
 - [`trip-service-plan.md`](trip-service-plan.md) — примерный план рейса, исходная посадка и временные окна обслуживания.
+- [`hud.md`](hud.md) — DOM HUD клиента: панели, журнал событий, тосты и телефонный landscape.
 
 ## Главная граница
 
