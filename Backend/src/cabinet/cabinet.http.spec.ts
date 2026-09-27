@@ -175,9 +175,11 @@ describe('кабинет, аналитика, назначения', () => {
     expect(body.competencies.escalation).toBe(40);
     expect(body.competencies.reaction).toBe(50);
     expect(body.trend.detection).toBe(10);
-    expect(body.weakNote.escalation).toBe('В 3 из 5 последних рейсов доклад ушёл позже жалобы.');
+    expect(body.weakNote.escalation).toBe(
+      'В 3 из 5 последних рейсов давление стало критическим или стоп-кран применён не при опасности.',
+    );
     expect(body.weakNote.detection).toBe(
-      'Растёт: 2 неисправности найдены детальным осмотром на приёмке.',
+      'Растёт: 2 журнала приёмки сданы без пропуска и без ложной отметки.',
     );
     expect(body.weakNote.safety).toBeUndefined();
   });
@@ -551,7 +553,7 @@ describe('кабинет, аналитика, назначения', () => {
     await prisma.scenario.create({
       data: {
         id: escId,
-        title: 'Доклад',
+        title: 'Давление',
         category: 'safety',
         carClasses: ['BUSINESS'],
         difficulty: 2,
@@ -588,7 +590,7 @@ describe('кабинет, аналитика, назначения', () => {
       },
     });
 
-    earnedCode = 'handover';
+    earnedCode = 'steady-hand';
     openCode = 'detail';
     hiddenCode = 'seal';
     await prisma.userAchievement.upsert({

@@ -85,7 +85,7 @@ export interface Stats {
 export type RunOutcome = 'completed' | 'incident' | 'terminated';
 
 export const OUTCOME_TITLES: Record<RunOutcome, string> = {
-  completed: 'Без происшествий',
+  completed: 'Рейс завершён',
   incident: 'Инцидент',
   terminated: 'Рейс прерван',
 };

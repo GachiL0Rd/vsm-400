@@ -1,10 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import type { AchievementRule } from './achievement.schema';
-import { type DecisionView, evaluateRule, type RunView } from './interpret';
+import { type DecisionView, decisionMatches, evaluateRule, type RunView } from './interpret';
 import { loadAchievements } from './load-achievements';
 
 const TIMER_SEC = 15;
-const HALF = (TIMER_SEC * 1000) / 2;
 
 function decision(partial: Partial<DecisionView> = {}): DecisionView {
   return {
@@ -59,7 +58,14 @@ const pass: Record<string, Sample> = {
   'before-boarding': {
     runs: [
       run({
-        decisions: [decision({ stage: 'acceptance', verdict: 'best', category: 'technical' })],
+        decisions: [
+          decision({
+            stage: 'acceptance',
+            verdict: 'best',
+            choiceId: 'journal-submission',
+            category: null,
+          }),
+        ],
       }),
     ],
     streakDays: 0,
@@ -67,7 +73,11 @@ const pass: Record<string, Sample> = {
     earned: true,
   },
   'before-complaint': {
-    runs: [run({ decisions: [decision({ verdict: 'best', category: 'conflict' })] })],
+    runs: [
+      run({
+        decisions: [decision({ verdict: 'best', choiceId: 'service-request', category: null })],
+      }),
+    ],
     streakDays: 0,
     progress: 1,
     earned: true,
@@ -78,21 +88,11 @@ const pass: Record<string, Sample> = {
     progress: 1,
     earned: true,
   },
-  'first-aid': {
-    runs: [
-      run({
-        decisions: [decision({ category: 'medical', verdict: 'best', safetyDelta: 4 })],
-      }),
-    ],
-    streakDays: 0,
-    progress: 1,
-    earned: true,
-  },
   'cold-head': {
     runs: [
       run({
         decisions: times(5, () =>
-          decision({ category: 'safety', verdict: 'best', reactionMs: HALF }),
+          decision({ choiceId: 'fire', verdict: 'best', timerSec: null, category: null }),
         ),
       }),
     ],
@@ -105,7 +105,12 @@ const pass: Record<string, Sample> = {
     runs: [
       run({
         decisions: [
-          decision({ situation: 'Пассажиру закладывает уши', verdict: 'best', reactionMs: 2000 }),
+          decision({
+            choiceId: 'pressure',
+            verdict: 'best',
+            situation: 'Отклонение давления',
+            timerSec: null,
+          }),
         ],
       }),
     ],
@@ -117,7 +122,7 @@ const pass: Record<string, Sample> = {
     runs: [
       run({
         decisions: times(5, () =>
-          decision({ stage: 'acceptance', verdict: 'best', choiceId: 'inspect-full' }),
+          decision({ stage: 'acceptance', verdict: 'best', choiceId: 'journal-submission' }),
         ),
       }),
     ],
@@ -126,15 +131,13 @@ const pass: Record<string, Sample> = {
     earned: true,
   },
   'three-calls': {
-    runs: [run({ decisions: times(3, () => decision({ verdict: 'best', category: 'service' })) })],
+    runs: [
+      run({
+        decisions: times(3, () => decision({ verdict: 'best', choiceId: 'service-request' })),
+      }),
+    ],
     streakDays: 0,
-    progress: 1,
-    earned: true,
-  },
-  rare: {
-    runs: [run({ decisions: [decision({ deviation: true, verdict: 'best' })] })],
-    streakDays: 0,
-    progress: 1,
+    progress: 3,
     earned: true,
   },
   'no-delay': {
@@ -149,17 +152,11 @@ const pass: Record<string, Sample> = {
     progress: 1,
     earned: true,
   },
-  handover: {
-    runs: [run({ decisions: [decision({ stage: 'handover', verdict: 'best' })] })],
-    streakDays: 0,
-    progress: 1,
-    earned: true,
-  },
   'report-in-time': {
     runs: [
       run({
         decisions: times(3, () =>
-          decision({ category: 'conflict', verdict: 'best', reactionMs: 1000 }),
+          decision({ choiceId: 'emergency-brake', verdict: 'best', timerSec: null }),
         ),
       }),
     ],
@@ -168,23 +165,7 @@ const pass: Record<string, Sample> = {
     earned: true,
   },
   prevented: {
-    runs: [run({ facts: { prevented: 3, incidents: 0, complaints: 0, interventions: 0 } })],
-    streakDays: 0,
-    progress: 1,
-    earned: true,
-  },
-  seal: {
-    runs: [
-      run({
-        decisions: [
-          decision({
-            stage: 'acceptance',
-            verdict: 'best',
-            situation: 'Сорвана пломба огнетушителя',
-          }),
-        ],
-      }),
-    ],
+    runs: [run({ facts: { prevented: 2, incidents: 0, complaints: 0, interventions: 0 } })],
     streakDays: 0,
     progress: 1,
     earned: true,
@@ -194,7 +175,11 @@ const pass: Record<string, Sample> = {
 const fail: Record<string, Sample> = {
   'before-boarding': {
     runs: [
-      run({ decisions: [decision({ stage: 'boarding', verdict: 'best', category: 'technical' })] }),
+      run({
+        decisions: [
+          decision({ stage: 'boarding', verdict: 'best', choiceId: 'journal-submission' }),
+        ],
+      }),
     ],
     streakDays: 0,
     progress: 0,
@@ -204,7 +189,7 @@ const fail: Record<string, Sample> = {
     runs: [
       run({
         facts: { prevented: 0, incidents: 0, complaints: 1, interventions: 0 },
-        decisions: [decision({ verdict: 'best', category: 'service' })],
+        decisions: [decision({ verdict: 'best', choiceId: 'service-request' })],
       }),
     ],
     streakDays: 0,
@@ -217,20 +202,10 @@ const fail: Record<string, Sample> = {
     progress: 0,
     earned: false,
   },
-  'first-aid': {
-    runs: [
-      run({ decisions: [decision({ category: 'medical', verdict: 'best', safetyDelta: -1 })] }),
-    ],
-    streakDays: 0,
-    progress: 0,
-    earned: false,
-  },
   'cold-head': {
     runs: [
       run({
-        decisions: times(4, () =>
-          decision({ category: 'medical', verdict: 'best', reactionMs: 1000 }),
-        ),
+        decisions: times(4, () => decision({ choiceId: 'pressure', verdict: 'best' })),
       }),
     ],
     streakDays: 0,
@@ -241,9 +216,7 @@ const fail: Record<string, Sample> = {
   pressure: {
     runs: [
       run({
-        decisions: [
-          decision({ situation: 'Пассажиру закладывает уши', verdict: 'best', reactionMs: 8000 }),
-        ],
+        decisions: [decision({ choiceId: 'pressure', verdict: 'missed' })],
       }),
     ],
     streakDays: 0,
@@ -254,7 +227,7 @@ const fail: Record<string, Sample> = {
     runs: [
       run({
         decisions: times(2, () =>
-          decision({ stage: 'acceptance', verdict: 'best', choiceId: 'inspect-full' }),
+          decision({ stage: 'acceptance', verdict: 'best', choiceId: 'journal-submission' }),
         ),
       }),
     ],
@@ -263,15 +236,13 @@ const fail: Record<string, Sample> = {
     earned: false,
   },
   'three-calls': {
-    runs: [run({ decisions: times(2, () => decision({ verdict: 'best', category: 'service' })) })],
+    runs: [
+      run({
+        decisions: times(2, () => decision({ verdict: 'best', choiceId: 'service-request' })),
+      }),
+    ],
     streakDays: 0,
-    progress: 0,
-    earned: false,
-  },
-  rare: {
-    runs: [run({ decisions: [decision({ deviation: false, verdict: 'best' })] })],
-    streakDays: 0,
-    progress: 0,
+    progress: 2,
     earned: false,
   },
   'no-delay': {
@@ -286,18 +257,10 @@ const fail: Record<string, Sample> = {
     progress: 0,
     earned: false,
   },
-  handover: {
-    runs: [run({ decisions: [decision({ stage: 'handover', verdict: 'ok' })] })],
-    streakDays: 0,
-    progress: 0,
-    earned: false,
-  },
   'report-in-time': {
     runs: [
       run({
-        decisions: times(2, () =>
-          decision({ category: 'conflict', verdict: 'best', reactionMs: 1000 }),
-        ),
+        decisions: times(2, () => decision({ choiceId: 'emergency-brake', verdict: 'best' })),
       }),
     ],
     streakDays: 0,
@@ -305,75 +268,91 @@ const fail: Record<string, Sample> = {
     earned: false,
   },
   prevented: {
-    runs: [run({ facts: { prevented: 2, incidents: 0, complaints: 0, interventions: 0 } })],
-    streakDays: 0,
-    progress: 0,
-    earned: false,
-  },
-  seal: {
-    runs: [
-      run({
-        decisions: [decision({ stage: 'enroute', verdict: 'best', situation: 'Сорвана пломба' })],
-      }),
-    ],
+    runs: [run({ facts: { prevented: 1, incidents: 0, complaints: 0, interventions: 0 } })],
     streakDays: 0,
     progress: 0,
     earned: false,
   },
 };
 
-const DEMO_TITLES: Record<string, string> = {
-  'before-boarding': 'До посадки',
-  'before-complaint': 'Раньше жалобы',
-  'clean-sweep': 'Чистый обход',
-  'first-aid': 'Первая помощь',
-  'cold-head': 'Холодная голова',
+const TITLES: Record<string, string> = {
+  'before-boarding': 'Журнал без ошибки',
+  'before-complaint': 'Запрос в срок',
+  'clean-sweep': 'Чистый рейс',
+  'cold-head': 'Пять угроз',
   streak: 'Неделя в строю',
-  pressure: 'Уши заложило',
-  detail: 'Под лупой',
-  'three-calls': 'Три обращения',
-  rare: 'Редкий случай',
+  pressure: 'Давление удержано',
+  detail: 'Пять журналов',
+  'three-calls': 'Три запроса',
+  'no-delay': 'Рейс с решением',
+  'steady-hand': 'Держать порог',
+  'report-in-time': 'Стоп-кран по делу',
+  prevented: 'Оба под контролем',
 };
 
 describe('achievements.yaml', () => {
   const file = loadAchievements();
 
-  it('держит тексты демо кабинета и порог половины таймера', () => {
-    for (const [code, title] of Object.entries(DEMO_TITLES)) {
+  it('держит тексты кабинета и условия по фактам игры', () => {
+    for (const [code, title] of Object.entries(TITLES)) {
       expect(file.achievements.find((entry) => entry.code === code)?.title).toBe(title);
     }
     const cold = file.achievements.find((entry) => entry.code === 'cold-head');
     expect(cold?.rule.type).toBe('count');
     if (cold?.rule.type === 'count') {
-      expect(cold.rule.where.withinHalfTimer).toBe(true);
+      expect(cold.rule.where.choices).toEqual(['fire', 'pressure', 'emergency-brake']);
+      expect(cold.rule.where.withinHalfTimer).toBeUndefined();
       expect(cold.rule.total).toBe(5);
     }
+    const calls = file.achievements.find((entry) => entry.code === 'three-calls');
+    expect(calls?.rule.type).toBe('count');
+    const held = file.achievements.find((entry) => entry.code === 'prevented');
+    expect(held?.rule.type === 'condition' && held.rule.where.preventedMin).toBe(2);
     expect(file.achievements.find((entry) => entry.code === 'streak')?.rule).toMatchObject({
       type: 'streak',
       total: 7,
     });
-    expect(file.achievements.find((entry) => entry.code === 'seal')?.hidden).toBe(true);
+    for (const code of ['first-aid', 'rare', 'handover', 'seal']) {
+      expect(file.achievements.find((entry) => entry.code === code)).toBeUndefined();
+    }
   });
 
-  it('Холодная голова сравнивает реакцию с половиной timerSec узла', () => {
+  it('Холодная голова считает пожар, давление и стоп-кран, не журнал', () => {
     const cold = file.achievements.find((entry) => entry.code === 'cold-head');
     if (cold?.rule.type !== 'count') {
       throw new Error('cold-head');
     }
-    const fast = times(5, () =>
-      decision({ category: 'safety', verdict: 'best', reactionMs: 4_000, timerSec: 10 }),
+    const hazards = times(5, (index) =>
+      decision({
+        choiceId: index % 2 === 0 ? 'fire' : 'emergency-brake',
+        verdict: 'best',
+        timerSec: null,
+      }),
     );
-    const slow = times(5, () =>
-      decision({ category: 'safety', verdict: 'best', reactionMs: 6_000, timerSec: 10 }),
+    const journals = times(5, () =>
+      decision({ choiceId: 'journal-submission', verdict: 'best', stage: 'acceptance' }),
     );
-    expect(evaluateRule(cold.rule, [run({ decisions: fast })], 0)).toEqual({
+    expect(evaluateRule(cold.rule, [run({ decisions: hazards })], 0)).toEqual({
       progress: 5,
       earned: true,
     });
-    expect(evaluateRule(cold.rule, [run({ decisions: slow })], 0)).toEqual({
+    expect(evaluateRule(cold.rule, [run({ decisions: journals })], 0)).toEqual({
       progress: 0,
       earned: false,
     });
+  });
+
+  it('withinHalfTimer требует timerSec и реакцию не длиннее половины', () => {
+    const where = { verdict: 'best' as const, withinHalfTimer: true as const };
+    expect(
+      decisionMatches(decision({ verdict: 'best', reactionMs: 4_000, timerSec: 10 }), where),
+    ).toBe(true);
+    expect(
+      decisionMatches(decision({ verdict: 'best', reactionMs: 6_000, timerSec: 10 }), where),
+    ).toBe(false);
+    expect(
+      decisionMatches(decision({ verdict: 'best', reactionMs: 1_000, timerSec: null }), where),
+    ).toBe(false);
   });
 
   it('у каждого кода есть проход и отказ', () => {

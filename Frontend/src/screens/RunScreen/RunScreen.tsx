@@ -140,22 +140,20 @@ function RunBody({ run }: { run: Run }) {
         <Section id="facts-title" title="Фактический результат">
           <dl className="ledger">
             <div className="ledger__row">
-              <dt>Инциденты под контролем</dt>
+              <dt>Пожар и давление без критического</dt>
               <dd>{run.facts.prevented}</dd>
             </div>
             <div className="ledger__row">
-              <dt>Критические инциденты</dt>
+              <dt>Критический пожар и давление</dt>
               <dd className={run.facts.incidents > 0 ? 'down' : ''}>{run.facts.incidents}</dd>
             </div>
             <div className="ledger__row">
-              <dt>Пропущенные запросы</dt>
+              <dt>Запросы без ответа</dt>
               <dd className={run.facts.complaints > 0 ? 'down' : ''}>{run.facts.complaints}</dd>
             </div>
             <div className="ledger__row">
-              <dt>Стоп-кран</dt>
-              <dd className={run.facts.interventions > 0 ? 'down' : ''}>
-                {run.facts.interventions}
-              </dd>
+              <dt>Стоп-кран приведён</dt>
+              <dd>{run.facts.interventions}</dd>
             </div>
           </dl>
         </Section>

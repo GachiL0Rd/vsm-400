@@ -25,7 +25,7 @@ describe('тема недели', () => {
     expect(runMatchesTheme('reaction', [['safety']], { reaction: 2 })).toBe(true);
     expect(runMatchesTheme('reaction', [['safety']], { service: 1 })).toBe(false);
     expect(challengeText('Эскалация')).toBe(
-      'Неделя Эскалация — бригады депо соревнуются до воскресенья',
+      'Неделя Эскалация: удержание давления и стоп-кран только при опасности. Бригады депо соревнуются до воскресенья.',
     );
   });
 });

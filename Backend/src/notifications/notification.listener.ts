@@ -82,7 +82,7 @@ export class NotificationListener {
     const text = await this.assignmentText(payload.scenarioIds);
     await this.notifications.create(payload.userId, {
       kind: NotificationKind.assignment,
-      title: 'Назначен сценарий',
+      title: 'Назначена смена',
       text,
       dedupKey: `assignment:${payload.assignmentId}`,
     });
@@ -123,7 +123,7 @@ export class NotificationListener {
 
   private async assignmentText(scenarioIds: readonly string[]): Promise<string> {
     if (scenarioIds.length === 0) {
-      return 'Список сценариев пуст.';
+      return 'Смена назначена.';
     }
     const rows = await this.prisma.scenario.findMany({
       where: { id: { in: [...scenarioIds] } },

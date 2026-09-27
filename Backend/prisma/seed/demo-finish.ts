@@ -88,7 +88,7 @@ async function ensureNotices(deps: FinishDeps, userId: string): Promise<void> {
     {
       kind: NotificationKind.advice,
       title: 'Журнал приёмки',
-      text: 'Отмечать неисправность только после осмотра. Ложная отметка снимает вагон с рейса.',
+      text: 'Отмечать неисправность в журнале только после проверки оборудования. Ложная отметка снимает вагон с рейса.',
       dedupKey: 'seed:demo1:advice',
       hoursAgo: 5,
       unread: true,

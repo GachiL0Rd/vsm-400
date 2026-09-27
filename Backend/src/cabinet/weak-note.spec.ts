@@ -37,7 +37,7 @@ function notes(overrides: {
 }
 
 describe('weakNote', () => {
-  it('эскалация ниже порога: сколько рейсов из окна доклад не best', () => {
+  it('эскалация ниже порога: давление критическое или стоп-кран не при опасности', () => {
     const decisions = [
       decision('r0', 'worse', ['escalation']),
       decision('r1', 'ok', ['escalation']),
@@ -47,7 +47,7 @@ describe('weakNote', () => {
       decision('old', 'worse', ['escalation']),
     ];
     expect(notes({ decisions }).escalation).toBe(
-      'В 3 из 5 последних рейсов доклад ушёл позже жалобы.',
+      'В 3 из 5 последних рейсов давление стало критическим или стоп-кран применён не при опасности.',
     );
   });
 
@@ -62,7 +62,9 @@ describe('weakNote', () => {
       trend: { detection: FAST_TREND },
       decisions,
     });
-    expect(result.detection).toBe('Растёт: 2 неисправности найдены детальным осмотром на приёмке.');
+    expect(result.detection).toBe(
+      'Растёт: 2 журнала приёмки сданы без пропуска и без ложной отметки.',
+    );
     expect(result.safety).toBeUndefined();
   });
 
@@ -73,21 +75,23 @@ describe('weakNote', () => {
       trend: { detection: 9 },
       decisions,
     });
-    expect(result.detection).toBe('В 1 из 5 последних рейсов неисправность на осмотре пропущена.');
+    expect(result.detection).toBe(
+      'В 1 из 5 последних рейсов журнал приёмки сдан с пропуском неисправности или с ложной отметкой.',
+    );
   });
 
   it('без рейсов не делит на ноль', () => {
     expect(notes({ runIds: [], scores: { safety: 10 } }).safety).toBe(
-      'Безопасность ниже порога 50: рейсов для разбора ещё нет.',
+      'Безопасность ниже порога 50: посадки, пожара, давления и стоп-крана в рейсах ещё нет.',
     );
   });
 
-  it('чужая компетенция выбора не попадает в доклад', () => {
+  it('чужая компетенция выбора не попадает в заметку эскалации', () => {
     const decisions = [decision('r0', 'worse', ['service'])];
     const result = notes({ scores: { escalation: 40, service: 40 }, decisions });
     expect(result.escalation).toBe(
-      'Доклады в последних рейсах своевременны, но эскалация всё ещё ниже порога.',
+      'Давление и стоп-кран в последних рейсах без ошибки, но эскалация всё ещё ниже порога.',
     );
-    expect(result.service).toContain('сервис разобран с ошибкой');
+    expect(result.service).toContain('запрос пассажира остался без ответа');
   });
 });

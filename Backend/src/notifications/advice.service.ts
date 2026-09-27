@@ -1,12 +1,12 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { Clock } from '../common/clock';
-import type { CarClass, Competency } from '../generated/prisma/client';
+import type { Competency } from '../generated/prisma/client';
 import { NotificationKind } from '../generated/prisma/client';
 import { seasonWindow } from '../leaderboard/season-window';
 import { PrismaService } from '../prisma/prisma.service';
 import { RulesService } from '../rules/rules.service';
-import { adviceText, adviceTitle, recommendScenario } from './advice';
+import { adviceText, adviceTitle } from './advice';
 import { COMPETENCY_ORDER } from './competency-label';
 import { NotificationsService } from './notifications.service';
 
@@ -17,13 +17,6 @@ type Person = {
   id: string;
   depotId: string;
   scores: { competency: Competency; value: number }[];
-  carClasses: CarClass[];
-};
-
-type ScenarioRow = {
-  title: string;
-  carClasses: CarClass[];
-  competencies: Competency[];
 };
 
 @Injectable()
@@ -47,12 +40,11 @@ export class AdviceService {
   async advise(now: Date): Promise<number> {
     const week = seasonWindow(now).startsAt.toISOString();
     const weak = this.rules.weakScore();
-    const scenarios = await this.published();
     const people = await this.people();
     const averages = depotAverages(people);
     let sent = 0;
     for (const person of people) {
-      sent += await this.advisePerson(person, averages.get(person.depotId), scenarios, weak, week);
+      sent += await this.advisePerson(person, averages.get(person.depotId), weak, week);
     }
     return sent;
   }
@@ -60,7 +52,6 @@ export class AdviceService {
   private async advisePerson(
     person: Person,
     averages: Map<Competency, number> | undefined,
-    scenarios: readonly ScenarioRow[],
     weak: number,
     week: string,
   ): Promise<number> {
@@ -81,24 +72,15 @@ export class AdviceService {
       if (mine >= weak || mine >= average) {
         continue;
       }
-      const scenarioTitle = recommendScenario(scenarios, competency, person.carClasses);
       await this.notifications.create(person.id, {
         kind: NotificationKind.advice,
         title: adviceTitle(competency),
-        text: adviceText(competency, mine, average, scenarioTitle),
+        text: adviceText(competency, mine, average),
         dedupKey: `advice:${week}:${person.id}:${competency}`,
       });
       sent += 1;
     }
     return sent;
-  }
-
-  private async published(): Promise<ScenarioRow[]> {
-    return this.prisma.scenario.findMany({
-      where: { status: 'PUBLISHED' },
-      select: { title: true, carClasses: true, competencies: true },
-      orderBy: { id: 'asc' },
-    });
   }
 
   private async people(): Promise<Person[]> {
@@ -108,8 +90,6 @@ export class AdviceService {
         id: true,
         brigade: { select: { depotId: true } },
         competencyScores: { select: { competency: true, value: true } },
-        runs: { select: { carClass: true } },
-        assignedShifts: { select: { carClass: true } },
       },
     });
     const people: Person[] = [];
@@ -121,7 +101,6 @@ export class AdviceService {
         id: row.id,
         depotId: row.brigade.depotId,
         scores: row.competencyScores,
-        carClasses: classesOf(row.runs, row.assignedShifts),
       });
     }
     return people;
@@ -164,17 +143,4 @@ function depotAverages(people: readonly Person[]): Map<string, Map<Competency, n
     averages.set(depotId, rounded);
   }
   return averages;
-}
-
-function classesOf(
-  runs: readonly { carClass: CarClass }[],
-  shifts: readonly { carClass: CarClass }[],
-): CarClass[] {
-  const classes: CarClass[] = [];
-  for (const row of [...runs, ...shifts]) {
-    if (!classes.includes(row.carClass)) {
-      classes.push(row.carClass);
-    }
-  }
-  return classes;
 }
