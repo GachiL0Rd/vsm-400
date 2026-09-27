@@ -5,22 +5,18 @@
   line-height: 1.45;
 }
 
-/* Без заголовка: короткая цветная метка сверху */
+/* Без заголовка: полоса-закладка на всю ширину — синие штрихи под наклоном 35°
+   с разрывами. Наклон задаёт угол градиента, поэтому края не выходят за блок.
+   По горизонтали штрих 10px и шаг 16px: вдоль нормали это 10·cos35° и 16·cos35°. */
 .note--bar::before {
   content: "";
-  width: 30px;
-  height: 4px;
-  margin-bottom: 10px;
-  border-radius: var(--radius-pill);
-  background: var(--note-color, var(--line));
+  height: 8px;
+  margin-bottom: 12px;
+  background: repeating-linear-gradient(125deg, var(--signal) 0 8.2px, transparent 8.2px 13.1px);
 }
 
 .note--ok {
   --note-color: var(--ok);
-}
-
-.note--warn {
-  --note-color: var(--warn-line);
 }
 
 .note__title {

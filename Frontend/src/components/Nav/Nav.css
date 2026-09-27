@@ -33,12 +33,15 @@
   text-decoration: none;
 }
 
-.nav__item:hover {
-  color: var(--ink);
+@media (hover: hover) {
+  .nav__item:hover {
+    color: var(--ink);
+  }
 }
 
-.nav__item--active {
-  color: var(--ink);
+.nav__item--active,
+.nav__item--active:hover {
+  color: var(--signal);
   font-weight: 800;
 }
 
@@ -60,7 +63,7 @@
   padding: 0 4px;
   border-radius: var(--radius-xs);
   background: var(--signal);
-  color: var(--ink);
+  color: var(--on-signal);
   font-size: 11px;
   font-weight: 800;
   line-height: 16px;
@@ -73,23 +76,50 @@
     inset: 0 auto 0 0;
     display: flex;
     flex-direction: column;
-    gap: 32px;
+    gap: 20px;
     /* Порог 900px парный с отступом .app__main. */
     width: var(--nav-width);
-    padding: 32px 0 24px;
+    padding: 0 0 24px;
     border-top: 0;
     border-right: 1px solid var(--line);
     background: var(--white);
   }
 
+  /* Марка — синяя плашка. Слово по центру по вертикали, ступенька вплотную к нему. */
   .nav__brand {
-    display: block;
-    padding: 0 24px;
-    color: var(--ink);
-    font-size: 26px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 30px 24px;
+    background: var(--signal);
+    color: var(--on-signal);
+    font-size: 28px;
     font-weight: 800;
-    letter-spacing: -0.02em;
+    letter-spacing: -0.04em;
+    line-height: 1;
     text-decoration: none;
+  }
+
+  /* Обрезка до высоты прописных: равные поля сверху и снизу дают визуальный центр,
+     а не центр строки с запасом под выносные элементы. */
+  .nav__word {
+    text-box: trim-both cap alphabetic;
+  }
+
+  .nav__stairs {
+    flex: none;
+    width: 20px;
+    height: 20px;
+    fill: currentColor;
+  }
+
+  .nav__brand:hover {
+    background: var(--signal-hover);
+  }
+
+  .nav__brand:focus-visible {
+    outline-color: var(--on-signal);
+    outline-offset: -6px;
   }
 
   .nav__list {

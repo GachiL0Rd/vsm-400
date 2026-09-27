@@ -17,11 +17,16 @@
   font-weight: 500;
 }
 
+/* На телефоне время над городом: в одну строку «Санкт-Петербург» не помещается. */
 .departure__main {
   display: flex;
-  align-items: flex-start;
-  gap: 20px;
+  flex-direction: column;
+  gap: 8px;
   margin-top: -12px;
+}
+
+.departure__main > div {
+  min-width: 0;
 }
 
 .departure__time {
@@ -32,6 +37,7 @@
 }
 
 .departure__to {
+  overflow-wrap: anywhere;
   font-size: 26px;
   font-weight: 800;
   line-height: 1.1;
@@ -57,6 +63,12 @@
 @media (min-width: 600px) {
   .departure {
     padding: 32px;
+  }
+
+  .departure__main {
+    flex-direction: row;
+    align-items: flex-start;
+    gap: 20px;
   }
 
   .departure__time {
