@@ -27,6 +27,7 @@ const dbFiles = [
   'test/scenarios.e2e-spec.ts',
   'test/sessions.e2e-spec.ts',
   'test/llm.e2e-spec.ts',
+  'test/seed.e2e-spec.ts',
 ];
 
 export default defineConfig({

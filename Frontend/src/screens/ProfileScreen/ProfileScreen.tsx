@@ -169,7 +169,7 @@ function StatsBlock({ stats }: { stats: Stats }) {
           <dd>{stats.runs}</dd>
         </div>
         <div className="ledger__row">
-          <dt>Найдено неисправностей</dt>
+          <dt>Верные приёмки</dt>
           <dd>{stats.defectsFound}</dd>
         </div>
         <div className="ledger__row">
@@ -177,26 +177,17 @@ function StatsBlock({ stats }: { stats: Stats }) {
           <dd className="down">{stats.missedChecks}</dd>
         </div>
         <div className="ledger__row">
-          <dt>Среднее время реакции в критических ситуациях</dt>
+          <dt>Среднее время реакции</dt>
           <dd>{formatNumber(stats.avgReactionSec)} с</dd>
         </div>
         <div className="ledger__row">
           <dt>
-            Своевременные доклады
+            Верные эскалации
             <span className="label ledger__note">
               {stats.escalationsCorrect} из {stats.escalationsTotal}
             </span>
           </dt>
           <dd>{escalationPercent(stats)}%</dd>
-        </div>
-        <div className="ledger__row">
-          <dt>
-            Нарушения без последствий
-            <span className="label ledger__note">
-              Ошибки, после которых ничего не случилось. В оценке учтены.
-            </span>
-          </dt>
-          <dd className="down">{stats.luckyViolations}</dd>
         </div>
       </dl>
     </Section>

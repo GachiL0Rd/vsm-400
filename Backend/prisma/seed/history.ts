@@ -1,104 +1,51 @@
 import type { EventEmitter2 } from '@nestjs/event-emitter';
-import { createRng } from '../../src/engine/rng';
 import type { PrismaService } from '../../src/prisma/prisma.service';
-import type { PlayContext } from './content';
-import { spreadInstants } from './dates';
-import { childSeed, MASTER_SEED } from './master';
+import type { FinishedGameResult } from '../../src/sessions/platform.dto';
+import { personaInstants } from './dates';
 import type { ConductorRef } from './org';
-import { type SimulatedRun, simulateRun } from './play';
-import { planDemo } from './project-demo';
-import { recordRun } from './record-run';
+import { assignPersonas, type PersonaAssignment } from './personas';
+import { recordFixtureRun } from './record-run';
 
 type HistoryDeps = {
   prisma: PrismaService;
   events: EventEmitter2;
   seedKey: string;
-  ctx: PlayContext;
   now: Date;
 };
 
 export async function seedHistory(
   deps: HistoryDeps,
   conductors: readonly ConductorRef[],
+  fixtures: readonly FinishedGameResult[],
 ): Promise<void> {
-  const demo = conductors.find((item) => item.login === 'demo');
-  if (!demo) {
-    throw new Error('Нет demo среди проводников');
-  }
-  const planned = planDemo(deps.now, deps.ctx);
-  console.log(
-    `demo: профиль ${planned.skill}, рейсов ${planned.runs.length}, план очков ${planned.total}`,
-  );
-  await recordAll(deps, demo.id, planned.runs);
-  await assertDemoBand(deps.prisma, demo.id);
-  for (const conductor of conductors) {
-    if (conductor.login === 'demo') {
-      continue;
+  const plans = assignPersonas(fixtures);
+  for (const plan of plans) {
+    const conductor = conductors.find((item) => item.login === plan.login);
+    if (!conductor) {
+      throw new Error(`Нет проводника ${plan.login}`);
     }
-    await seedConductor(deps, conductor);
+    await recordPersona(deps, conductor.id, plan, fixtures);
   }
   await waitSeasonScores(deps.prisma);
 }
 
-async function recordAll(
+async function recordPersona(
   deps: HistoryDeps,
   userId: string,
-  runs: readonly SimulatedRun[],
+  plan: PersonaAssignment,
+  fixtures: readonly FinishedGameResult[],
 ): Promise<void> {
-  for (const run of runs) {
-    await recordRun(deps, userId, run);
-  }
-}
-
-async function seedConductor(deps: HistoryDeps, conductor: ConductorRef): Promise<void> {
-  const userSeed = childSeed(MASTER_SEED, `user:${conductor.login}`);
-  const rng = createRng(userSeed);
-  const count = rng.int(10, 16);
-  const span = rng.int(28, 41);
-  const dates = spreadInstants(
-    (days) => rng.pick(days),
-    () => rng.int(7, 20),
-    () => rng.int(0, 59),
-    count,
-    deps.now,
-    span,
-  );
-  const skill = 0.22 + rng.nextFloat() * 0.7;
-  for (let index = 0; index < dates.length; index += 1) {
+  const dates = personaInstants(deps.now, plan.fixtureIndexes.length, plan.spanDays, plan.streak);
+  for (let index = 0; index < plan.fixtureIndexes.length; index += 1) {
+    const fixtureIndex = plan.fixtureIndexes[index];
+    const fixture = fixtureIndex === undefined ? undefined : fixtures[fixtureIndex];
     const finishedAt = dates[index];
-    if (!finishedAt) {
-      throw new Error(`Нет даты рейса ${conductor.login}`);
+    if (!fixture || !finishedAt) {
+      throw new Error(`Нет рейса ${plan.login} #${index}`);
     }
-    const run = simulateRun(childSeed(userSeed, `run:${index}`), skill, finishedAt, deps.ctx);
-    await recordRun(deps, conductor.id, run);
+    await recordFixtureRun(deps, userId, fixture, finishedAt);
   }
-  console.log(`${conductor.login}: рейсов ${dates.length}`);
-}
-
-async function assertDemoBand(prisma: PrismaService, userId: string): Promise<void> {
-  const [life, user] = await Promise.all([
-    lifetime(prisma, userId),
-    prisma.user.findUnique({ where: { id: userId }, select: { streakDays: true } }),
-  ]);
-  if (life < 2000 || life >= 3000) {
-    throw new Error(`Очки demo ${life} вне уровня 7`);
-  }
-  if (user?.streakDays !== 6) {
-    throw new Error(`Серия demo ${user?.streakDays ?? 'нет'}, нужна 6`);
-  }
-  console.log(`demo после записи: очки ${life}, серия ${user.streakDays}`);
-}
-
-async function lifetime(prisma: PrismaService, userId: string): Promise<number> {
-  const rows = await prisma.pointLedger.findMany({
-    where: { userId, amount: { gt: 0 }, reason: { in: ['RUN', 'ACHIEVEMENT'] } },
-    select: { amount: true },
-  });
-  let sum = 0;
-  for (const row of rows) {
-    sum += row.amount;
-  }
-  return sum;
+  console.log(`${plan.login}: рейсов ${plan.fixtureIndexes.length}, позывной ${plan.callsign}`);
 }
 
 /**

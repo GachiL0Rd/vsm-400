@@ -31,81 +31,71 @@ function eachDay(from: string, to: string): string[] {
   return days;
 }
 
+const HOURS = [7, 8, 10, 12, 14, 16, 18, 20] as const;
+const MINUTES = [5, 12, 18, 27, 36, 44, 51] as const;
+
 /**
- * Шесть подряд московских суток, последняя — час назад.
- * День перед серией пустой: серия становится ровно 6, не длиннее.
+ * История за spanDays, хвост — streak подряд суток до «сейчас».
+ * Часы чередуются: утро, день, вечер, не одна и та же минута.
  */
-export function demoInstants(now: Date, total: number): Date[] {
-  if (total < 10 || total > 40) {
-    throw new Error(`Число рейсов demo вне 10..40: ${total}`);
+export function personaInstants(
+  now: Date,
+  count: number,
+  spanDays: number,
+  streak: number,
+): Date[] {
+  if (count < 1 || streak < 0 || streak > count || spanDays < streak) {
+    throw new Error(`Плохое расписание: ${count} рейсов, серия ${streak}, окно ${spanDays}`);
   }
-  const anchor = new Date(now.getTime() - 60 * 60 * 1000);
+  const anchor = new Date(now.getTime() - 45 * 60 * 1000);
   const endDay = moscowYmd(anchor);
-  const tail = streakInstants(endDay, anchor);
-  const early = earlyInstants(endDay, total - tail.length);
+  const tail = streakInstants(endDay, anchor, streak);
+  const early = earlyInstants(endDay, count - streak, spanDays, streak);
   const all = early.concat(tail);
   all.sort((left, right) => left.getTime() - right.getTime());
-  return all;
+  return all.map((instant) =>
+    instant.getTime() >= now.getTime() ? new Date(now.getTime() - 20 * 60 * 1000) : instant,
+  );
 }
 
-function streakInstants(endDay: string, anchor: Date): Date[] {
+function streakInstants(endDay: string, anchor: Date, streak: number): Date[] {
   const instants: Date[] = [];
-  for (let back = 5; back >= 0; back -= 1) {
-    const ymd = addDays(endDay, -back);
-    if (back === 0) {
-      instants.push(anchor);
-      continue;
-    }
-    instants.push(atMoscow(ymd, 11, 10 + back));
+  for (let back = streak - 1; back >= 1; back -= 1) {
+    instants.push(atClock(addDays(endDay, -back), back));
+  }
+  if (streak > 0) {
+    instants.push(anchor);
   }
   return instants;
 }
 
-function earlyInstants(endDay: string, count: number): Date[] {
-  const pool = eachDay(addDays(endDay, -41), addDays(endDay, -8)).filter(
-    (_ymd, index) => index % 6 !== 5,
-  );
+function earlyInstants(endDay: string, count: number, spanDays: number, streak: number): Date[] {
+  if (count === 0) {
+    return [];
+  }
+  const pool = eachDay(addDays(endDay, -spanDays), addDays(endDay, -(streak + 1)));
   if (count > pool.length) {
-    throw new Error('Не хватает дней для ранней истории demo');
+    throw new Error(`Не хватает дней истории: нужно ${count}, есть ${pool.length}`);
   }
   const instants: Date[] = [];
   const used = new Set<number>();
   for (let index = 0; index < count; index += 1) {
-    let slot = Math.floor((index * pool.length) / count);
-    while (used.has(slot) && slot < pool.length) {
+    let slot = count === 1 ? 0 : Math.round((index * (pool.length - 1)) / (count - 1));
+    while (used.has(slot) && slot < pool.length - 1) {
       slot += 1;
     }
     used.add(slot);
     const ymd = pool[slot];
     if (!ymd) {
-      throw new Error('Слот даты demo пуст');
+      throw new Error('Слот даты пуст');
     }
-    instants.push(atMoscow(ymd, 8 + (index % 8), (index * 7) % 50));
+    instants.push(atClock(ymd, index));
   }
   return instants;
 }
 
-/** 4–6 недель назад, равномерно, чтобы дыры были короче срока баллов. */
-export function spreadInstants(
-  pickDay: (days: readonly string[]) => string,
-  pickHour: () => number,
-  pickMinute: () => number,
-  count: number,
-  now: Date,
-  spanDays: number,
-): Date[] {
-  const anchor = new Date(now.getTime() - 60 * 60 * 1000);
-  const endDay = moscowYmd(anchor);
-  const days = eachDay(addDays(endDay, -spanDays), endDay);
-  const instants: Date[] = [];
-  for (let index = 0; index < count; index += 1) {
-    const ymd = pickDay(days);
-    let instant = atMoscow(ymd, pickHour(), pickMinute());
-    if (instant.getTime() >= now.getTime()) {
-      instant = new Date(now.getTime() - 45 * 60 * 1000);
-    }
-    instants.push(instant);
-  }
-  instants.sort((left, right) => left.getTime() - right.getTime());
-  return instants;
+function atClock(ymd: string, salt: number): Date {
+  const hour = HOURS[Math.abs(salt) % HOURS.length] ?? 9;
+  const minute = MINUTES[Math.abs(salt) % MINUTES.length] ?? 10;
+  return atMoscow(ymd, hour, minute);
 }

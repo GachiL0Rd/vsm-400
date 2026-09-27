@@ -37,8 +37,8 @@ docker compose --profile app up --build -d
 С хоста: `http://127.0.0.1:3000/api/health`.
 Остановка без удаления томов: `docker compose --profile app down`.
 
-`npm run prisma:seed` наполняет депо, бригады и историю рейсов. Повтор без
-`--reset` ничего не пишет, если логин `demo` уже есть. `npm run prisma:seed -- -- --reset`
+`npm run prisma:seed` наполняет одно депо, бригаду 12 и историю рейсов. Повтор без
+`--reset` ничего не пишет, если логин `demo1` уже есть. `npm run prisma:seed -- -- --reset`
 очищает доменные таблицы и текущую Redis DB, миграции не трогает. Prisma 7
 `migrate reset` сам сид не вызывает: после сброса нужен `npm run prisma:seed`.
 
@@ -106,8 +106,8 @@ docker compose --profile app up --build -d
 | `npm run prisma:generate` | Клиент в `src/generated/` |
 | `npm run prisma:migrate` | `migrate dev` |
 | `npm run prisma:deploy` | `migrate deploy` |
-| `npm run prisma:seed` | Синтетические депо, бригады и рейсы |
-| `npm run smoke` | Сквозной прогон: demo, открытие смены, билет, resolve и finish. Сервер уже слушает |
+| `npm run prisma:seed` | Пять проводников и рейсы из фикстур игры |
+| `npm run smoke` | Сквозной прогон: demo1, открытие смены, билет, resolve и finish. Сервер уже слушает |
 | `npm run openapi:export` | Пишет `dist/openapi.json`. `-- -` печатает JSON в stdout. Файл не коммитится |
 | `npm run verify` | Biome, типы, тесты, сборка |
 
@@ -298,12 +298,14 @@ AES-256-GCM. Новая смена `PENDING`, в `ACTIVE` её переводи�
 
 ## Демо-учётки
 
-Сид печатает те же логины. `mustChangePassword=false` только у них. Админа сид не создаёт: если ADMIN нет, его заводит старт приложения и один раз печатает пароль.
+Сид печатает те же логины. Пароль равен логину, `mustChangePassword=false`. Все пятеро — проводники бригады 12 депо Москва-Октябрьская. Админа сид не создаёт: если ADMIN нет, его заводит старт приложения и один раз печатает пароль. CHIEF и METHODIST сид не создаёт: аналитика бригады, назначения и разбор подозрительных рейсов открыты ADMIN.
 
 | Логин | Пароль | Кто |
 | --- | --- | --- |
-| `demo` | `demo` | Проводник A7F3, бригада 12, депо Москва-Октябрьская |
-| `chief` | `chief` | Начальник поезда бригады 12 |
-| `methodist` | `methodist` | Методист |
+| `demo1` | `demo1` | Проводник LUCH, учится |
+| `demo2` | `demo2` | Старший проводник VOLK, сильные рейсы |
+| `demo3` | `demo3` | Проводник OREL, средний |
+| `demo4` | `demo4` | Проводник ISKR, тяжёлые рейсы |
+| `demo5` | `demo5` | Стажёр SMEN, мало рейсов |
 
-История рейсов собирается как `RunSummary` (`generateShift` и тот же rng) и пишется тем же `run.completed`, что прод. Время рейса пишется в `finishedAt` сессии до события, серия считается по нему. Срок баллов и `createdAt` леджера сервисы берут от `new Date()` — после записи сид сдвигает их к `finishedAt` и заново применяет правило «рейс продлевает живые начисления на 30 суток». У demo ближайшие 120 баллов сгорают через 3 дня.
+История — тела `FinishedGameResult` уровня `vsm-train2-01` из `prisma/seed/fixtures/game-results.json`. Каждая попытка идёт через `finishToSummary` и `run.completed`, как живой finish. Сессия `transport: WS`, в `result.platform` лежит тело с настоящим `attemptId` и `payloadSha256`. Срок баллов и `createdAt` леджера сервисы берут от `new Date()` — после записи сид сдвигает их к `finishedAt` и заново применяет правило «рейс продлевает живые начисления на 30 суток». У demo1 самое крупное начисление за рейс сгорает через 3 дня.

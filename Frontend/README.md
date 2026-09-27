@@ -26,7 +26,7 @@ npm ci --include=dev
 npm run dev
 ```
 
-3. Войти `demo` / `demo` — учётка из сида Backend.
+3. Войти `demo1` / `demo1` — учётка из сида Backend. Рядом `demo2`…`demo5`, пароль равен логину.
 
 Без живого Backend форма входа ответит «Нет связи с сервером».
 
