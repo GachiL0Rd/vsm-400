@@ -1,6 +1,6 @@
 # Selectors и правила преобразования state
 
-**Версия документа:** 0.2.0  
+**Версия документа:** 0.3.0
 **Статус:** Draft  
 **Дата редакции:** 2026-09-27
 
@@ -24,6 +24,10 @@ passenger[hungry]:not([sleeping])
 
 ## 2. Где используются selectors
 
+Текущий runtime уже использует плоский `EntitySelector` для entity/trait filtering,
+`Trait.rejectIf` и action preconditions. Более широкий selector mechanism ниже является baseline
+extension для Scenario и других content-driven rules.
+
 Один и тот же conceptual mechanism может использоваться для:
 
 - Scenario trait distribution;
@@ -38,20 +42,20 @@ passenger[hungry]:not([sleeping])
 
 ## 3. Базовые predicates
 
-Первая версия должна оставаться небольшой.
-
-Примерный минимальный набор:
+Текущий `EntitySelector` release runtime поддерживает:
 
 ```text
-entity type / object type
-stable id
+entity kind
+stable entity id
 has trait
-not has trait
-property equality/comparison
-current stage/context
-spatial area/cell selector
 boolean all / any / not
 ```
+
+То есть фактическая структура соответствует `kind | id | trait | all | any | not`.
+
+Baseline может расширить selector vocabulary predicates для object type, property comparison,
+current stage/context и spatial area/cell. Эти predicates не следует считать уже реализованными
+только потому, что они перечислены как целевая модель.
 
 Literal CSS grammar не является требованием. Важна плоская и читаемая декларативная semantics.
 
@@ -71,7 +75,9 @@ operation
 
 ## 5. Sampling
 
-Scenario может после deterministic selection выполнять случайную выборку:
+Deterministic sampling является baseline extension. Текущая Scenario schema release `0.1.0`
+не содержит общего `selector + sampling + operation` runtime. После его добавления Scenario может
+после deterministic selection выполнять случайную выборку:
 
 ```text
 probability
@@ -87,7 +93,7 @@ Random sampling использует выделенный deterministic RNG stre
 
 Operation может мыслиться как `(state) -> state_diff`, но runtime implementation не обязана буквально создавать универсальный JSON diff.
 
-Внутри engine operation может породить typed domain changes/events:
+В целевом Scenario rule runtime operation может породить typed domain changes/events, например:
 
 ```text
 add/remove trait
@@ -96,6 +102,8 @@ change object state
 schedule event
 spawn/despawn entity
 ```
+
+Это baseline vocabulary, а не перечень уже доступных generic operations release `0.1.0`.
 
 Так сохраняется type safety без необходимости строить универсальный patch language.
 
@@ -107,4 +115,6 @@ spawn/despawn entity
 
 ## 8. Открытое
 
-Точный serialized syntax selector expressions выбирается вместе с content schema. Семантика `selector + operation` фиксируется раньше конкретного YAML/JSON представления.
+- Serialized syntax общего Scenario `selector + operation` пока не входит в schema `1`.
+- Нужно определить, какие baseline predicates действительно нужны сверх текущего `EntitySelector`.
+- Семантика selection и mutation должна оставаться разделённой независимо от конкретного YAML/JSON представления.

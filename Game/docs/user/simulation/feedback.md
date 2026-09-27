@@ -1,10 +1,12 @@
 # Assessment, achievements и coaching
 
-**Версия документа:** 0.3.0  
+**Версия документа:** 0.4.0
 **Статус:** Draft  
 **Дата редакции:** 2026-09-27
 
 ## 1. Общий принцип
+
+Документ объединяет реализованные feedback-механизмы и baseline coaching design. В release `0.1.0` assessment и achievements являются рабочими возможностями; runtime coaching/hint generation остаётся deferred baseline capability.
 
 Assessment, achievements и coaching наблюдают за authoritative simulation, но не должны становиться источником правил мира.
 

@@ -1,13 +1,13 @@
 # Release gate 0.1.0 — Game Server
 
 **Дата:** 2026-09-27
-**Scope:** Game Server + authoritative simulation + release content bundle. Platform Server and browser-client implementations are treated as correct consumers/providers of the documented contracts.
+**Scope:** Game Server + authoritative simulation + release content bundle. Normative acceptance scope: [`../user/release-scope-0.1.0.md`](../user/release-scope-0.1.0.md). Platform Server and browser-client implementations are treated as correct consumers/providers of the documented contracts.
 
 ## Gate result
 
-**Status: PASS for the live baseline server code after the hardening changes in this gate.**
+**Status: PASS for the current `0.1.0` release scope after the hardening changes in this gate.**
 
-The release artifact can run as `server + content + client-root`, resolve a live attempt, execute the implemented baseline gameplay, produce assessment/achievements, finish through Platform, and serve/reconnect over the documented WebSocket protocol.
+The release artifact can run as `server + content + client-root`, resolve a live attempt, execute the gameplay included in the current release scope, produce assessment/achievements, finish through Platform, and serve/reconnect over the documented WebSocket protocol.
 
 ## Release blockers found and fixed
 
@@ -50,7 +50,7 @@ The release gate checks:
 
 ## Accepted 0.1.0 limitations
 
-These do **not** block the current live baseline, but should not be described as implemented features:
+These do **not** block the current `0.1.0` release scope, but should not be described as implemented features:
 
 - Guided mode does not yet generate coaching/hint presentation events; it currently shares live simulation semantics and only exposes the requested hint policy.
 - Replay is forward-only. Seek/checkpoints, hidden-state/entity inspection and assessment/action-logit reveal are not implemented.
@@ -61,10 +61,10 @@ These do **not** block the current live baseline, but should not be described as
 - A transient Platform failure after terminal simulation leaves the worker safely frozen in `finishing`; automatic retry/backoff is intentionally not part of protocol v1.
 - `move-to` remains an adjacent-cell command; client-side multi-cell path intent is not a server protocol feature in 0.1.0.
 
-## Environment note
+## Verification environment
 
-The full `npm run verify` is green in the gate workspace. A second `npm ci --offline` check in an empty directory could not be completed because the execution environment does not contain every package tarball in its npm cache (`zod@4.6.5` was the first missing artifact). This is an environment/cache limitation rather than a project test or lockfile failure, so clean-install reproducibility still needs one normal networked CI/developer run before tagging.
+The gate workspace passes `npm run verify`. A lockfile-matched Linux x64/glibc dependency bundle has also been validated with `npm ci --offline`, so the release candidate is reproducible from the provided bundle without changing `package-lock.json`. Normal CI should still perform the same clean-install + verify sequence before tagging.
 
 ## Post-gate recommendation
 
-Before tagging, run `npm ci && npm run verify` once in a clean networked environment. If that is green, the current server state is suitable for the `0.1.0` live baseline release candidate. Driver communication and sanitation can then be treated as incremental gameplay additions rather than prerequisites for the first release.
+Before tagging, run a clean install and `npm run verify` in CI (networked registry or the verified offline bundle). If that is green, the current server state is suitable for the `0.1.0` release candidate. Deferred baseline capabilities remain incremental gameplay work rather than prerequisites for this release.

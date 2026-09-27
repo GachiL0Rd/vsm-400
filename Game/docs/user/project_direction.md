@@ -1,10 +1,12 @@
 # Направление развития и границы модулей
 
-**Версия документа:** 0.7.0
+**Версия документа:** 0.8.0
 **Статус:** Draft
 **Дата редакции:** 2026-09-27
 
 ## 1. Текущее направление
+
+Этот документ описывает целевую архитектуру Game и поэтому включает как release-возможности, так и baseline/deferred capabilities. Обязательный scope текущего выпуска задаётся [`release-scope-0.1.0.md`](release-scope-0.1.0.md).
 
 Игра строится как authoritative server-side simulation с тонким browser client.
 
@@ -107,17 +109,18 @@ replay
 
 Modes различаются input policy, observers и разрешёнными protocol extensions, а не отдельными копиями domain state.
 
-Guided добавляет hint events.
+Guided в baseline добавляет hint events. В release `0.1.0` guided mode уже существует как server-side policy/config, но генерация coaching/hint events отложена.
 
-Replay запрещает gameplay commands и может раскрывать дополнительные diagnostic extensions/inspection handlers.
+Replay запрещает gameplay commands. Release `0.1.0` предоставляет deterministic forward playback; дополнительные diagnostic extensions/inspection handlers относятся к baseline/deferred capability.
 
 ## 8. Feedback
 
 Game Server формирует:
 
 - итоговые `safety` и `customerSatisfaction` scores;
-- achievement IDs;
-- guided hints при включённом coaching policy.
+- achievement IDs.
+
+Baseline feedback layer также предусматривает guided hints при включённом coaching policy. Их runtime-генерация не входит в release `0.1.0`.
 
 Platform Server хранит итог и выполняет межсессионную/profile логику.
 
@@ -133,7 +136,7 @@ authoritative user input log
 
 Полный internal event log не обязателен.
 
-Seek оптимизируется checkpoints; обратимость каждого simulation event не является baseline требованием.
+Baseline seek design может оптимизироваться checkpoints; release `0.1.0` ограничен forward replay. Обратимость каждого simulation event не является требованием ни для release, ни для baseline.
 
 ## 10. Platform contract
 

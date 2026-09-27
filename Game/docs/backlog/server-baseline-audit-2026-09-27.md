@@ -1,5 +1,8 @@
 # Game Server / Baseline implementation audit
 
+> **Архивный документ.** Это снимок baseline-аудита до последующего release-gate hardening. Он сохранён для истории и **не определяет текущее состояние реализации или release blockers**. Для текущей приёмки используйте [`../user/release-scope-0.1.0.md`](../user/release-scope-0.1.0.md) и [`../agent/release-gate-0.1.0.md`](../agent/release-gate-0.1.0.md).
+
+
 **Audit date:** 2026-09-27  
 **Scope:** authoritative simulation, projection/common protocol, Game Server lifecycle, baseline vertical slice  
 **Reference:** `docs/user/vsm_baseline_vertical_slice.md` and linked normative docs.

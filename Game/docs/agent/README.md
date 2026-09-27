@@ -5,13 +5,15 @@ Game. Он не заменяет нормативные требования и�
 
 Перед работой:
 
-1. прочитать [`../user/README.md`](../user/README.md);
-2. свериться с [`integration-hardening.md`](integration-hardening.md) для
-   состояния server/client integration и ссылок на фактические контракты;
+1. прочитать [`../user/README.md`](../user/README.md) и текущий
+   [`release-scope-0.1.0.md`](../user/release-scope-0.1.0.md);
+2. использовать [`release-gate-0.1.0.md`](release-gate-0.1.0.md) как снимок
+   фактически проверенного состояния текущего release candidate;
 3. учесть [`client-visual-blockers.md`](client-visual-blockers.md), если задача
    затрагивает public presentation data;
 4. при необходимости использовать [`tools.md`](tools.md).
 
-Исторические документы, включая checklist до интеграционного hardening,
-перенесены в [`../backlog/`](../backlog/README.md) и не должны использоваться
-как архитектурная спецификация или текущий backlog.
+Исторические audit/checklist документы перенесены в
+[`../backlog/`](../backlog/README.md). Они сохраняют контекст уже завершённых
+этапов, но не являются текущим backlog, release scope или архитектурной
+спецификацией.

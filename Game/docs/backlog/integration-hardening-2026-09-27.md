@@ -1,5 +1,8 @@
 # Integration hardening before protocol/deployment documentation
 
+> **Архивный документ.** Это рабочий checklist завершённого integration-hardening этапа. Он сохранён для истории и **не определяет текущее состояние реализации или release blockers**. Для текущей приёмки используйте [`../user/release-scope-0.1.0.md`](../user/release-scope-0.1.0.md) и [`../agent/release-gate-0.1.0.md`](../agent/release-gate-0.1.0.md).
+
+
 **Status:** planned  
 **Date:** 2026-09-27  
 **Scope:** first end-to-end browser ↔ game-server ↔ simulation contour after `common`, public projection, server skeleton and client foundation exist.

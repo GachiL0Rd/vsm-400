@@ -1,6 +1,6 @@
 # Режимы игровой сессии и protocol extensions
 
-**Версия документа:** 0.1.0  
+**Версия документа:** 0.2.0
 **Статус:** Draft  
 **Дата редакции:** 2026-09-27
 
@@ -90,7 +90,7 @@ interface ReplayModeConfig {
 
 Replay восстанавливает simulation из сохранённых версий, root seed и user input log.
 
-Gameplay commands запрещены. В baseline `0.1.0` реализованы forward playback, `resync` и смена скорости `1x/2x/4x`. `seek`, step/markers и replay inspection остаются расширениями следующего этапа и поэтому возвращаются клиенту как недоступные capabilities.
+Gameplay commands запрещены. В release `0.1.0` реализованы forward playback, `resync` и смена скорости `1x/2x/4x`. `seek`, step/markers и replay inspection остаются baseline/deferred расширениями следующего этапа и поэтому возвращаются клиенту как недоступные capabilities.
 
 Replay никогда не формирует новый официальный GameResult для исходной попытки.
 
@@ -135,7 +135,7 @@ interface ClientPresentationEvent {
 
 ## 7. Replay extensions
 
-Replay может добавлять расширенные данные к обычному событию:
+Baseline replay design допускает расширенные данные к обычному событию:
 
 ```text
 entity motion changed
@@ -163,7 +163,7 @@ interface ReplayActionAnalysisExtension {
 
 Не все hidden/debug data нужно отправлять постоянно.
 
-Replay может принимать read-only inspect commands:
+Baseline replay design допускает read-only inspect commands:
 
 ```text
 inspect entity
@@ -190,7 +190,7 @@ interface HintEvent {
 }
 ```
 
-Coaching observer решает, когда такой event разрешён текущей `HintPolicy`.
+В baseline такой event формируется coaching observer согласно текущей `HintPolicy`. В release `0.1.0` генерация hint events ещё не реализована.
 
 Hint не является simulation event и сам по себе не меняет authoritative state.
 
