@@ -514,7 +514,7 @@ describe('игровые сессии', () => {
     expect(verified.json()).toMatchObject({
       contractVersion: 1,
       attemptId: opened.body.sessionId,
-      mode: { kind: 'live' },
+      mode: { kind: 'guided' },
     });
     const active = await prisma.gameSession.findUniqueOrThrow({
       where: { id: opened.body.sessionId },

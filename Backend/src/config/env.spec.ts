@@ -229,10 +229,12 @@ describe('loadConfig', () => {
 
   it('ставит адреса кабинета и уровень игры по умолчанию', () => {
     const config = loadConfig(valid);
-    expect(config.gameLevelId).toBe('vsm-baseline-01');
+    expect(config.gameLevelId).toBe('vsm-train2-01');
+    expect(config.gameSessionMode).toBe('guided');
+    expect(loadConfig({ ...valid, GAME_SESSION_MODE: 'live' }).gameSessionMode).toBe('live');
     expect(config.publicGameUrl).toBe('http://127.0.0.1:4174/');
     expect(config.publicAppUrl).toBe('http://127.0.0.1:5173');
-    expect(loadConfig({ ...valid, GAME_LEVEL_ID: '' }).gameLevelId).toBe('vsm-baseline-01');
+    expect(loadConfig({ ...valid, GAME_LEVEL_ID: '' }).gameLevelId).toBe('vsm-train2-01');
     expect(
       loadConfig({ ...valid, PUBLIC_GAME_URL: 'https://game.example/play/' }).publicGameUrl,
     ).toBe('https://game.example/play/');

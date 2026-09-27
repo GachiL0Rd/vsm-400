@@ -201,19 +201,43 @@ describe('PlatformSessionService.resolve', () => {
     expect(foreignError.getStatus()).toBe(404);
   });
 
-  it('PENDING и ACTIVE отдают live-попытку', async () => {
+  it('PENDING и ACTIVE отдают guided-попытку с подсказками', async () => {
     for (const status of ['PENDING', 'ACTIVE'] as const) {
       const harness = resolveHarness({ status: 'ok', claims: claims() }, row({ status }));
       await expect(harness.service.resolve('key')).resolves.toEqual({
         contractVersion: 1,
         attemptId: sessionId,
         gameLevelId: 'vsm-baseline-01',
-        mode: { kind: 'live' },
+        mode: {
+          kind: 'guided',
+          hints: {
+            immediateFeedback: true,
+            suggestions: true,
+            highlights: true,
+            explanations: true,
+          },
+        },
       });
       expect(harness.activatePendingSession).toHaveBeenCalledWith(
         expect.objectContaining({ id: sessionId, status }),
         now,
       );
+    }
+  });
+
+  it('GAME_SESSION_MODE=live отдаёт live без подсказок', async () => {
+    const mutable = config as { gameSessionMode?: string };
+    mutable.gameSessionMode = 'live';
+    try {
+      const harness = resolveHarness(
+        { status: 'ok', claims: claims() },
+        row({ status: 'PENDING' }),
+      );
+      await expect(harness.service.resolve('key')).resolves.toMatchObject({
+        mode: { kind: 'live' },
+      });
+    } finally {
+      delete mutable.gameSessionMode;
     }
   });
 

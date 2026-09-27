@@ -61,7 +61,7 @@ export class PlatformSessionService {
       contractVersion: 1,
       attemptId: session.id,
       gameLevelId: this.config.gameLevelId,
-      mode: { kind: 'live' },
+      mode: sessionMode(this.config.gameSessionMode),
     };
   }
 
@@ -266,4 +266,15 @@ function readStoredPlatform(raw: unknown): StoredPlatform | null {
 
 function isRunSummary(value: unknown): value is RunSummary {
   return isRecord(value) && typeof value.outcome === 'string' && Array.isArray(value.decisions);
+}
+
+/** Подсказки guided включены целиком: политика по заданию пока не различается. */
+function sessionMode(kind: AppConfig['gameSessionMode']): ResolveResponse['mode'] {
+  if (kind === 'live') {
+    return { kind: 'live' };
+  }
+  return {
+    kind: 'guided',
+    hints: { immediateFeedback: true, suggestions: true, highlights: true, explanations: true },
+  };
 }

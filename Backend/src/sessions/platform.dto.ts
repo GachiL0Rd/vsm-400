@@ -93,9 +93,18 @@ export const resolveResponseSchema = z.strictObject({
   contractVersion: z.literal(1),
   attemptId: z.string().min(1),
   gameLevelId: z.string().min(1),
-  mode: z.strictObject({
-    kind: z.literal('live'),
-  }),
+  mode: z.discriminatedUnion('kind', [
+    z.strictObject({ kind: z.literal('live') }),
+    z.strictObject({
+      kind: z.literal('guided'),
+      hints: z.strictObject({
+        immediateFeedback: z.boolean(),
+        suggestions: z.boolean(),
+        highlights: z.boolean(),
+        explanations: z.boolean(),
+      }),
+    }),
+  ]),
 });
 
 export class ResolveResponseDto extends createZodDto(resolveResponseSchema) {}
