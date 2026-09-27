@@ -68,7 +68,7 @@ docker compose --profile app up --build -d
 | `CORS_ORIGINS` | Список origin через запятую, хотя бы один |
 | `PUBLIC_GAME_WS_URL` | `ws://` или `wss://`, адрес GameServer для клиента |
 | `COOKIE_SECURE` | `true` или `false`. По умолчанию `false`. В `production` только `true`, иначе старт падает |
-| `TRUST_PROXY` | Целое 0..32, по умолчанию `0`. Значение читается, но в Fastify уходит `false`: с 5.12.1 число хопов не включает доверие к `X-Forwarded-For`. Лимит считает адрес сокета |
+| `TRUST_PROXY` | Пусто, `false` или `0` — не доверять `X-Forwarded-For` (в адаптер уходит `false`). Иначе список через запятую: IP, CIDR или `loopback` / `linklocal` / `uniquelocal`. `true` и число хопов запрещены: Fastify 5.12 их не читает как доверие к заголовку |
 | `WEBHOOK_ALLOWED_HOSTS` | Hostname через запятую. Пусто — пустой список, фильтр хоста не включается. Непустое значение — только эти хосты. URL сводится к hostname |
 | `BOOTSTRAP_ADMIN_PASSWORD` | Не поле zod-объекта, проверяет `loadConfig`. Пусто — случайный пароль. Иначе минимум 10 символов. В `production` любое значение роняет старт |
 
@@ -80,6 +80,13 @@ docker compose --profile app up --build -d
 `POSTGRES_PORT=5433 docker compose up -d` и тот же порт в `DATABASE_URL`.
 `REDIS_PORT` — то же для Valkey. Переменные читает compose из `.env`, приложению
 они не нужны.
+
+Профиль `app` (`docker compose --profile app up`) собирает образ API с
+`NODE_ENV=production`. Секреты без подстановки по умолчанию: `docker compose config`
+падает, пока в `Backend/.env` (compose читает его сам) или в окружении нет
+`JWT_ACCESS_SECRET`, `GAME_TICKET_SECRET`, `GAME_SERVER_TOKEN`, `SEED_ENC_KEY`,
+`EXT_ID_PEPPER`. Текст: `задайте <ИМЯ>`. Значения из `.env.example` годятся
+для своей машины.
 
 ## Скрипты
 
@@ -108,13 +115,20 @@ docker compose --profile app up --build -d
 SameSite=Lax) и `vsm_refresh` (32 байта, 7 суток, Path=/api/v1/auth,
 SameSite=Strict). Оба HttpOnly, флаг Secure берётся из `COOKIE_SECURE`.
 Неверный логин и неверный пароль отвечают одинаково: 401 `INVALID_CREDENTIALS`.
-На логин — 20 попыток за 60 с на IP (IPv6 до /64) и 5 за 60 с на логин
-после trim и обрезки до 64 символов. `POST /api/v1/auth/password` — 5 за 60 с
-на пользователя. `X-Forwarded-For` не учитывается: в адаптер уходит `false`.
+На логин — 20 попыток за 60 с на IP, который видит Fastify (IPv6 до /64),
+и 5 за 60 с на логин после trim и обрезки до 64 символов.
+`POST /api/v1/auth/password` — 5 за 60 с на пользователя.
+Пустой `TRUST_PROXY` оставляет адрес сокета: `X-Forwarded-For` не читается.
+Список адресов прокси включает заголовок, и лимит с аудитом считают клиентский IP.
 Счётчик лежит в Redis (`auth:throttle:*`, база из `REDIS_URL`).
 
-`POST /api/v1/auth/refresh` вращает refresh. Повтор уже заменённого токена
-отзывает все сессии пользователя и пишет аудит. `POST /api/v1/auth/logout`
+`POST /api/v1/auth/refresh` вращает refresh. Два запроса одним токеном в окне
+10 с: победитель отвечает 200 и пишет новые cookie, проигравший — 409
+`REFRESH_RACE` без отзыва сессий и без нового `Set-Cookie`. Фронт не
+разлогинивает пользователя и повторяет исходный запрос: access уже обновил
+победивший ответ. Повтор заменённого refresh старше 10 с — 401 `REFRESH_REUSE`,
+все живые сессии отзываются, в аудит пишется `auth.refresh.reuse`.
+`POST /api/v1/auth/logout`
 отзывает текущую сессию и очищает cookies. `POST /api/v1/auth/password`
 принимает `{current, next}` (next от 10 символов), снимает `mustChangePassword`
 и отзывает остальные сессии. `GET /api/v1/auth/session` возвращает текущего
@@ -135,6 +149,8 @@ SameSite=Strict). Оба HttpOnly, флаг Secure берётся из `COOKIE_S
 
 Админ: `POST/GET /api/v1/admin/users`, `PATCH /api/v1/admin/users/:id`,
 `POST /api/v1/admin/users/:id/reset-password`, `GET /api/v1/admin/audit`.
+Свою роль и `disabled` админ не меняет: 409 `SELF_LOCKOUT`. Если после
+изменения не останется активного `ADMIN` — 409 `LAST_ADMIN`.
 Позывной — 4 символа `[A-Z0-9]`, пароль новой учётки возвращается один раз.
 Оргструктура: `GET /api/v1/org/depots`, `/org/depots/:id/brigades`,
 `/org/brigades/:id`. Логины участников видит только ADMIN. CHIEF и CONDUCTOR
@@ -155,7 +171,7 @@ SameSite=Strict). Оба HttpOnly, флаг Secure берётся из `COOKIE_S
 - Уведомление `scenario` — проводникам, у которых рейс или назначение того же класса вагона, что у опубликованной версии. `advice` — понедельник 09:00 МСК, компетенция ниже `weakScore` и ниже среднего депо, в тексте название сценария. `challenge` — понедельник 00:00 МСК, тема недели = самая слабая компетенция депо, бонус `challengePoints` в леджер с причиной `CHALLENGE`. Назначение пишет названия сценариев.
 - `GET /api/v1/notifications` — `{ unreadCount, items, nextCursor }`. Элемент: `{ id, kind, title, text, at, unread, link? }`.
 - `POST /api/v1/notifications/:id/read`, `POST /api/v1/notifications/read-all`.
-- `GET /api/v1/notifications/stream` — SSE, событие `new-notification`, heartbeat 25 с.
+- `GET /api/v1/notifications/stream` — SSE, событие `new-notification`, heartbeat 25 с. На heartbeat сессия access (`sid`) должна быть живой, учётка не отключена: иначе поток закрывается.
 
 ### Сценарии
 
@@ -174,7 +190,13 @@ SameSite=Strict). Оба HttpOnly, флаг Secure берётся из `COOKIE_S
 
 Ключ `X-API-Key` выпускает ADMIN: `POST /api/v1/admin/api-clients`.
 Внешний контур — `/api/integration/v1`: сотрудник по табельному номеру (хранится
-только HMAC), прогресс, оргструктура, вебхуки. Curl и проверка подписи —
+только HMAC), прогресс, оргструктура, вебхуки.
+`DELETE /api/integration/v1/employees/:extId` (scope `employees:write`) ставит
+`disabledAt` и отзывает сессии. Повтор — 204. Неизвестный номер — 404.
+`ADMIN` и `METHODIST` — 403 `ROLE_ESCALATION`. Повторный `PUT` по отключённому
+номеру — 409 `EMPLOYEE_DISABLED`, ключ HR учётку не включает: это `PATCH`
+админа. Уровень в прогрессе — пожизненная сумма положительных `RUN`,
+`ACHIEVEMENT` и `CHALLENGE`, баллы — ещё не сгоревшие. Curl и проверка подписи —
 в [docs/integration.md](docs/integration.md).
 
 ### Кабинет

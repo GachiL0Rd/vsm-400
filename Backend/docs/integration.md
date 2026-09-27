@@ -9,7 +9,7 @@ scope дают разные коды: `API_KEY_REVOKED` и `API_KEY_SCOPE`.
 
 | Scope | Ручка |
 | --- | --- |
-| `employees:write` | `PUT /api/integration/v1/employees/:extId` |
+| `employees:write` | `PUT` и `DELETE /api/integration/v1/employees/:extId` |
 | `progress:read` | `GET /api/integration/v1/employees/:extId/progress` |
 | `org:read` | `GET /api/integration/v1/org` |
 | `webhooks:manage` | `POST/GET/DELETE /api/integration/v1/webhooks` |
@@ -32,6 +32,14 @@ scope дают разные коды: `API_KEY_REVOKED` и `API_KEY_SCOPE`.
 `mustChangePassword` есть только при создании. В ответе всегда есть `userId`:
 по нему LMS связывает события, потому что открытый `extId` из базы не возвращается.
 
+`DELETE /api/integration/v1/employees/:extId` ставит `disabledAt` и отзывает
+все `authSession` (та же ветка, что админское `disabled: true`). Повтор — 204
+без второй записи аудита. Неизвестный `extId` — 404 `EMPLOYEE_NOT_FOUND`.
+`ADMIN` и `METHODIST` — 403 `ROLE_ESCALATION`. `PUT` после отключения не
+включает учётку и не меняет поля: 409 `EMPLOYEE_DISABLED`. Включить может
+только администратор кабинета. Аудит отключения: `user.updated`,
+`actorType` `API_CLIENT`, `actorId` — id ключа.
+
 ```bash
 curl -sS -X PUT "http://127.0.0.1:3000/api/integration/v1/employees/TAB-100" \
   -H "X-API-Key: vsm_<id>_<secret>" \
@@ -39,9 +47,12 @@ curl -sS -X PUT "http://127.0.0.1:3000/api/integration/v1/employees/TAB-100" \
   -d '{"role":"CONDUCTOR","brigadeCode":"12","depotCode":"MSK","position":"Проводник","grade":"TRAINEE"}'
 ```
 
-`GET .../progress` читает таблицы напрямую: позывной, грейд, уровень по живым
-очкам леджера, компетенции, счётчики рейсов, полученные ачивки, `lastRunAt`,
-последняя рекомендация на грейд.
+`GET .../progress` читает таблицы напрямую: позывной, грейд, компетенции,
+счётчики рейсов, полученные ачивки, `lastRunAt`, последняя рекомендация на грейд.
+`level` — `levelFor` от пожизненной суммы положительных `RUN`, `ACHIEVEMENT` и
+`CHALLENGE` (сгоревшие тоже остаются). `points` — те же причины, но только ещё
+не сгоревшие. `EXPIRE` и `ADJUST` в оба счёта не входят. Это те же функции, что
+у кабинета.
 
 `GET /api/integration/v1/org` — депо, бригады и число сотрудников с `disabledAt = null`.
 
@@ -71,9 +82,16 @@ curl -sS -X POST "http://127.0.0.1:3000/api/integration/v1/webhooks" \
 Заголовки: `X-VSM-Event`, `X-VSM-Delivery`, `X-VSM-Timestamp` (unix-секунды),
 `X-VSM-Signature: sha256=<hex>`. Подпись — HMAC-SHA256 от строки
 `timestamp + "." + сырое тело`, ключ — секрет подписки как UTF-8 строка.
-Таймаут 5 с, редиректы не следуем. Неуспех: пауза 30 с, 60 с, 120 с, … до 7-й
-попытки; восьмая переводит доставку в `FAILED`. Повтор того же события для той
-же подписки новую доставку не создаёт.
+Таймаут 5 с, редиректы не следуем. Неуспех сети, HTTP не 2xx и ошибка DNS
+(временный резолв): пауза 30 с, 60 с, 120 с, … до 7-й попытки; восьмая переводит
+доставку в `FAILED`. `url`, `https`, allowlist и SSRF — сразу `FAILED`, без
+повтора. Повтор того же события для той же подписки новую доставку не создаёт.
+
+SSRF режет loopback, link-local, unique-local, RFC1918, CGNAT, multicast,
+`0.0.0.0/8`, `240.0.0.0/4`, документационные `192.0.0.0/24`, `192.0.2.0/24`,
+`198.51.100.0/24`, `203.0.113.0/24`, бенчмарк `198.18.0.0/15`, 6to4 `2002::/16`.
+NAT64 `64:ff9b::/96` и `64:ff9b:1::/48` не закрываются целиком: встроенный IPv4
+проверяется тем же списком. Имена metadata и `*.localhost` тоже запрещены.
 
 Слушаем `run.recorded`, а не сырой `run.completed`: к этому моменту очки уже
 лежат в леджере.
