@@ -12,10 +12,13 @@ export const openSessionSchema = z.strictObject({
 
 export class OpenSessionDto extends createZodDto(openSessionSchema) {}
 
+/** Верх Date в JS. Выше new Date даёт Invalid Date и 500 на записи журнала. */
+const MAX_CLIENT_TS_MS = 8_640_000_000_000_000;
+
 export const decisionSchema = z.strictObject({
   seq: z.number().int().nonnegative(),
   choiceId: z.string().min(1).max(64),
-  clientTs: z.number().int().nonnegative().optional(),
+  clientTs: z.number().int().nonnegative().max(MAX_CLIENT_TS_MS).optional(),
 });
 
 export class DecisionDto extends createZodDto(decisionSchema) {}
