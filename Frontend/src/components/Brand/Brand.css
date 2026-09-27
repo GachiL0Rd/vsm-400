@@ -1,0 +1,23 @@
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 30px 24px;
+  background: var(--signal);
+  color: var(--on-signal);
+  font-size: 28px;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  line-height: 1;
+}
+
+.brand__word {
+  text-box: trim-both cap alphabetic;
+}
+
+.brand__stairs {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  fill: currentColor;
+}

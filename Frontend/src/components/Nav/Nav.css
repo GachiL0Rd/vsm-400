@@ -85,35 +85,13 @@
     background: var(--white);
   }
 
-  /* Марка — синяя плашка. Слово по центру по вертикали, ступенька вплотную к нему. */
   .nav__brand {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 30px 24px;
-    background: var(--signal);
-    color: var(--on-signal);
-    font-size: 28px;
-    font-weight: 800;
-    letter-spacing: -0.04em;
-    line-height: 1;
+    display: block;
+    color: inherit;
     text-decoration: none;
   }
 
-  /* Обрезка до высоты прописных: равные поля сверху и снизу дают визуальный центр,
-     а не центр строки с запасом под выносные элементы. */
-  .nav__word {
-    text-box: trim-both cap alphabetic;
-  }
-
-  .nav__stairs {
-    flex: none;
-    width: 20px;
-    height: 20px;
-    fill: currentColor;
-  }
-
-  .nav__brand:hover {
+  .nav__brand:hover .brand {
     background: var(--signal-hover);
   }
 
@@ -136,16 +114,24 @@
 
   .nav__me {
     display: flex;
-    align-items: center;
-    gap: 12px;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 4px;
     margin-top: auto;
     padding: 12px 24px;
     color: var(--ink);
     line-height: 1.25;
+  }
+
+  .nav__profile {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    color: inherit;
     text-decoration: none;
   }
 
-  .nav__me:hover b {
+  .nav__profile:hover b {
     text-decoration: underline;
   }
 
@@ -153,5 +139,24 @@
     display: block;
     color: var(--iron);
     font-size: 13px;
+  }
+
+  .nav__logout {
+    align-self: flex-start;
+    margin-left: 52px;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--iron);
+    font: inherit;
+    font-size: 13px;
+    cursor: pointer;
+  }
+}
+
+@media (min-width: 900px) and (hover: hover) {
+  .nav__logout:hover {
+    color: var(--ink);
+    text-decoration: underline;
   }
 }

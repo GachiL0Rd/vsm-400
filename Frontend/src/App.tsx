@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { Route, Routes, useLocation } from 'react-router';
+import { AuthGate } from './components/AuthGate/AuthGate';
 import { Nav } from './components/Nav/Nav';
 import { NotFound } from './components/NotFound/NotFound';
 import { notices, profile } from './demo';
@@ -12,6 +13,14 @@ import { ShiftScreen } from './screens/ShiftScreen/ShiftScreen';
 import './App.css';
 
 function App() {
+  return (
+    <AuthGate>
+      <Cabinet />
+    </AuthGate>
+  );
+}
+
+function Cabinet() {
   const { key } = useLocation();
   const unread = notices.filter((notice) => notice.unread).length;
   const mainRef = useRef<HTMLElement>(null);

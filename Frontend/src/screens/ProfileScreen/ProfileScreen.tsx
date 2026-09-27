@@ -1,3 +1,4 @@
+import { useLogout } from '../../api/auth';
 import { AchievementBadge } from '../../components/AchievementBadge/AchievementBadge';
 import { Avatar } from '../../components/Avatar/Avatar';
 import { Meter } from '../../components/Meter/Meter';
@@ -13,6 +14,7 @@ const WEEK = [6, 5, 4, 3, 2, 1, 0];
 
 export function ProfileScreen() {
   usePageTitle('Профиль');
+  const logout = useLogout();
 
   return (
     <div className="screen">
@@ -25,6 +27,13 @@ export function ProfileScreen() {
       <StatsBlock />
       <SkillsBlock />
       <InsigniaBlock />
+      <button
+        type="button"
+        className="btn btn--ghost profile__logout"
+        onClick={() => logout.mutate()}
+      >
+        Выйти
+      </button>
     </div>
   );
 }

@@ -173,7 +173,8 @@ button {
   margin-top: 0;
 }
 
-.btn[aria-disabled="true"] {
+.btn[aria-disabled="true"],
+.btn:disabled {
   border-color: var(--cloud);
   background: var(--cloud);
   color: var(--iron);
@@ -181,9 +182,38 @@ button {
 }
 
 /* pointer-events: none убрал бы cursor: not-allowed, поэтому гасим только сдвиг :active. */
-.btn[aria-disabled="true"]:active {
+.btn[aria-disabled="true"]:active,
+.btn:disabled:active {
   border-bottom-width: 3px;
   margin-top: 0;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.field__input {
+  width: 100%;
+  padding: 12px 14px;
+  border: 2px solid var(--ink);
+  border-radius: var(--radius-s);
+  background: var(--white);
+  color: var(--ink);
+  font: inherit;
+  font-size: 17px;
+}
+
+.field__input--error {
+  border-color: var(--stop);
+}
+
+.field__error {
+  margin: 0;
+  color: var(--stop);
+  font-size: 14px;
+  font-weight: 500;
 }
 
 /* Пары «подпись — значение» в строку */

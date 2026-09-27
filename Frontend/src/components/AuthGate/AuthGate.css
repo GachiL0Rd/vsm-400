@@ -1,0 +1,10 @@
+.auth-gate {
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 16px;
+  min-height: 100dvh;
+  padding: 24px 16px;
+  color: var(--iron);
+  font-size: 17px;
+}

@@ -15,9 +15,12 @@
     "check:biome": "biome ci --error-on-warnings .",
     "check:write": "biome check --write .",
     "typecheck": "tsc -b",
-    "verify": "npm run check:biome && npm run typecheck && npm run build"
+    "verify": "npm run check:biome && npm run typecheck && npm run build",
+    "api:types": "npx --yes openapi-typescript@7.13.0 http://127.0.0.1:3000/api/openapi.json -o src/api/schema.d.ts"
   },
   "dependencies": {
+    "@tanstack/react-query": "5.104.0",
+    "openapi-fetch": "0.17.0",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "react-router": "8.4.0"
