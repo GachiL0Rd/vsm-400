@@ -245,7 +245,8 @@ abort и expire вызывают `releaseSession`: у `APPROVED` этой сес
 Якорь обязателен только если он уже есть в тексте этого узла. Иначе модель
 добавила бы факт в узел, где якоря не было. Такой ответ не пишется в пул,
 счётчик `llm:rejected`, текст — в список `llm:errors` (20 последних).
-Задача не ретраится: повтор с той же температурой не чинит смысл.
+Кривой JSON или чужой набор id — один повтор с напоминанием формата; второй
+такой провал — `generation-unparsed` без строки в пуле, смысл и якоря не повторяются.
 Сетевая ошибка ретраится.
 
 ## Судья и сходство
@@ -333,7 +334,7 @@ GigaChat-2-Max (`GigaChat-2-Max:2.0.30.01`). Старые варианты уз�
 | POST | `/api/v1/admin/scenarios/:id/variants/:variantId/approve` | — |
 | POST | `/api/v1/admin/scenarios/:id/variants/:variantId/reject` | `{ reason }` |
 | POST | `/api/v1/admin/scenarios/:id/variants/generate` | `{ nodeId?, count? }`, count 1..20 |
-| GET | `/api/v1/admin/llm/status` | провайдер, модель, очередь, пул, ошибки |
+| GET | `/api/v1/admin/llm/status` | провайдер, модель, очередь, пул, ошибки, повторы |
 
 Повторное approve/reject уже разобранного варианта — 409 `CONFLICT`.
 `none` и сценарий без `llm.enabled` на generate — 409 `LLM_DISABLED`.
