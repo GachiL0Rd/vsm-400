@@ -1,7 +1,7 @@
 # Игровые объекты и взаимодействия текущего demo
 
-**Версия документа:** 0.2.0  
-**Статус:** Draft  
+**Версия документа:** 0.3.0
+**Статус:** Draft
 **Дата редакции:** 2026-09-27
 
 ## 1. Назначение
@@ -86,7 +86,15 @@ prepare-extinguisher
 use-extinguisher
 ```
 
-`use-extinguisher` требует подходящего state и цели пожара и изменяет server-side fire state/field.
+Mounted и held варианты используют один domain item, но разные interaction targets:
+
+- когда огнетушитель установлен на стене, игрок кликает по самому объекту и может осмотреть либо взять его;
+- когда огнетушитель находится в руке, игрок кликает по собственной entity и получает `inspect-extinguisher` form action;
+- inspection modal показывает чеку, пломбу, давление, состояние корпуса и признак использования;
+- снять чеку можно только у held extinguisher через input модального action;
+- `use-extinguisher` появляется только рядом с публичным fire target, если чека снята и огнетушитель ещё не использован.
+
+Fire target является публичным runtime object вида `fire:<cellId>`. Применение огнетушителя является server-authoritative: оно помечает огнетушитель использованным, выключает локальный source и уменьшает fire field.
 
 ## 5. Климат-контроль
 
@@ -110,12 +118,17 @@ interface ClimatePanelState {
 
 ### Actions
 
+Клик по `climate-control` выдаёт form-action `climate-control`. Modal показывает последнее сохранённое наблюдение:
+
 ```text
-open-climate-panel
-refresh-climate-data
+connection
+temperatureC
+pressureKPa
+smokeDetected
+updatedAt
 ```
 
-При `offline` refresh не обновляет показания и создаёт публичный error/status result.
+Кнопка `Обновить данные` отправляет `{ refresh: true }` через тот же opaque action handle. Сервер заново вычисляет средние показания вагона и обновляет `updatedAt`. Пока connection baseline всегда `connected`; offline/error semantics остаются будущим расширением.
 
 ## 6. Стоп-кран
 
@@ -132,10 +145,11 @@ interface EmergencyBrakeState {
 
 ```text
 inspect-emergency-brake
+remove-emergency-brake-seal
 activate-emergency-brake
 ```
 
-Если для активации нужно сначала сорвать пломбу, это может быть отдельным action либо частью типизированной реализации после UI spike.
+Осмотр доступен и во время приёмки. Во время движения modal сначала позволяет сорвать пломбу; только после этого отдельным действием становится доступна активация. Снятие пломбы само по себе поезд не останавливает. Активация завершает попытку через `emergency-brake-used` / `route-safely-interrupted`.
 
 ## 7. Связь с машинистом
 

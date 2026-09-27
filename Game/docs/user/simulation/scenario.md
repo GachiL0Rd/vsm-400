@@ -1,7 +1,7 @@
 # Scenario: конфигурация конкретной игровой попытки
 
-**Версия документа:** 0.6.0  
-**Статус:** Draft / implementation baseline  
+**Версия документа:** 0.7.0
+**Статус:** Draft / implementation baseline
 **Дата редакции:** 2026-09-27
 
 ## 1. Ответственность
@@ -78,13 +78,13 @@ preDeparture:
     expectedAtDeparture: homeAnchor
 ```
 
-`expectedAtDeparture` является проверяемым условием качества прохождения, а не обязательным техническим блокером перехода. Если игрок уехал с журналом в руках, simulation остаётся валидной, но assessment может зафиксировать нарушение.
+Возврат заполненного и принятого журнала является gate перехода из `preDeparture`. Пока журнал не возвращён, `originStop` не начинается. Некритические замечания (например санитарное) могут быть зафиксированы в журнале и не блокируют переход; критическая техническая проблема активирует terminal rule.
 
 Посадка пассажиров на исходной станции выражается отдельной `originStop` после `preDeparture`, а не расширением механики приёмки.
 
 ## 4. Переход от приёмки к посадке
 
-Истечение `preDeparture.duration` завершает окно приёмки и переводит Scenario к `originStop`, если она определена. Само отправление происходит после завершения `originStop.dwell`.
+Истечение `preDeparture.duration` завершает плановое окно приёмки, но переход к `originStop` происходит только после возврата заполненного и принятого журнала. Если журнал возвращён заранее, переход происходит в плановый момент. Если журнал сдан позже, переход происходит сразу после успешной сдачи, а последующее расписание сдвигается относительно фактического завершения приёмки.
 
 Если `originStop` отсутствует, Scenario может перейти к departure напрямую.
 
@@ -250,7 +250,29 @@ passenger[awake]:not([hungry])
 
 Selector semantics вынесены в `simulation/selectors.md`.
 
-## 11. Scenario operations baseline
+## 11. Scripted incidents
+
+Scenario может планировать небольшой набор явных incident definitions отдельно от route stages. Baseline сейчас использует `fire` incident:
+
+```ts
+interface FireScenarioIncident {
+  id: string;
+  kind: "fire";
+  startAfterDepartureUs: SimTimeUs;
+  failureLocationId: string;
+  initialFire: number;
+  sourcePerSecond: number;
+  criticalFire: number;
+}
+```
+
+`failureLocationId` обязан ссылаться на Level failure location, разрешающую `fire`. Время отсчитывается от **фактического отправления**, поэтому позднее завершение приёмки сдвигает incident вместе с оставшимся расписанием.
+
+При старте incident GameAttempt включает source и начальную интенсивность, затем планирует periodic field steps. Достижение `criticalFire` подаёт signal в обычный terminal-rule механизм; incident сам по себе не содержит отдельный workflow.
+
+Текущий baseline задаёт один `cabin-fire` через 10 минут после отправления в `fire.cabin`.
+
+## 12. Scenario operations baseline
 
 Baseline operations:
 
@@ -265,7 +287,7 @@ schedule another scenario operation/event
 
 Scenario не получает универсальный `patch SimulationState` и не исполняет произвольный JS/TS code.
 
-## 12. Terminal rules
+## 13. Terminal rules
 
 Досрочное завершение не требует отдельного emergency stage.
 
@@ -291,11 +313,15 @@ fire-unsalvageable
 
 `outcomeId` описывает факт/причину завершения, а не моральную оценку действия игрока.
 
-Например применение стоп-крана в правильной аварийной ситуации может:
+Применение аварийного тормоза является управляемым ранним завершением. Во время движения игрок сначала снимает пломбу, а отдельным следующим действием активирует тормоз. Только активация посылает `emergency-brake-used` и завершает попытку через terminal rule.
 
-1. завершить попытку через terminal rule;
+Например применение аварийного тормоза в правильной аварийной ситуации может:
+
+1. завершить попытку через terminal rule `route-safely-interrupted`;
 2. считаться корректным и безопасным решением;
 3. привести к высокому `safety`, хотя маршрут физически не завершён.
+
+Сорванная пломба без активации остаётся отдельным наблюдаемым фактом для будущего assessment.
 
 Assessment отдельно определяет качество действий и итоговые `safety`/`customerSatisfaction`.
 

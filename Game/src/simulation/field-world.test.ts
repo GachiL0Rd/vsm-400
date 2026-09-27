@@ -88,6 +88,30 @@ describe('field world', () => {
     expect(sourced.snapshot()[0]?.fire).toBe(0.5);
   });
 
+  it('burns finite fuel with dt and gates neighbour spread from remaining fuel', () => {
+    const fields = createFieldWorld(twoCells([link('ab', 'a', 'b', 1, 0)]), {
+      cells: [
+        material('a', {
+          initialFire: 1,
+          initialFuel: 1,
+          burnRate: 0.2,
+          growth: 0.2,
+          flammability: 1,
+        }),
+        material('b', {
+          initialFuel: 0.2,
+          spreadFuelScale: 1,
+          spreadGateThreshold: 0.5,
+          spreadGain: 0.5,
+        }),
+      ],
+    });
+
+    fields.step(2);
+    expect(fields.snapshot()[0]).toMatchObject({ fuel: 0.6, fire: 1.4 });
+    expect(fields.snapshot()[1]?.fire).toBeCloseTo(0.3);
+  });
+
   it('applies pressure permeability, leak, and a runtime door scale', () => {
     const fields = createFieldWorld(twoCells([link('ab', 'a', 'b', 0, 1)]), {
       cells: [
@@ -195,5 +219,24 @@ describe('field world', () => {
     expect(() => fields.step()).toThrow(RangeError);
     expect(fields.snapshot()).toEqual(before);
     expect(fields.stepCount).toBe(0);
+  });
+});
+
+// Direct pressure assignment is used by distance-based pressure incidents rather
+// than the stencil pressure transport model.
+describe('direct pressure profile', () => {
+  it('sets one cell pressure and emits threshold crossings', () => {
+    const grid = createGridWorld({ cells: [cell('a', 0)], edges: [] });
+    const fields = createFieldWorld(grid, {
+      cells: [material('a', { pressureThreshold: 2 })],
+    });
+
+    expect(fields.setPressure('a', 3)).toEqual([
+      { field: 'pressure', cellId: 'a', direction: 'reached', value: 3, step: 0 },
+    ]);
+    expect(fields.snapshot()[0]?.pressure).toBe(3);
+    expect(fields.setPressure('a', 1)).toEqual([
+      { field: 'pressure', cellId: 'a', direction: 'cleared', value: 1, step: 0 },
+    ]);
   });
 });

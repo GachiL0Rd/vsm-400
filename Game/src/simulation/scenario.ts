@@ -43,6 +43,41 @@ const terminalRuleSchema = z.object({
   outcomeId: idSchema,
 });
 
+const fireIncidentSchema = z.object({
+  id: idSchema,
+  kind: z.literal('fire'),
+  startAfterDepartureUs: simTimeSchema,
+  failureLocationId: idSchema,
+  initialFire: z.number().nonnegative(),
+  sourcePerSecond: z.number().nonnegative(),
+  criticalFire: z.number().positive(),
+});
+
+const pressureLeakIncidentSchema = z.object({
+  id: idSchema,
+  kind: z.literal('pressure-leak'),
+  startAfterDepartureUs: simTimeSchema,
+  failureLocationId: idSchema,
+  baseCabinPressureKPa: z.number().positive(),
+  attenuationKPaPerMeter: z.number().nonnegative(),
+  whistleDistanceM: z.number().nonnegative(),
+  earsBlockedDistanceM: z.number().nonnegative(),
+  criticalCabinPressureKPa: z.number().positive(),
+  stages: z
+    .array(
+      z.object({
+        afterStartUs: simTimeSchema,
+        pressureLossAtSourceKPa: z.number().nonnegative(),
+      }),
+    )
+    .min(1),
+});
+
+const incidentSchema = z.discriminatedUnion('kind', [
+  fireIncidentSchema,
+  pressureLeakIncidentSchema,
+]);
+
 export const scenarioDefinitionSchema = z.object({
   schemaVersion: z.literal(1),
   id: idSchema,
@@ -67,6 +102,7 @@ export const scenarioDefinitionSchema = z.object({
   }),
   passengers: z.array(passengerSchema),
   servicePlan: z.object({ windows: z.array(serviceWindowSchema) }).default({ windows: [] }),
+  incidents: z.array(incidentSchema).default([]),
   terminalRules: z.array(terminalRuleSchema).default([]),
 });
 
@@ -74,6 +110,7 @@ export type ScenarioDefinition = z.infer<typeof scenarioDefinitionSchema>;
 export type ScenarioPassengerDefinition = ScenarioDefinition['passengers'][number];
 export type ScenarioStopDefinition = ScenarioDefinition['route']['stops'][number];
 export type TerminalRuleDefinition = ScenarioDefinition['terminalRules'][number];
+export type ScenarioIncidentDefinition = ScenarioDefinition['incidents'][number];
 
 export interface LoadedScenario {
   readonly definition: ScenarioDefinition;
@@ -181,6 +218,33 @@ export const BASELINE_SCENARIO_DEFINITION = {
       appearanceId: 'passenger.demo-3',
     },
   ],
+  incidents: [
+    {
+      id: 'cabin-fire',
+      kind: 'fire',
+      startAfterDepartureUs: secondsToSimTimeUs(10 * 60),
+      failureLocationId: 'fire.cabin',
+      initialFire: 0.35,
+      sourcePerSecond: 0.015,
+      criticalFire: 2.5,
+    },
+    {
+      id: 'entry-pressure-leak',
+      kind: 'pressure-leak',
+      startAfterDepartureUs: secondsToSimTimeUs(35 * 60),
+      failureLocationId: 'pressure.entry',
+      baseCabinPressureKPa: 101.3,
+      attenuationKPaPerMeter: 5,
+      whistleDistanceM: 1.5,
+      earsBlockedDistanceM: 1.0,
+      criticalCabinPressureKPa: 80,
+      stages: [
+        { afterStartUs: 0, pressureLossAtSourceKPa: 4 },
+        { afterStartUs: secondsToSimTimeUs(2 * 60), pressureLossAtSourceKPa: 12 },
+        { afterStartUs: secondsToSimTimeUs(4 * 60), pressureLossAtSourceKPa: 18 },
+      ],
+    },
+  ],
   servicePlan: {
     windows: [
       {
@@ -215,6 +279,11 @@ export const BASELINE_SCENARIO_DEFINITION = {
       signal: 'fire-unsalvageable',
       outcomeId: 'wagon-unsalvageable',
     },
+    {
+      id: 'pressure-critical',
+      signal: 'pressure-critical',
+      outcomeId: 'wagon-unserviceable',
+    },
   ],
 } as const;
 
@@ -230,6 +299,7 @@ function validateScenarioReferences(definition: ScenarioDefinition, level: Loade
   validateFlows(definition);
   validateScenarioIds(definition);
   validateServiceWindows(definition);
+  validateIncidents(definition, level);
 }
 
 function validateLevelCompatibility(definition: ScenarioDefinition, level: LoadedLevel): void {
@@ -309,6 +379,49 @@ function validateScenarioIds(definition: ScenarioDefinition): void {
     definition.terminalRules.map((item) => item.signal),
     'terminal signal',
   );
+}
+
+function validateIncidents(definition: ScenarioDefinition, level: LoadedLevel): void {
+  assertUnique(
+    definition.incidents.map((item) => item.id),
+    'incident',
+  );
+  const failures = new Map(level.definition.failureLocations.map((item) => [item.id, item]));
+  for (const incident of definition.incidents) validateIncident(incident, failures);
+}
+
+function validateIncident(
+  incident: ScenarioIncidentDefinition,
+  failures: ReadonlyMap<string, LoadedLevel['definition']['failureLocations'][number]>,
+): void {
+  const location = failures.get(incident.failureLocationId);
+  if (location === undefined) {
+    throw new RangeError(`Unknown failure location ${incident.failureLocationId}`);
+  }
+  if (incident.kind === 'fire') {
+    if (!location.kinds.includes('fire')) {
+      throw new RangeError(`Failure location ${incident.failureLocationId} does not allow fire`);
+    }
+    return;
+  }
+  if (!location.kinds.includes('pressure-leak')) {
+    throw new RangeError(
+      `Failure location ${incident.failureLocationId} does not allow pressure leak`,
+    );
+  }
+  validatePressureStages(incident);
+}
+
+function validatePressureStages(
+  incident: Extract<ScenarioIncidentDefinition, { kind: 'pressure-leak' }>,
+): void {
+  let previous = -1;
+  for (const stage of incident.stages) {
+    if (stage.afterStartUs <= previous) {
+      throw new RangeError(`Pressure incident ${incident.id} stages must be strictly ordered`);
+    }
+    previous = stage.afterStartUs;
+  }
 }
 
 function validateServiceWindows(definition: ScenarioDefinition): void {

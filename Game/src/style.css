@@ -52,3 +52,30 @@ body {
   padding: 8px 12px;
   cursor: pointer;
 }
+
+.game-form-dialog {
+  min-width: min(420px, calc(100vw - 32px));
+  color: #f2ead6;
+  background: #10232c;
+  border: 1px solid #f2ead699;
+}
+
+.game-form-dialog::backdrop {
+  background: #0008;
+}
+
+.game-form-dialog form,
+.game-form-dialog label {
+  display: grid;
+  gap: 6px;
+}
+
+.game-form-dialog form {
+  gap: 12px;
+}
+
+.game-form-dialog__controls {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}

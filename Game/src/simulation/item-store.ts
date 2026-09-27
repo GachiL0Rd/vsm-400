@@ -7,6 +7,16 @@ export type ExtinguisherPressure = 'low' | 'normal' | 'high';
 export type ExtinguisherDamage = 'none' | 'scratch' | 'dent';
 export type ConsumableKind = 'food' | 'drink';
 
+export interface AcceptanceJournalEdit {
+  readonly communication: CheckState;
+  readonly extinguisher: CheckState;
+  readonly climate: CheckState;
+  readonly emergencyBrake: CheckState;
+  readonly sanitation: SanitationCheckState;
+  readonly note: string;
+  readonly accepted: boolean;
+}
+
 export interface ItemWorldConfig {
   readonly journal: {
     readonly id: ItemId;
@@ -42,6 +52,25 @@ export interface AcceptanceJournalState {
   readonly note: string;
   readonly accepted: boolean;
   readonly submitted: boolean;
+}
+
+export function acceptanceJournalIsComplete(journal: AcceptanceJournalState): boolean {
+  return (
+    journal.communication !== 'unset' &&
+    journal.extinguisher !== 'unset' &&
+    journal.climate !== 'unset' &&
+    journal.emergencyBrake !== 'unset' &&
+    journal.sanitation !== 'unset'
+  );
+}
+
+export function acceptanceJournalHasCriticalProblem(journal: AcceptanceJournalState): boolean {
+  return (
+    journal.communication === 'problem' ||
+    journal.extinguisher === 'problem' ||
+    journal.climate === 'problem' ||
+    journal.emergencyBrake === 'problem'
+  );
 }
 
 export interface ExtinguisherState {
@@ -100,6 +129,7 @@ export interface ItemStore {
   ): AcceptanceJournalState;
   setJournalSanitation(actorId: EntityId, value: SanitationCheckState): AcceptanceJournalState;
   setJournalNote(actorId: EntityId, note: string): AcceptanceJournalState;
+  editJournal(actorId: EntityId, edit: AcceptanceJournalEdit): AcceptanceJournalState;
   markJournalAccepted(actorId: EntityId): AcceptanceJournalState;
   returnJournal(actorId: EntityId): AcceptanceJournalState;
   inspectExtinguisher(actorId: EntityId): ExtinguisherState;
@@ -189,6 +219,7 @@ class ItemRuntime implements ItemStore {
     this.precheck(() => {
       this.requirePlayerAt(actorId, this.config.journal.homeCellId);
       if (this.journal.location !== 'anchor') throw new RangeError('Journal is not at its anchor');
+      if (this.journal.submitted) throw new RangeError('Journal has already been submitted');
       this.requireFreeHand(actorId);
     });
     return this.commit(actorId, this.config.journal.id, () => {
@@ -227,6 +258,26 @@ class ItemRuntime implements ItemStore {
       if (typeof note !== 'string') throw new RangeError('Journal note must be a string');
     });
     this.journal.note = note;
+    return this.journalState();
+  }
+
+  editJournal(actorId: EntityId, edit: AcceptanceJournalEdit): AcceptanceJournalState {
+    this.precheck(() => {
+      this.requireHolder(actorId, this.config.journal.id);
+      if (!isCheckState(edit.communication)) throw new RangeError('Communication entry is invalid');
+      if (!isCheckState(edit.extinguisher)) throw new RangeError('Extinguisher entry is invalid');
+      if (!isCheckState(edit.climate)) throw new RangeError('Climate entry is invalid');
+      if (!isCheckState(edit.emergencyBrake)) {
+        throw new RangeError('Emergency brake entry is invalid');
+      }
+      if (!isSanitation(edit.sanitation)) throw new RangeError('Sanitation entry is invalid');
+      if (typeof edit.note !== 'string' || edit.note.length > 1000) {
+        throw new RangeError('Journal note must be a string up to 1000 characters');
+      }
+      if (typeof edit.accepted !== 'boolean')
+        throw new RangeError('Journal accepted flag is invalid');
+    });
+    Object.assign(this.journal, edit);
     return this.journalState();
   }
 

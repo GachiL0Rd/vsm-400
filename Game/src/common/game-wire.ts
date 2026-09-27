@@ -131,6 +131,86 @@ export const publicWorldSchema = z.object({
 });
 export type PublicWorldView = z.infer<typeof publicWorldSchema>;
 
+export const acceptanceJournalInputSchema = z
+  .object({
+    communication: z.enum(['unset', 'ok', 'problem']),
+    extinguisher: z.enum(['unset', 'ok', 'problem']),
+    climate: z.enum(['unset', 'ok', 'problem']),
+    emergencyBrake: z.enum(['unset', 'ok', 'problem']),
+    sanitation: z.enum(['unset', 'clean', 'issue']),
+    note: z.string().max(1000),
+    accepted: z.boolean(),
+  })
+  .strict();
+export type AcceptanceJournalInput = z.infer<typeof acceptanceJournalInputSchema>;
+
+export const extinguisherInspectionValueSchema = z.object({
+  pin: z.enum(['present', 'removed']),
+  seal: z.enum(['intact', 'broken']),
+  pressure: z.enum(['low', 'normal', 'high']),
+  bodyDamage: z.enum(['none', 'scratch', 'dent']),
+  used: z.boolean(),
+  canRemovePin: z.boolean(),
+});
+export type ExtinguisherInspectionValue = z.infer<typeof extinguisherInspectionValueSchema>;
+
+export const extinguisherInspectionInputSchema = z.object({ removePin: z.boolean() }).strict();
+export type ExtinguisherInspectionInput = z.infer<typeof extinguisherInspectionInputSchema>;
+
+export const climateControlValueSchema = z.object({
+  connection: z.enum(['connected', 'disconnected']),
+  temperatureC: z.number().finite(),
+  pressureKPa: z.number().nonnegative(),
+  smokeDetected: z.boolean(),
+  updatedAt: simTimeSchema,
+  canRefresh: z.boolean(),
+});
+export type ClimateControlValue = z.infer<typeof climateControlValueSchema>;
+
+export const climateControlInputSchema = z.object({ refresh: z.boolean() }).strict();
+export type ClimateControlInput = z.infer<typeof climateControlInputSchema>;
+
+export const emergencyBrakeValueSchema = z.object({
+  seal: z.enum(['intact', 'broken']),
+  activated: z.boolean(),
+  canRemoveSeal: z.boolean(),
+  canActivate: z.boolean(),
+});
+export type EmergencyBrakeValue = z.infer<typeof emergencyBrakeValueSchema>;
+
+export const emergencyBrakeInputSchema = z
+  .object({ action: z.enum(['remove-seal', 'activate']) })
+  .strict();
+export type EmergencyBrakeInput = z.infer<typeof emergencyBrakeInputSchema>;
+
+const acceptanceJournalFormSchema = z.object({
+  kind: z.literal('acceptance-journal'),
+  value: acceptanceJournalInputSchema,
+});
+
+const extinguisherInspectionFormSchema = z.object({
+  kind: z.literal('extinguisher-inspection'),
+  value: extinguisherInspectionValueSchema,
+});
+
+const climateControlFormSchema = z.object({
+  kind: z.literal('climate-control'),
+  value: climateControlValueSchema,
+});
+
+const emergencyBrakeFormSchema = z.object({
+  kind: z.literal('emergency-brake'),
+  value: emergencyBrakeValueSchema,
+});
+
+export const actionFormSchema = z.discriminatedUnion('kind', [
+  acceptanceJournalFormSchema,
+  extinguisherInspectionFormSchema,
+  climateControlFormSchema,
+  emergencyBrakeFormSchema,
+]);
+export type ActionFormView = z.infer<typeof actionFormSchema>;
+
 export const publicClockSchema = z.object({
   timeScale: z.number().positive(),
   paused: z.boolean(),
@@ -189,6 +269,7 @@ export const availableActionSchema = z.object({
   uiKind: z.enum(['interaction', 'inspect', 'dialogue', 'form']),
   label: z.string().min(1),
   target: publicTargetSchema,
+  form: actionFormSchema.optional(),
 });
 export type AvailableActionView = z.infer<typeof availableActionSchema>;
 

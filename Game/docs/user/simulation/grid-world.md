@@ -1,7 +1,7 @@
 # Grid/World: пространственная модель симуляции
 
-**Версия документа:** 0.5.0  
-**Статус:** Draft  
+**Версия документа:** 0.6.0
+**Статус:** Draft
 **Дата редакции:** 2026-09-27
 
 ## 1. Назначение
@@ -161,22 +161,35 @@ next(cell) =
 
 Материал/Level задаёт коэффициенты, runtime — текущие значения.
 
-Для огня достаточно простых параметров типа:
+Для огня baseline использует конечный запас топлива и периодический field-step:
 
 ```text
 flammability
-growth/decay
-transfer
+growth / decay
+initialFuel / burnRate
+spreadFuelScale / spreadGateThreshold / spreadGain
+edge transfer weight
 ```
 
-Для давления:
+Для клетки с топливом `fuel` и интенсивностью `fire` один шаг приблизительно имеет семантику:
 
 ```text
-source/leak
-permeability/transfer
+fuel' = max(0, fuel - burnRate * dt * fire)
+spreadGate = max(0, spreadGateThreshold - spreadFuelScale * fuel')
+fire' = max(0, fire + growth * dt * fire - decay * dt
+                 + transferredFire * spreadGain * spreadGate
+                 + source * dt)
 ```
 
-Цель — понятная gameplay-модель, а не точная CFD.
+Если fuel для материала не задан, runtime сохраняет прежний простой режим без исчерпания топлива. Это позволяет использовать тот же `FieldWorld` для более простых тестовых полей.
+
+Для давления `FieldWorld` всё ещё поддерживает простой stencil `source/leak + permeability/transfer`, но baseline pressure incident использует более прямой профиль, записывая pressure-loss по клеткам из евклидова расстояния до failure location:
+
+```text
+loss(cell) = max(0, sourceStageLoss - attenuationPerMeter * distance(cell, source))
+```
+
+Такой runtime проще интерпретируется как локальная потеря давления и не требует настройки искусственной диффузии для короткого вагона. Оба режима остаются gameplay-моделями, а не CFD.
 
 ## 11. Fields и discrete events
 

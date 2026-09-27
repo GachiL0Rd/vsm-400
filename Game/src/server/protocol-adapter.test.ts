@@ -9,6 +9,7 @@ import { MockPlatformGateway, mockMode } from './platform-gateway.ts';
 import { CommonGameProtocolAdapter, type GameProtocolConnection } from './protocol-adapter.ts';
 import { InMemoryResumeTokenRegistry } from './resume-token-registry.ts';
 import { GameSessionHost } from './session-host.ts';
+import type { SessionMode } from './types.ts';
 
 class FakeConnection implements GameProtocolConnection {
   readonly sent: ServerMessage[] = [];
@@ -48,12 +49,12 @@ class FakeConnection implements GameProtocolConnection {
   }
 }
 
-function setup() {
+function setup(mode: SessionMode = mockMode('live')) {
   const resumeTokens = new InMemoryResumeTokenRegistry();
   const platform = new MockPlatformGateway({
     attemptId: 'attempt-1',
     gameLevelId: 'vsm-baseline-01',
-    mode: mockMode('live'),
+    mode,
   });
   const host = new GameSessionHost({
     platformGateway: platform,
@@ -192,6 +193,74 @@ describe('CommonGameProtocolAdapter', () => {
 
     expect(resumed.sent[0]).toMatchObject({ type: 'session-ready', attemptId: 'attempt-1' });
     expect(resumed.closes).toEqual([]);
+  });
+
+  it('rejects gameplay input in replay mode while keeping read-only session commands available', async () => {
+    const replayMode: SessionMode = {
+      kind: 'replay',
+      source: {
+        simulationCompatibilityVersion: '0.1.0',
+        gameLevelVersion: 'vsm-baseline-01',
+        rootSeed: '7',
+        userInputs: [],
+      },
+      reveal: {
+        traits: false,
+        actionLogits: false,
+        hiddenObjectState: false,
+        assessment: false,
+        explanations: false,
+      },
+    };
+    const { adapter } = setup(replayMode);
+    const connection = new FakeConnection('socket-replay');
+    adapter.open(connection);
+    connection.receive({
+      protocolVersion: GAME_PROTOCOL_VERSION,
+      type: 'hello',
+      requestId: 'hello-replay',
+      sessionKey: 'platform-key',
+    });
+    await flush();
+    const ready = connection.sent[0];
+    if (ready?.type !== 'session-ready') throw new Error('Expected session-ready');
+
+    connection.receive({
+      protocolVersion: GAME_PROTOCOL_VERSION,
+      type: 'move-to',
+      requestId: 'move-replay',
+      knownRevision: ready.snapshot.state.revision,
+      targetCellId: 'platform-origin.door',
+    });
+    expect(connection.sent.at(-1)).toMatchObject({
+      type: 'command-result',
+      requestId: 'move-replay',
+      status: 'rejected',
+      code: 'action-rejected',
+      message: 'Gameplay input is disabled in replay mode',
+    });
+
+    connection.receive({
+      protocolVersion: GAME_PROTOCOL_VERSION,
+      type: 'query-actions',
+      requestId: 'query-replay',
+      knownRevision: ready.snapshot.state.revision,
+      target: { kind: 'object', objectId: 'carriage.service-point' },
+    });
+    expect(connection.sent.at(-1)).toMatchObject({
+      type: 'command-result',
+      requestId: 'query-replay',
+      status: 'rejected',
+      code: 'action-rejected',
+    });
+
+    connection.receive({
+      protocolVersion: GAME_PROTOCOL_VERSION,
+      type: 'resync',
+      requestId: 'resync-replay',
+      knownRevision: ready.snapshot.state.revision,
+    });
+    expect(connection.sent.at(-1)).toMatchObject({ type: 'snapshot' });
   });
 
   it('closes malformed messages after reporting a protocol error', () => {

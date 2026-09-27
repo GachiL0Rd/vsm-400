@@ -99,6 +99,8 @@ export const BASELINE_ACTION_CONTENT = {
     { id: 'has-drink', addActions: ['drink'] },
     { id: 'has-food', addActions: ['eat'] },
     { id: 'annoyed' },
+    { id: 'pressure-whistle' },
+    { id: 'ears-blocked' },
   ],
   baseActions: {
     player: ['wait'],

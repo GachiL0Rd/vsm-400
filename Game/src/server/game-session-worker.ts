@@ -275,9 +275,9 @@ export class GameSessionWorker {
       })
       .catch((error: unknown) => {
         this.finishPromise = null;
-        this.lifecycleState = this.connectionState === 'attached' ? 'active' : 'paused';
-        if (this.lifecycleState === 'active') this.ensureTickScheduled();
-        this.publishSessionState(this.lifecycleState);
+        // The simulation is already terminal. A failed platform handoff must not
+        // revive it or restart ticking; callers may retry finish() idempotently.
+        this.lifecycleState = 'finishing';
         throw error;
       });
     return this.finishPromise;

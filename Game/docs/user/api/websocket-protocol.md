@@ -351,6 +351,27 @@ Successful `query-actions` returns:
 
 `uiKind` is one of `interaction`, `inspect`, `dialogue`, or `form`.
 
+A `form` action may carry a browser-safe `form` descriptor. The current baseline uses:
+
+```json
+{
+  "kind": "acceptance-journal",
+  "value": {
+    "communication": "unset",
+    "extinguisher": "unset",
+    "climate": "unset",
+    "emergencyBrake": "unset",
+    "sanitation": "unset",
+    "note": "",
+    "accepted": false
+  }
+}
+```
+
+The baseline also exposes `extinguisher-inspection` and `climate-control` forms. `climate-control` carries cached `temperatureC`, `pressureKPa`, `smokeDetected`, connection state and `updatedAt`; invoking it with `{ "refresh": true }` performs a server-side sensor refresh.
+
+The client opens the corresponding form locally and submits the edited value through the same opaque action handle using `invoke-action.input`. The server validates the complete input schema; partial or malformed form values are rejected with `invalid-input`.
+
 The handle is opaque. The client MUST NOT parse or synthesize it, persist it as a long-lived capability, or infer domain rules from it.
 
 An offer is bound to its `revision`. Any revision change invalidates it, and invocation is always revalidated by the server.

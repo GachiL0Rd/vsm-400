@@ -177,6 +177,17 @@ export class CommonGameProtocolAdapter implements GameProtocolAdapter {
   ): void {
     worker.synchronizeNow();
     const projection = worker.projection;
+    if (projection.mode.kind === 'replay' && isGameplayCommand(command)) {
+      send(
+        connection,
+        rejected(
+          command.requestId,
+          projection.revision,
+          'Gameplay input is disabled in replay mode',
+        ),
+      );
+      return;
+    }
     switch (command.type) {
       case 'resync':
         send(connection, projection.snapshot(worker.publicClock()));
@@ -250,6 +261,16 @@ type AuthenticatedState = {
   unsubscribe: () => void;
 };
 type ConnectionState = AwaitingHelloState | AuthenticatedState;
+
+function isGameplayCommand(
+  command: Exclude<ClientCommand, { type: 'hello' }>,
+): command is Extract<ClientCommand, { type: 'move-to' | 'query-actions' | 'invoke-action' }> {
+  return (
+    command.type === 'move-to' ||
+    command.type === 'query-actions' ||
+    command.type === 'invoke-action'
+  );
+}
 
 function parseCommand(data: string | Uint8Array): ClientCommand {
   if (typeof data !== 'string')
