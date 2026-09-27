@@ -31,11 +31,17 @@ blocked.addSubnet('172.16.0.0', 12, 'ipv4');
 blocked.addSubnet('192.168.0.0', 16, 'ipv4');
 blocked.addSubnet('224.0.0.0', 4, 'ipv4');
 blocked.addSubnet('240.0.0.0', 4, 'ipv4');
+blocked.addSubnet('198.18.0.0', 15, 'ipv4');
+blocked.addSubnet('192.0.0.0', 24, 'ipv4');
+blocked.addSubnet('192.0.2.0', 24, 'ipv4');
+blocked.addSubnet('198.51.100.0', 24, 'ipv4');
+blocked.addSubnet('203.0.113.0', 24, 'ipv4');
 blocked.addAddress('::', 'ipv6');
 blocked.addAddress('::1', 'ipv6');
 blocked.addSubnet('fc00::', 7, 'ipv6');
 blocked.addSubnet('fe80::', 10, 'ipv6');
 blocked.addSubnet('ff00::', 8, 'ipv6');
+blocked.addSubnet('2002::', 16, 'ipv6');
 
 const blockedNames = new Set([
   'localhost',
@@ -64,9 +70,12 @@ export function webhookUrlDetail(reason: Exclude<ScreenedWebhook, { ok: true }>[
   return 'Некорректный URL вебхука';
 }
 
+/** Публичный адрес: 203.0.113.0/24 теперь в SSRF-списке. */
+export const TEST_WEBHOOK_IP = '203.0.114.10';
+
 /** В тестах сеть не нужна: политика адресов проверяется отдельным резолвером. */
 export const testWebhookResolve: WebhookResolve = async () => [
-  { address: '203.0.113.10', family: 4 },
+  { address: TEST_WEBHOOK_IP, family: 4 },
 ];
 
 export function webhookResolveFor(config: AppConfig): WebhookResolve {
@@ -85,6 +94,13 @@ export function isBlockedIp(address: string): boolean {
   const mapped = mappedIpv4(address);
   if (mapped) {
     return blocked.check(mapped, 'ipv4');
+  }
+  const nat = nat64Ipv4(address);
+  if (nat === 'blocked') {
+    return true;
+  }
+  if (nat) {
+    return blocked.check(nat, 'ipv4');
   }
   if (isIP(address) === 4) {
     return blocked.check(address, 'ipv4');
@@ -192,6 +208,103 @@ function blockedHostname(hostname: string): boolean {
   return (
     hostname.endsWith('.metadata.google.internal') || hostname.endsWith('.metadata.google.com')
   );
+}
+
+/**
+ * NAT64 несёт IPv4 внутри. 64:ff9b::/96 — последние 32 бита.
+ * 64:ff9b:1::/48 — вложение RFC 6052 для префикса /48, октет u должен быть 0.
+ * Встроенный адрес проверяется тем же списком, что и обычный IPv4.
+ */
+function nat64Ipv4(address: string): string | 'blocked' | null {
+  if (isIP(address) !== 6) {
+    return null;
+  }
+  const parts = ipv6Hextets(address);
+  if (!parts) {
+    return 'blocked';
+  }
+  const [p0, p1, p2, p3, p4, p5, p6, p7] = parts;
+  if (p0 === 0x64 && p1 === 0xff9b && p2 === 0 && p3 === 0 && p4 === 0 && p5 === 0) {
+    return ipv4FromHextets(p6, p7);
+  }
+  if (p0 === 0x64 && p1 === 0xff9b && p2 === 0x0001) {
+    if (p4 >> 8 !== 0) {
+      return 'blocked';
+    }
+    const b0 = p3 >> 8;
+    const b1 = p3 & 0xff;
+    const b2 = p4 & 0xff;
+    const b3 = p5 >> 8;
+    return `${b0}.${b1}.${b2}.${b3}`;
+  }
+  return null;
+}
+
+function ipv4FromHextets(hi: number, lo: number): string {
+  return `${(hi >> 8) & 255}.${hi & 255}.${(lo >> 8) & 255}.${lo & 255}`;
+}
+
+function ipv6Hextets(address: string): number[] | null {
+  const expanded = expandIpv6(stripZone(address.toLowerCase()));
+  if (!expanded) {
+    return null;
+  }
+  const nums: number[] = [];
+  for (const part of expanded) {
+    if (!/^[0-9a-f]{1,4}$/.test(part)) {
+      return null;
+    }
+    nums.push(Number.parseInt(part, 16));
+  }
+  return nums;
+}
+
+function stripZone(address: string): string {
+  const zone = address.indexOf('%');
+  return zone === -1 ? address : address.slice(0, zone);
+}
+
+function expandIpv6(address: string): string[] | null {
+  const plain = embedDottedTail(address);
+  if (!plain) {
+    return null;
+  }
+  const halves = plain.split('::');
+  if (halves.length > 2) {
+    return null;
+  }
+  const head = halves[0] ? halves[0].split(':').filter((part) => part.length > 0) : [];
+  const tail =
+    halves.length === 2 && halves[1] ? halves[1].split(':').filter((part) => part.length > 0) : [];
+  if (halves.length === 1 && head.length !== 8) {
+    return null;
+  }
+  const missing = halves.length === 2 ? 8 - head.length - tail.length : 0;
+  if (missing < 0) {
+    return null;
+  }
+  const full = [...head, ...Array.from({ length: missing }, () => '0'), ...tail];
+  return full.length === 8 ? full : null;
+}
+
+function embedDottedTail(address: string): string | null {
+  if (!address.includes('.')) {
+    return address;
+  }
+  const last = address.lastIndexOf(':');
+  const octets = address
+    .slice(last + 1)
+    .split('.')
+    .map((part) => Number(part));
+  if (
+    octets.length !== 4 ||
+    octets.some((part) => !Number.isInteger(part) || part < 0 || part > 255)
+  ) {
+    return null;
+  }
+  const hi = ((octets[0] << 8) | octets[1]).toString(16);
+  const lo = ((octets[2] << 8) | octets[3]).toString(16);
+  return `${address.slice(0, last)}:${hi}:${lo}`;
 }
 
 function mappedIpv4(address: string): string | null {

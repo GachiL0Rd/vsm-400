@@ -242,6 +242,11 @@ export class WebhookDispatchService {
       this.resolve,
     );
     if (!screened.ok) {
+      // Сбой резолва временный. url, https, allowlist и ssrf ретраем не лечатся.
+      if (screened.reason === 'dns') {
+        await this.failTransient(id, row.attempts, now, 'dns');
+        return;
+      }
       await this.failPermanent(id, row.attempts, screened.reason);
       return;
     }
