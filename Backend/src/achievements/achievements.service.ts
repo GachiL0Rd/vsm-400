@@ -183,8 +183,31 @@ export class AchievementsService implements OnModuleInit {
   private async loadRuns(userId: string): Promise<RunView[]> {
     const runs = await this.prisma.run.findMany({
       where: { userId, suspicious: false },
-      include: { decisions: { orderBy: { idx: 'asc' } } },
       orderBy: { finishedAt: 'asc' },
+      select: {
+        outcome: true,
+        safety: true,
+        loyalty: true,
+        suspicious: true,
+        facts: true,
+        decisions: {
+          orderBy: { idx: 'asc' },
+          select: {
+            idx: true,
+            stage: true,
+            scenarioId: true,
+            choiceId: true,
+            situation: true,
+            verdict: true,
+            reactionMs: true,
+            timerSec: true,
+            safetyDelta: true,
+            loyaltyDelta: true,
+            lucky: true,
+            deviation: true,
+          },
+        },
+      },
     });
     const scenarioIds = new Set<string>();
     for (const run of runs) {

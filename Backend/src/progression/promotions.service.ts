@@ -327,21 +327,16 @@ async function passedCategories(
   tx: Prisma.TransactionClient,
   userId: string,
 ): Promise<Set<string>> {
-  const runs = await tx.run.findMany({
-    where: { userId, suspicious: false, outcome: 'completed' },
-    select: { decisions: { select: { scenarioId: true } } },
+  const decisions = await tx.runDecision.findMany({
+    where: { run: { userId, suspicious: false, outcome: 'completed' } },
+    distinct: ['scenarioId'],
+    select: { scenarioId: true },
   });
-  const scenarioIds = new Set<string>();
-  for (const run of runs) {
-    for (const decision of run.decisions) {
-      scenarioIds.add(decision.scenarioId);
-    }
-  }
-  if (scenarioIds.size === 0) {
+  if (decisions.length === 0) {
     return new Set();
   }
   const scenarios = await tx.scenario.findMany({
-    where: { id: { in: [...scenarioIds] } },
+    where: { id: { in: decisions.map((row) => row.scenarioId) } },
     select: { category: true },
   });
   return new Set(scenarios.map((row) => row.category));
