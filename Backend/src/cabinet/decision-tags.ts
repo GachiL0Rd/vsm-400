@@ -55,6 +55,16 @@ export function tagDecisions(
   return tagged;
 }
 
+/** Те же компетенции, что finish-facts пишет в competencyDelta живого рейса. */
+const FACT_COMPETENCIES: Readonly<Record<string, readonly Competency[]>> = {
+  'journal-submission': ['procedure', 'detection'],
+  'boarding-decision': ['procedure', 'safety'],
+  'service-request': ['service'],
+  fire: ['safety', 'reaction'],
+  pressure: ['safety', 'reaction', 'escalation'],
+  'emergency-brake': ['safety', 'escalation'],
+};
+
 export function decisionCompetencies(
   scenarioCompetencies: readonly Competency[],
   graph: unknown,
@@ -65,7 +75,10 @@ export function decisionCompetencies(
   if (fromChoice && fromChoice.length > 0) {
     return fromChoice;
   }
-  return [...scenarioCompetencies];
+  if (scenarioCompetencies.length > 0) {
+    return [...scenarioCompetencies];
+  }
+  return [...(FACT_COMPETENCIES[choiceId] ?? [])];
 }
 
 function choiceSkills(graph: unknown, nodeId: string, choiceId: string): Competency[] | null {

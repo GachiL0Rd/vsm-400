@@ -26,4 +26,15 @@ describe('decisionCompetencies', () => {
   it('без графа хватает сценария', () => {
     expect(decisionCompetencies(['service'], null, 'n1', 'report')).toEqual(['service']);
   });
+
+  it('факт игры без сценария YAML берёт таблицу компетенций факта', () => {
+    expect(decisionCompetencies([], null, 'fire:cabin-fire', 'fire')).toEqual([
+      'safety',
+      'reaction',
+    ]);
+    expect(decisionCompetencies([], null, 'emergency-brake', 'emergency-brake')).toEqual([
+      'safety',
+      'escalation',
+    ]);
+  });
 });

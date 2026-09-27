@@ -85,6 +85,9 @@ function Departure({ next }: { next: NextShift }) {
           <p className="departure__from">
             из {next.fromGenitive}, поезд {next.train}
           </p>
+          <p className="departure__level">
+            Приёмка вагона, посадка, путь с обслуживанием, пожар и давление.
+          </p>
         </div>
       </div>
 

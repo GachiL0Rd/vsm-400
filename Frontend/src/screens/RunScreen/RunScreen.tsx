@@ -17,6 +17,7 @@ import {
   FAIL_SCORE,
   type Run,
   STAGE_TITLES,
+  type Stage,
   scoreGrade,
   type Verdict,
 } from '../../model';
@@ -29,6 +30,28 @@ const VERDICTS: Record<Verdict, { title: string; tone: TagTone }> = {
   worse: { title: 'Ошибка', tone: 'stop' },
   missed: { title: 'Пропущено', tone: 'stop' },
 };
+
+const STAGE_ORDER: readonly Stage[] = ['acceptance', 'boarding', 'enroute', 'stop', 'handover'];
+
+function readable(text: string): string {
+  return text
+    .replaceAll('пассажира passenger-', 'пассажира ')
+    .replaceAll('пассажир passenger-', 'пассажир ')
+    .replaceAll('passenger-', 'пассажир ')
+    .replaceAll('cabin-fire', 'салон')
+    .replaceAll('entry-pressure-leak', 'входная зона');
+}
+
+function groupByStage(decisions: readonly Decision[]): { stage: Stage; items: Decision[] }[] {
+  const groups: { stage: Stage; items: Decision[] }[] = [];
+  for (const stage of STAGE_ORDER) {
+    const items = decisions.filter((decision) => decision.stage === stage);
+    if (items.length > 0) {
+      groups.push({ stage, items });
+    }
+  }
+  return groups;
+}
 
 function missingRun(error: unknown): boolean {
   return error instanceof ApiError && (error.status === 404 || error.status === 422);
@@ -54,7 +77,7 @@ export function RunScreen() {
 }
 
 function RunBody({ run }: { run: Run }) {
-  const lucky = run.decisions.filter((decision) => decision.lucky).length;
+  const groups = groupByStage(run.decisions);
 
   return (
     <>
@@ -117,19 +140,19 @@ function RunBody({ run }: { run: Run }) {
         <Section id="facts-title" title="Фактический результат">
           <dl className="ledger">
             <div className="ledger__row">
-              <dt>Предотвращено ситуаций</dt>
+              <dt>Инциденты под контролем</dt>
               <dd>{run.facts.prevented}</dd>
             </div>
             <div className="ledger__row">
-              <dt>Инциденты</dt>
+              <dt>Критические инциденты</dt>
               <dd className={run.facts.incidents > 0 ? 'down' : ''}>{run.facts.incidents}</dd>
             </div>
             <div className="ledger__row">
-              <dt>Жалобы пассажиров</dt>
+              <dt>Пропущенные запросы</dt>
               <dd className={run.facts.complaints > 0 ? 'down' : ''}>{run.facts.complaints}</dd>
             </div>
             <div className="ledger__row">
-              <dt>Вмешательства бригады</dt>
+              <dt>Стоп-кран</dt>
               <dd className={run.facts.interventions > 0 ? 'down' : ''}>
                 {run.facts.interventions}
               </dd>
@@ -137,15 +160,6 @@ function RunBody({ run }: { run: Run }) {
           </dl>
         </Section>
       </div>
-
-      {lucky > 0 && (
-        <Note tone="warn">
-          {lucky === 1
-            ? 'Одно нарушение не привело к последствиям.'
-            : `${lucky} ${plural(lucky, ['нарушение', 'нарушения', 'нарушений'])} не привели к последствиям.`}{' '}
-          В оценке это учтено: в другом рейсе то же решение может закончиться инцидентом.
-        </Note>
-      )}
 
       <Section
         id="decisions-title"
@@ -159,14 +173,19 @@ function RunBody({ run }: { run: Run }) {
           ) : undefined
         }
       >
-        {run.decisions.length === 0 ? (
+        {groups.length === 0 ? (
           <p className="log__empty">Разбор решений для этого рейса пока недоступен.</p>
         ) : (
-          <ol className="log">
-            {run.decisions.map((decision) => (
-              <DecisionEntry decision={decision} key={decision.id} />
-            ))}
-          </ol>
+          groups.map((group) => (
+            <section className="log-group" key={group.stage}>
+              <h3 className="log-group__title">{STAGE_TITLES[group.stage]}</h3>
+              <ol className="log">
+                {group.items.map((decision) => (
+                  <DecisionEntry decision={decision} key={decision.id} />
+                ))}
+              </ol>
+            </section>
+          ))
         )}
       </Section>
     </>
@@ -196,12 +215,11 @@ function DecisionEntry({ decision }: { decision: Decision }) {
     <li className="log__entry">
       <div className="log__when">
         <b className="num">{decision.time}</b>
-        <span className="label">{STAGE_TITLES[decision.stage]}</span>
       </div>
 
       <div className="log__body">
-        <p className="log__situation">{decision.situation}</p>
-        <p className="log__action">{decision.action}</p>
+        <p className="log__situation">{readable(decision.situation)}</p>
+        <p className="log__action">{readable(decision.action)}</p>
 
         <div className="log__result">
           <Tag tone={verdict.tone}>{verdict.title}</Tag>
@@ -217,15 +235,8 @@ function DecisionEntry({ decision }: { decision: Decision }) {
           </dl>
         </div>
 
-        {decision.consequence && (
-          <Note title="Последствия">
-            {decision.consequence}
-            {decision.lucky && ' Обошлось, но нарушение учтено.'}
-          </Note>
-        )}
-
         {decision.better && (
-          <Note tone="ok" title="Как следовало действовать" source={decision.basis}>
+          <Note tone="ok" title="Как следовало действовать">
             {decision.better}
           </Note>
         )}

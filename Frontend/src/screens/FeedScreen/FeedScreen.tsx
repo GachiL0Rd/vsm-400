@@ -11,7 +11,7 @@ import './FeedScreen.css';
 const KINDS: Record<NoticeKind, { icon: IconName; title: string }> = {
   expiring: { icon: 'hourglass', title: 'Баллы' },
   advice: { icon: 'bulb', title: 'Рекомендация' },
-  scenario: { icon: 'plus', title: 'Новые ситуации' },
+  scenario: { icon: 'plus', title: 'Уровень рейса' },
   challenge: { icon: 'rating', title: 'Соревнование бригад' },
   overtaken: { icon: 'arrowDown', title: 'Рейтинг' },
   achievement: { icon: 'medal', title: 'Знак отличия' },
