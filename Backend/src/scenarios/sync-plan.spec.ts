@@ -17,10 +17,25 @@ const edited = { ...graph, title: `${graph.title} правка` };
 const editedChecksum = graphChecksum(edited);
 
 describe('план синка сценария', () => {
-  it('та же сумма, что у любой версии, не создаёт новую', () => {
+  it('сумма последней версии не создаёт новую', () => {
     expect(planVersion([{ version: 4, checksum: fileChecksum, createdById: null }], graph)).toEqual(
       { kind: 'same' },
     );
+  });
+
+  it('откат yaml к старой версии пишет новую', () => {
+    expect(
+      planVersion(
+        [
+          { version: 1, checksum: fileChecksum, createdById: null },
+          { version: 2, checksum: editedChecksum, createdById: null },
+        ],
+        graph,
+      ),
+    ).toEqual({ kind: 'insert', version: 3, checksum: fileChecksum });
+  });
+
+  it('человеческий хвост не вытесняется, даже если файл равен старой версии', () => {
     expect(
       planVersion(
         [
@@ -29,7 +44,7 @@ describe('план синка сценария', () => {
         ],
         graph,
       ),
-    ).toEqual({ kind: 'same' });
+    ).toEqual({ kind: 'keep-human' });
   });
 
   it('человеческий хвост с новой суммой файла не вытесняется', () => {

@@ -15,16 +15,15 @@ export type VersionPlan =
 export type ScenarioSyncStatus = 'DRAFT' | 'PUBLISHED' | 'ARCHIVED';
 
 /**
- * Сумма, которая уже есть у любой версии, не плодит ещё одну.
+ * Сравнение только с последней версией: откат yaml к старому графу тоже новая версия.
  * Хвост с автором файл не вытесняет: иначе рестарт затрёт правку методиста.
- * Совпадение со старой версией важнее предупреждения — хвост и так не файловый.
  */
 export function planVersion(versions: readonly KnownVersion[], graph: ScenarioGraph): VersionPlan {
   const checksum = graphChecksum(graph);
-  if (versions.some((item) => item.checksum === checksum)) {
+  const latest = latestVersion(versions);
+  if (latest?.checksum === checksum) {
     return { kind: 'same' };
   }
-  const latest = latestVersion(versions);
   if (latest?.createdById) {
     return { kind: 'keep-human' };
   }
