@@ -18,7 +18,7 @@ scenarios
 dialogue content
 action/trait definitions
 service presets
-asset manifest
+versioned media-manifest placeholder (при необходимости)
 ```
 
 ### Media assets
@@ -52,46 +52,36 @@ content/
 
 `GAME_CONTENT_DIR` может указывать на отдельный read-only bundle. Точный контракт описан в [`../deployment/content-bundle.md`](../deployment/content-bundle.md). Dialogue/service extensions могут позднее добавляться как новые versioned files/references manifest-а.
 
-## 3. Asset manifest
+## 3. Media contract текущего release
 
-`assets/manifest.json` является versioned соглашением между content и Client.
+В release `0.1.0` полноценный media manifest **не зафиксирован**. Client использует stable `visualId` из public projection и собственный browser-local registry/hardcoded mapping. Это допустимое временное решение до интеграции основной клиентской ветки.
 
-Manifest сопоставляет stable visual ID с media resource и его ролью, например:
+Серверный gameplay/content bundle не должен зависеть от конкретных URL, texture paths или формата клиентского asset registry.
+
+Для будущей совместимости резервируется versioned media-manifest boundary, но его schema пока считается placeholder и не является нормативным API. Не следует добавлять поля manifest-а заранее без реального требования клиента/art pipeline.
+
+Примеры стабильных visual IDs остаются полезными как namespace, но не определяют format manifest-а:
 
 ```text
 carriage.background.default
 platform.background.default
 object.extinguisher.world
 object.extinguisher.held
-object.extinguisher.modal.base
 character.body.default
-character.clothes.jacket-blue
 ```
 
-Level/Scenario/Presentation references используют visual ID, а не жёсткие относительные пути к изображениям.
+## 4. Browser-only asset delivery
 
-Manifest может позднее содержать hash/version, dimensions или layer metadata, если это реально потребуется pipeline.
+Клиентские изображения, тексты и другие данные, которые влияют только на rendering/presentation, могут поставляться отдельно от authoritative game content.
 
-## 4. Загрузка ассетов
+Для интеграции клиентской ветки допускается HTTP file-storage endpoint/namespace Game Server, через который Client сможет получать такие browser-only assets. Точный URL layout, manifest schema, caching/hash policy и способ упаковки пока **не зафиксированы** и должны быть определены вместе с реальным клиентским набором данных.
 
-Baseline build должен допускать два источника media:
+До этого момента поддерживаются два простых варианта:
 
-1. локальный `assets/local/`;
-2. внешний asset bundle/base URL, указанный build/runtime option.
+1. ассеты находятся рядом с browser build и разрешаются локальным registry/hardcode;
+2. ассеты обслуживаются отдельным static/file endpoint без изменения simulation semantics.
 
-Предпочтительная дальнейшая схема:
-
-```text
-asset manifest
-      ↓
-prepare-assets
-      ├─ local cache
-      └─ optional remote base URL
-      ↓
-client build/public asset directory
-```
-
-Конкретный downloader пока не является обязательной реализацией.
+Stable `visualId` остаётся границей между gameplay projection и способом хранения media.
 
 ## 5. Карта и фон
 

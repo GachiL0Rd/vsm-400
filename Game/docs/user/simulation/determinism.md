@@ -25,7 +25,7 @@ PRNG может быть библиотечным. Проект не требу�
 
 Выбранная библиотека/algorithm закрепляются adapter boundary и regression/golden tests.
 
-Кандидаты рассматриваются в `engineering/library-candidates.md`.
+Текущая release-реализация использует закреплённый dependency/adapter и regression tests; смена PRNG или derivation semantics требует осознанного compatibility change.
 
 ## 3. Derived RNG streams
 

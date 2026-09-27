@@ -67,7 +67,13 @@ export interface PlatformGateway {
 
 export class PlatformGatewayError extends Error {
   constructor(
-    readonly kind: 'invalid-session' | 'unavailable' | 'contract' | 'timeout',
+    readonly kind:
+      | 'invalid-session'
+      | 'session-unavailable'
+      | 'authentication'
+      | 'unavailable'
+      | 'contract'
+      | 'timeout',
     message: string,
   ) {
     super(message);
