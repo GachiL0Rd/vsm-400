@@ -7,7 +7,7 @@ This document describes service boundaries and reference container layouts. It d
 
 ## 1. Service boundaries
 
-The baseline deployment contains three logical application surfaces:
+The current deployment contains three logical application surfaces:
 
 ```text
 Browser

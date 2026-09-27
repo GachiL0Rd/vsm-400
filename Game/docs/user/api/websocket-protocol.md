@@ -116,11 +116,11 @@ entities
 }
 ```
 
-The baseline worker accepts time scales `1`, `2`, and `4`.
+The current release worker accepts time scales `1`, `2`, and `4`.
 
 ### Replay capabilities
 
-For baseline forward replay, `mode.kind = "replay"` advertises only capabilities that the current server actually implements:
+For release `0.1.0` forward replay, `mode.kind = "replay"` advertises only capabilities that the current server actually implements:
 
 ```json
 {
@@ -533,7 +533,7 @@ An offer is bound to its `revision`. Any revision change invalidates it, and inv
 
 ## 9. Presentation events
 
-Transient presentation effects use `presentation-event` and do not by themselves define durable authoritative state:
+Protocol v1 reserves `presentation-event` for transient presentation effects that do not by themselves define durable authoritative state. The release `0.1.0` server does not currently emit this message type; the client may support the envelope ahead of server-side producers:
 
 ```json
 {
@@ -598,7 +598,7 @@ Successful Platform finalization publishes `finished` with a redirect URL:
 
 `finishing` means simulation has terminated and the Game Server is finalizing the result with Platform Server.
 
-If Platform finalization fails, the worker does not invent a successful result and does not resume terminal simulation. It remains in `finishing`; an explicit/idempotent finalization retry may later transition it to `finished`. Automatic retry timing is not part of protocol v1.
+If Platform finalization fails, the worker does not invent a successful result and does not resume terminal simulation. It remains in `finishing`. Transient `unavailable`/`timeout` failures receive a small bounded server-side retry sequence; non-transient failures remain frozen for diagnosis or an explicit idempotent retry. Retry timing is an implementation detail, not part of protocol v1.
 
 ## 11. Server errors
 
