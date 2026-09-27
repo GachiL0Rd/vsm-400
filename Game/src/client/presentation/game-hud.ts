@@ -67,10 +67,9 @@ export class GameHud {
     parent: HTMLElement,
     private readonly store: PresentationStore,
     interactions: InteractionController,
-    downloadLog?: () => void,
   ) {
     this.root.className = 'hud';
-    this.buildTasks(downloadLog);
+    this.buildTasks();
     this.connection = new ConnectionStatus(this.buildTimeBar(interactions), store);
     this.offer = new ActionOfferOverlay(this.buildDialog(), store, interactions);
     this.buildDock();
@@ -107,7 +106,7 @@ export class GameHud {
     this.setTasksOpen(!this.landscape.matches);
   };
 
-  private buildTasks(downloadLog?: () => void): void {
+  private buildTasks(): void {
     this.tasks.className = 'hud-tasks';
     this.tasksToggle.type = 'button';
     this.tasksToggle.className = 'hud-tasks__toggle';
@@ -122,12 +121,6 @@ export class GameHud {
     list.append(this.objective);
     this.metrics.className = 'hud-tasks__metrics';
     body.append(this.phase, list, this.metrics);
-    if (downloadLog !== undefined) {
-      const logButton = el('button', 'hud-tasks__log', 'Скачать лог');
-      logButton.type = 'button';
-      logButton.addEventListener('click', downloadLog);
-      body.append(logButton);
-    }
     this.tasks.append(this.tasksToggle, body);
     this.root.append(this.tasks);
   }

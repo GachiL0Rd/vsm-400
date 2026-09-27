@@ -124,7 +124,6 @@ export const game = new Phaser.Game({
       store,
       interactions,
       log: (source, event, data) => logger.record('info', source, event, data),
-      downloadLog: () => logger.download(),
     }),
   ],
 });
