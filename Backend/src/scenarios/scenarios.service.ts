@@ -16,7 +16,13 @@ import type { CatalogItem, ScenarioDetail, ScenarioStatusView } from './dto';
 import { assertPlayableGraph } from './graph-check';
 import { loadScenarioGraphs } from './load-content';
 import { parseIncomingGraph } from './parse-graph';
-import { nextVersionNumber, planVersion } from './sync-plan';
+import {
+  fileAdoptedAuthor,
+  fileInsertPublishes,
+  fileVersionIsPublic,
+  nextVersionNumber,
+  planVersion,
+} from './sync-plan';
 
 export type SyncStats = {
   scenarios: number;
@@ -60,15 +66,23 @@ export class ScenariosService implements OnApplicationBootstrap {
     }
     let createdVersions = 0;
     const published: ScenarioPublishedPayload[] = [];
+    const keptByHuman: string[] = [];
     await this.prisma.$transaction(async (tx) => {
       for (const graph of graphs) {
-        const version = await syncGraph(tx, graph);
-        if (version !== null) {
+        const outcome = await syncGraph(tx, graph);
+        if (outcome.kind === 'created') {
           createdVersions += 1;
-          published.push({ scenarioId: graph.id, version });
+          if (outcome.public) {
+            published.push({ scenarioId: graph.id, version: outcome.version });
+          }
+        } else if (outcome.kind === 'keep-human') {
+          keptByHuman.push(graph.id);
         }
       }
     });
+    for (const id of keptByHuman) {
+      this.logger.warn(`сценарий ${id} правится в админке, файл пропущен`);
+    }
     for (const payload of published) {
       await this.emitPublished(payload);
     }
@@ -76,16 +90,7 @@ export class ScenariosService implements OnApplicationBootstrap {
   }
 
   async getCatalog(): Promise<CatalogItem[]> {
-    const rows = await this.prisma.scenario.findMany({
-      where: { status: 'PUBLISHED' },
-      orderBy: { id: 'asc' },
-    });
-    const items: CatalogItem[] = [];
-    for (const row of rows) {
-      const stored = await this.readVersion(row.id, row.currentVersion);
-      items.push(toCatalog(row, stored.graph, stored.version));
-    }
-    return items;
+    return this.loadCatalog();
   }
 
   async getById(id: string): Promise<ScenarioDetail> {
@@ -110,6 +115,7 @@ export class ScenariosService implements OnApplicationBootstrap {
     const graph = parseIncomingGraph(id, raw);
     assertPlayableGraph(graph);
     const checksum = graphChecksum(graph);
+    const createdById = fileAdoptedAuthor(actorId, checksum, this.fileChecksum(id));
     let announced: number | null = null;
     await this.prisma.$transaction(async (tx) => {
       const actor = await tx.user.findUnique({ where: { id: actorId }, select: { id: true } });
@@ -143,7 +149,7 @@ export class ScenariosService implements OnApplicationBootstrap {
           version,
           checksum,
           graph: graph as Prisma.InputJsonValue,
-          createdById: actorId,
+          createdById,
         },
       });
     });
@@ -172,8 +178,27 @@ export class ScenariosService implements OnApplicationBootstrap {
     }
   }
 
+  /** Сумма yaml этого id. Нет файла — версию всегда пишет человек. */
+  private fileChecksum(id: string): string | null {
+    const file = loadScenarioGraphs().find((item) => item.id === id);
+    return file === undefined ? null : graphChecksum(file);
+  }
+
   private async emitPublished(payload: ScenarioPublishedPayload): Promise<void> {
     await this.events.emitAsync(SCENARIO_PUBLISHED, payload);
+  }
+
+  private async loadCatalog(): Promise<CatalogItem[]> {
+    const rows = await this.prisma.scenario.findMany({
+      where: { status: 'PUBLISHED' },
+      orderBy: { id: 'asc' },
+    });
+    const items: CatalogItem[] = [];
+    for (const row of rows) {
+      const stored = await this.readVersion(row.id, row.currentVersion);
+      items.push(toCatalog(row, stored.graph, stored.version));
+    }
+    return items;
   }
 
   private async readVersion(id: string, version: number): Promise<ScenarioVersionView> {
@@ -237,30 +262,39 @@ function parseStoredGraph(value: unknown): ScenarioGraph {
 
 type SyncClient = Pick<Prisma.TransactionClient, 'scenario' | 'scenarioVersion'>;
 
-/**
- * Файл из content — источник каталога. Совпадение checksum не плодит версию,
- * но статус снова PUBLISHED: архив методиста не переживает рестарт.
- */
-async function syncGraph(tx: SyncClient, graph: ScenarioGraph): Promise<number | null> {
-  const latest = await tx.scenarioVersion.findFirst({
+type SyncOutcome =
+  | { kind: 'same' }
+  | { kind: 'keep-human' }
+  | { kind: 'created'; version: number; public: boolean };
+
+/** Файл не трогает статус уже существующей строки и не затирает человеческий хвост. */
+async function syncGraph(tx: SyncClient, graph: ScenarioGraph): Promise<SyncOutcome> {
+  const versions = await tx.scenarioVersion.findMany({
     where: { scenarioId: graph.id },
-    orderBy: { version: 'desc' },
-    select: { version: true, checksum: true },
+    select: { version: true, checksum: true, createdById: true },
   });
-  const plan = planVersion(latest, graph);
-  if (plan.kind === 'same') {
-    await tx.scenario.updateMany({
-      where: { id: graph.id, status: { not: 'PUBLISHED' } },
-      data: { status: 'PUBLISHED' },
-    });
-    return null;
+  const plan = planVersion(versions, graph);
+  if (plan.kind === 'keep-human') {
+    return { kind: 'keep-human' };
   }
-  const meta = scenarioMeta(graph, plan.version);
-  await tx.scenario.upsert({
+  if (plan.kind === 'same') {
+    return { kind: 'same' };
+  }
+  const existing = await tx.scenario.findUnique({
     where: { id: graph.id },
-    create: { id: graph.id, ...meta, status: 'PUBLISHED' },
-    update: { ...meta, status: 'PUBLISHED' },
+    select: { status: true },
   });
+  const meta = scenarioMeta(graph, plan.version);
+  if (fileInsertPublishes(existing?.status ?? null)) {
+    await tx.scenario.create({
+      data: { id: graph.id, ...meta, status: 'PUBLISHED' },
+    });
+  } else {
+    await tx.scenario.update({
+      where: { id: graph.id },
+      data: meta,
+    });
+  }
   await tx.scenarioVersion.create({
     data: {
       scenarioId: graph.id,
@@ -269,7 +303,11 @@ async function syncGraph(tx: SyncClient, graph: ScenarioGraph): Promise<number |
       graph: graph as Prisma.InputJsonValue,
     },
   });
-  return plan.version;
+  return {
+    kind: 'created',
+    version: plan.version,
+    public: fileVersionIsPublic(existing?.status ?? null),
+  };
 }
 
 function isMissingRow(error: unknown): boolean {

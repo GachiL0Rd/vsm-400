@@ -1,20 +1,74 @@
 import type { ScenarioGraph } from '../engine/schema';
 import { graphChecksum } from './checksum';
 
-export type VersionPlan = { kind: 'same' } | { kind: 'insert'; version: number; checksum: string };
+export type KnownVersion = {
+  version: number;
+  checksum: string;
+  createdById: string | null;
+};
 
-/** Новая версия только когда канонический граф отличается от последней. */
-export function planVersion(
-  latest: { version: number; checksum: string } | null,
-  graph: ScenarioGraph,
-): VersionPlan {
+export type VersionPlan =
+  | { kind: 'same' }
+  | { kind: 'keep-human' }
+  | { kind: 'insert'; version: number; checksum: string };
+
+export type ScenarioSyncStatus = 'DRAFT' | 'PUBLISHED' | 'ARCHIVED';
+
+/**
+ * Сумма, которая уже есть у любой версии, не плодит ещё одну.
+ * Хвост с автором файл не вытесняет: иначе рестарт затрёт правку методиста.
+ * Совпадение со старой версией важнее предупреждения — хвост и так не файловый.
+ */
+export function planVersion(versions: readonly KnownVersion[], graph: ScenarioGraph): VersionPlan {
   const checksum = graphChecksum(graph);
-  if (latest?.checksum === checksum) {
+  if (versions.some((item) => item.checksum === checksum)) {
     return { kind: 'same' };
+  }
+  const latest = latestVersion(versions);
+  if (latest?.createdById) {
+    return { kind: 'keep-human' };
   }
   return { kind: 'insert', version: (latest?.version ?? 0) + 1, checksum };
 }
 
 export function nextVersionNumber(latest: { version: number } | null): number {
   return (latest?.version ?? 0) + 1;
+}
+
+/**
+ * PUT с суммой текущего yaml пишется без автора.
+ * Так человек подтверждает файл, и следующее изменение yaml снова станет версией.
+ */
+export function fileAdoptedAuthor(
+  actorId: string,
+  checksum: string,
+  fileChecksum: string | null,
+): string | null {
+  if (fileChecksum !== null && fileChecksum === checksum) {
+    return null;
+  }
+  return actorId;
+}
+
+/**
+ * PUBLISHED — только первая вставка из файла.
+ * DRAFT и ARCHIVED синк не повышает: оба прячут сценарий из каталога.
+ */
+export function fileInsertPublishes(existing: ScenarioSyncStatus | null): boolean {
+  return existing === null;
+}
+
+/** Событие публикации только у версии, которая видна в каталоге. */
+export function fileVersionIsPublic(existing: ScenarioSyncStatus | null): boolean {
+  return existing === null || existing === 'PUBLISHED';
+}
+
+function latestVersion(versions: readonly KnownVersion[]): KnownVersion | null {
+  let latest: KnownVersion | null = null;
+  for (const item of versions) {
+    if (latest === null || item.version > latest.version) {
+      latest = item;
+    }
+  }
+  return latest;
 }
