@@ -1,0 +1,83 @@
+import { randomBytes } from 'node:crypto';
+import type { GameContentRegistry } from './content-registry.ts';
+import {
+  GameSessionWorker,
+  type SessionAttachment,
+  type WorkerClock,
+  type WorkerScheduler,
+} from './game-session-worker.ts';
+import type { ResumeTokenRegistry } from './resume-token-registry.ts';
+import type { PlatformGateway } from './types.ts';
+
+export interface GameSessionHostOptions {
+  readonly platformGateway: PlatformGateway;
+  readonly contentRegistry: GameContentRegistry;
+  readonly resumeTokens: ResumeTokenRegistry;
+  readonly disconnectDebounceMs: number;
+  readonly reconnectGraceMs: number;
+  readonly clock?: WorkerClock;
+  readonly scheduler?: WorkerScheduler;
+}
+
+/** Maps authenticated platform attempts to durable-in-memory workers. */
+export class GameSessionHost {
+  private readonly workers = new Map<string, GameSessionWorker>();
+
+  constructor(private readonly options: GameSessionHostOptions) {}
+
+  async attachWithSessionKey(sessionKey: string, connectionId: string): Promise<SessionAttachment> {
+    const resolved = await this.options.platformGateway.resolveSession(sessionKey);
+    let worker = this.workers.get(resolved.attemptId);
+    if (worker === undefined) {
+      const content = this.options.contentRegistry.resolve(resolved.gameLevelId);
+      const seed = rootSeed(
+        resolved.mode.kind === 'replay' ? resolved.mode.source.rootSeed : undefined,
+      );
+      worker = new GameSessionWorker({
+        attemptId: resolved.attemptId,
+        mode: resolved.mode,
+        content,
+        attempt: content.createAttempt(seed, resolved.mode),
+        platformGateway: this.options.platformGateway,
+        resumeTokens: this.options.resumeTokens,
+        disconnectDebounceMs: this.options.disconnectDebounceMs,
+        reconnectGraceMs: this.options.reconnectGraceMs,
+        ...(this.options.clock === undefined ? {} : { clock: this.options.clock }),
+        ...(this.options.scheduler === undefined ? {} : { scheduler: this.options.scheduler }),
+        onAborted: (attemptId) => this.workers.delete(attemptId),
+      });
+      this.workers.set(resolved.attemptId, worker);
+    }
+    return worker.attach(connectionId);
+  }
+
+  attachWithResumeToken(
+    attemptId: string,
+    resumeToken: string,
+    connectionId: string,
+  ): SessionAttachment {
+    const nowMs = this.options.clock?.nowMs() ?? Date.now();
+    if (!this.options.resumeTokens.validate(resumeToken, attemptId, nowMs))
+      throw new Error('Invalid or expired resume token');
+    const worker = this.workers.get(attemptId);
+    if (worker === undefined) throw new Error('Attempt is not available for resume');
+    return worker.attach(connectionId);
+  }
+
+  detach(attemptId: string, connectionId: string): void {
+    this.workers.get(attemptId)?.detach(connectionId);
+  }
+
+  worker(attemptId: string): GameSessionWorker | undefined {
+    return this.workers.get(attemptId);
+  }
+}
+
+function rootSeed(replaySeed: string | undefined): number {
+  if (replaySeed !== undefined) {
+    const parsed = Number(replaySeed);
+    if (Number.isSafeInteger(parsed) && parsed >= 0) return parsed;
+    throw new RangeError('Replay root seed must be a non-negative safe integer');
+  }
+  return randomBytes(4).readUInt32BE(0);
+}
