@@ -153,6 +153,35 @@ const optionalHttpUrl = z.preprocess(
     .optional(),
 );
 
+const DEFAULT_GAME_LEVEL_ID = 'vsm-baseline-01';
+const DEFAULT_PUBLIC_GAME_URL = 'http://127.0.0.1:4174/';
+const DEFAULT_PUBLIC_APP_URL = 'http://127.0.0.1:5173';
+
+const absoluteHttpUrl = z.string().superRefine((value, ctx) => {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    ctx.addIssue({ code: 'custom', message: 'ожидается абсолютный http:// или https://' });
+    return;
+  }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    ctx.addIssue({ code: 'custom', message: 'ожидается абсолютный http:// или https://' });
+  }
+});
+
+function httpUrlDefault(fallback: string) {
+  return z.preprocess(
+    (value: unknown) => (value === undefined || value === '' ? fallback : value),
+    absoluteHttpUrl,
+  );
+}
+
+const gameLevelIdSchema = z.preprocess(
+  (value: unknown) => (value === undefined || value === '' ? DEFAULT_GAME_LEVEL_ID : value),
+  z.string().min(1),
+);
+
 const optionalText = z.preprocess(blankToUndefined, z.string().min(1).optional());
 
 const llmTimeoutSchema = z.preprocess(
@@ -262,6 +291,9 @@ const EnvSchema = z
       )
       .refine((value) => value.length > 0, { message: 'нужен хотя бы один origin' }),
     PUBLIC_GAME_WS_URL: z.string().regex(/^wss?:\/\/\S+$/, 'ожидается ws:// или wss://'),
+    PUBLIC_GAME_URL: httpUrlDefault(DEFAULT_PUBLIC_GAME_URL),
+    PUBLIC_APP_URL: httpUrlDefault(DEFAULT_PUBLIC_APP_URL),
+    GAME_LEVEL_ID: gameLevelIdSchema,
     COOKIE_SECURE: cookieSecureSchema,
     TRUST_PROXY: trustProxySchema,
     WEBHOOK_ALLOWED_HOSTS: z.preprocess(
@@ -345,6 +377,9 @@ const EnvSchema = z
       extIdPepper: env.EXT_ID_PEPPER,
       corsOrigins: env.CORS_ORIGINS,
       publicGameWsUrl: env.PUBLIC_GAME_WS_URL,
+      publicGameUrl: env.PUBLIC_GAME_URL,
+      publicAppUrl: env.PUBLIC_APP_URL,
+      gameLevelId: env.GAME_LEVEL_ID,
       cookieSecure: env.COOKIE_SECURE,
       trustProxy: env.TRUST_PROXY,
       webhookAllowedHosts: env.WEBHOOK_ALLOWED_HOSTS,

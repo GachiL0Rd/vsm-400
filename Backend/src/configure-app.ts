@@ -38,6 +38,15 @@ export async function configureApp(app: NestFastifyApplication): Promise<void> {
     .addBearerAuth({ type: 'http', scheme: 'bearer', bearerFormat: 'JWT' }, 'bearer')
     .addApiKey({ type: 'apiKey', in: 'header', name: 'X-API-Key' }, 'api-key')
     .addApiKey({ type: 'apiKey', in: 'header', name: 'X-Service-Token' }, 'service-token')
+    .addBearerAuth(
+      {
+        type: 'http',
+        scheme: 'bearer',
+        bearerFormat: 'opaque-service-token',
+        description: 'Секрет Game Server. Значение — GAME_SERVER_TOKEN.',
+      },
+      'platform-service',
+    )
     .build();
   // Документ Swagger — OpenAPI 3.0. Без cleanup nullable и z.literal уходят в синтаксис 3.1.
   const rawDocument = SwaggerModule.createDocument(app, documentConfig);

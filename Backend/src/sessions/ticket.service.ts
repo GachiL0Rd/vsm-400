@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { Inject, Injectable } from '@nestjs/common';
-import { JwtService } from '@nestjs/jwt';
+import { JwtService, TokenExpiredError } from '@nestjs/jwt';
 import { z } from 'zod';
 import { APP_CONFIG, type AppConfig } from '../config/env';
 import { RedisService } from '../redis/redis.service';
@@ -17,6 +17,11 @@ const claimsSchema = z.object({
 });
 
 export type TicketClaims = z.infer<typeof claimsSchema>;
+
+export type TicketVerdict =
+  | { status: 'ok'; claims: TicketClaims }
+  | { status: 'expired' }
+  | { status: 'invalid' };
 
 @Injectable()
 export class TicketService {
@@ -41,23 +46,35 @@ export class TicketService {
     );
   }
 
+  /** Legacy /api/internal/v1: и просроченный, и битый билет — 401. */
   async read(token: string): Promise<TicketClaims> {
-    let payload: unknown;
+    const verdict = await this.classify(token);
+    if (verdict.status !== 'ok') {
+      throw invalidTicket();
+    }
+    return verdict.claims;
+  }
+
+  /** Platform resolve отличает истечение от битой подписи. 401 здесь не бывает. */
+  async classify(token: string): Promise<TicketVerdict> {
     try {
-      payload = await this.jwt.verifyAsync(token, {
+      const payload = await this.jwt.verifyAsync(token, {
         secret: this.config.gameTicketSecret,
         algorithms: ['HS256'],
         issuer: ISSUER,
         audience: AUDIENCE,
       });
-    } catch {
-      throw invalidTicket();
+      const parsed = claimsSchema.safeParse(payload);
+      if (!parsed.success) {
+        return { status: 'invalid' };
+      }
+      return { status: 'ok', claims: parsed.data };
+    } catch (error) {
+      if (error instanceof TokenExpiredError) {
+        return { status: 'expired' };
+      }
+      return { status: 'invalid' };
     }
-    const parsed = claimsSchema.safeParse(payload);
-    if (!parsed.success) {
-      throw invalidTicket();
-    }
-    return parsed.data;
   }
 
   /** true — билет погашен впервые. false — jti уже был. */

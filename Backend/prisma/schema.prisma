@@ -415,7 +415,8 @@ model GameSession {
   finishedAt     DateTime?
   expiresAt      DateTime
   flags          String[]
-  // Итог рейса {runId, suspicious, summary}. Аудит хранит только runId и suspicious.
+  // Итог рейса {runId, suspicious, summary, platform?}. Аудит хранит только runId и suspicious.
+  // platform: {payloadSha256, result} — сырой FinishedGameResult Game Server.
   result         Json?             @db.JsonB
   createdAt      DateTime          @default(now())
 

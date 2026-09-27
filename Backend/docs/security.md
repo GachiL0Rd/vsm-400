@@ -120,12 +120,12 @@ HR — не роль пользователя и не cookie. Запись `ApiC
 | --- | --- |
 | `JWT_ACCESS_SECRET` | Подпись access-JWT. |
 | `GAME_TICKET_SECRET` | Подпись билета `aud=vsm-game`. |
-| `GAME_SERVER_TOKEN` | Заголовок `X-Service-Token`. |
+| `GAME_SERVER_TOKEN` | `X-Service-Token` на `/api/internal/v1` и Bearer на `/api/game`. |
 | `SEED_ENC_KEY` | AES-256-GCM для seed смены. |
 | `EXT_ID_PEPPER` | HMAC табельного номера. |
 
 Утечка `EXT_ID_PEPPER` позволяет перебирать табельные номера в HMAC.
-Утечка `GAME_SERVER_TOKEN` позволяет сдать `RunReport`. Оба меняются сменой
+Утечка `GAME_SERVER_TOKEN` позволяет сдать `RunReport` и вызвать `/api/game`. Оба меняются сменой
 env и рестартом. Отдельного KMS в постановке нет.
 
 ## Cookie

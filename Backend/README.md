@@ -62,11 +62,14 @@ docker compose --profile app up --build -d
 | `REDIS_URL` | Redis или Valkey (`redis://` или `rediss://`) |
 | `JWT_ACCESS_SECRET` | Секрет access-JWT, минимум 32 символа |
 | `GAME_TICKET_SECRET` | Секрет игрового билета, минимум 32 символа |
-| `GAME_SERVER_TOKEN` | Секрет заголовка `X-Service-Token`, минимум 16 символов |
+| `GAME_SERVER_TOKEN` | Секрет `X-Service-Token` и Bearer `/api/game/*`, минимум 16 символов. На Game это `PLATFORM_SERVICE_TOKEN` |
 | `SEED_ENC_KEY` | 32 байта hex (64 символа), ключ AES-256-GCM для seed сессии |
 | `EXT_ID_PEPPER` | Перец HMAC табельного номера, минимум 16 символов. ФИО не хранится |
 | `CORS_ORIGINS` | Список origin через запятую, хотя бы один |
-| `PUBLIC_GAME_WS_URL` | `ws://` или `wss://`, адрес GameServer для клиента |
+| `PUBLIC_GAME_WS_URL` | Legacy `ws://` или `wss://`. Кабинет кладёт его в `wsUrl` |
+| `PUBLIC_GAME_URL` | Абсолютный `http://` или `https://` клиента Game. По умолчанию `http://127.0.0.1:4174/`. Из него собирается `launchUrl` |
+| `PUBLIC_APP_URL` | Абсолютный `http://` или `https://` кабинета. По умолчанию `http://127.0.0.1:5173`. Редирект `{URL}/runs/{runId}` |
+| `GAME_LEVEL_ID` | Id уровня для Game Server. Пусто — `vsm-baseline-01` |
 | `COOKIE_SECURE` | `true` или `false`. По умолчанию `false`. В `production` только `true`, иначе старт падает |
 | `TRUST_PROXY` | Пусто, `false` или `0` — не доверять `X-Forwarded-For` (в адаптер уходит `false`). Иначе список через запятую: IP, CIDR или `loopback` / `linklocal` / `uniquelocal`. `true` и число хопов запрещены: Fastify 5.12 их не читает как доверие к заголовку |
 | `WEBHOOK_ALLOWED_HOSTS` | Hostname через запятую. Пусто — пустой список, фильтр хоста не включается. Непустое значение — только эти хосты. URL сводится к hostname |
@@ -271,7 +274,9 @@ METHODIST и ADMIN любой. `GET /api/v1/analytics/scenarios/:id` — вор�
 в аудит пишется `session.resumed` (это не флаг). Иначе собирается план, seed
 шифруется AES-256-GCM, в cookie `vsm_game` (HttpOnly, SameSite=Strict,
 Path=/game-ws, 2 минуты) и в тело кладётся билет. Ответ: `{sessionId, ticket,
-wsUrl, seedCommit, plan}` — публичный план без графа: поезд, маршрут, вагон,
+wsUrl, launchUrl, seedCommit, plan}`. `launchUrl` — `PUBLIC_GAME_URL` с
+query `sessionKey`. `wsUrl` остаётся для старого сокета. План публичный,
+без графа: поезд, маршрут, вагон,
 класс, отправление, число перегонов и названия. Назначенная `PLANNED` смена
 становится `STARTED`.
 
@@ -285,7 +290,13 @@ wsUrl, seedCommit, plan}` — публичный план без графа: п�
 `GET /:id/reveal` после `COMPLETED` отдаёт seed и commit.
 
 Итог завершённой смены лежит в `GameSession.result` (`runId`, `suspicious`,
-`summary`). В аудит `session.completed` пишутся только `runId` и `suspicious`.
+`summary`, для Game Server ещё `platform`). В аудит `session.completed`
+пишутся только `runId` и `suspicious`.
+
+`POST /api/game/sessions/resolve` и `POST /api/game/sessions/:attemptId/finish`
+— Platform Server для текущего Game Server: Bearer `GAME_SERVER_TOKEN`, без
+префикса `v1`. Статусы и маппинг итога — в
+[docs/game-server-contract.md](docs/game-server-contract.md).
 
 Внутренний контур `/api/internal/v1` (заголовок `X-Service-Token`):
 `POST /tickets/verify` гасит jti в Redis (`vsm:ticket:<jti>`, 300 с), повтор —
