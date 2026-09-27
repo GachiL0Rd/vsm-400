@@ -20,8 +20,11 @@ Phaser client удалены. В `src/client/` оставлена только �
 полноценный локальный игровой сервер и presentation layer будут возвращены уже
 поверх нового authoritative runtime.
 
-Оставшаяся интеграционная работа отслеживается в
-[`docs/agent/iteration-07-remaining-work.md`](docs/agent/iteration-07-remaining-work.md).
+Состояние интеграционного контура и ссылки на уже зафиксированные protocol/
+deployment contracts находятся в
+[`docs/agent/integration-hardening.md`](docs/agent/integration-hardening.md).
+Известная недостающая visual data boundary описана в
+[`docs/agent/client-visual-blockers.md`](docs/agent/client-visual-blockers.md).
 
 ## Требования
 
