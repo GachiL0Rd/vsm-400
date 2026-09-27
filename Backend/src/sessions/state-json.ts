@@ -1,10 +1,6 @@
-import { EngineError } from '../engine/errors';
-import { isEndNode, type ScenarioGraph, type ScenarioNode } from '../engine/schema';
-import type { EngineState, ShiftPlan } from '../engine/types';
+import type { ShiftPlan } from '../engine/types';
 import type { Prisma } from '../generated/prisma/client';
 import type { PublicPlan } from './dto';
-
-export type StoredState = EngineState & { shownAt: string };
 
 export function toJson(value: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
@@ -12,10 +8,6 @@ export function toJson(value: unknown): Prisma.InputJsonValue {
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-export function attachShown(state: EngineState, shownAt: Date): StoredState {
-  return { ...state, shownAt: shownAt.toISOString() };
 }
 
 export function readPlan(raw: unknown): ShiftPlan {
@@ -45,21 +37,6 @@ export function toPublicPlan(plan: ShiftPlan, titles: readonly string[]): Public
     segments: plan.scenarios.length,
     titles: titles.slice(),
   };
-}
-
-export function deadlineFor(node: ScenarioNode, now: Date): Date | null {
-  if (isEndNode(node) || typeof node.timer !== 'number') {
-    return null;
-  }
-  return new Date(now.getTime() + node.timer * 1000);
-}
-
-export function currentGraph(state: EngineState, graphs: readonly ScenarioGraph[]): ScenarioGraph {
-  const graph = graphs.find((item) => item.id === state.scenarioId);
-  if (!graph) {
-    throw new EngineError('SCENARIO_MISSING');
-  }
-  return graph;
 }
 
 export function isUuid(value: string): boolean {

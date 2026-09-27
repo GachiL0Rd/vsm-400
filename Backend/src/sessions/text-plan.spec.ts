@@ -1,8 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createRng } from '../engine/rng';
 import type { ScenarioGraph } from '../engine/schema';
-import { createState, step } from '../engine/step';
-import { orderChoices } from '../engine/text';
+
 import type { ShiftPlan } from '../engine/types';
 import {
   assembleTextPlan,
@@ -137,21 +136,11 @@ describe('план текстов', () => {
     expect(pool.textPlan).toEqual({ [textPlanKey('on', 'door')]: null });
   });
 
-  it('разный seed меняет порядок, повтор того же seed — нет', () => {
-    const labels = ['a', 'b', 'c'];
-    const orderOf = (byte: number): string[] =>
-      orderChoices(labels, orderRng(createRng(Buffer.alloc(32, byte)), 'sc', 'door', 0));
-    const first = orderOf(1);
-    expect(orderOf(1)).toEqual(first);
-    let other = 0;
-    for (let byte = 2; byte < 40; byte += 1) {
-      if (orderOf(byte).join('|') !== first.join('|')) {
-        other = byte;
-        break;
-      }
-    }
-    expect(other).not.toBe(0);
-    expect(orderOf(other)).not.toEqual(first);
+  it('разный seed меняет fork порядка, повтор того же seed — нет', () => {
+    const draw = (byte: number): number =>
+      orderRng(createRng(Buffer.alloc(32, byte)), 'sc', 'door', 0).nextFloat();
+    expect(draw(1)).toBe(draw(1));
+    expect(draw(2)).not.toBe(draw(1));
   });
 
   it('показанный пустой слот больше не живой', () => {
@@ -174,34 +163,5 @@ describe('план текстов', () => {
     });
     expect(payloadVariant({ text: 1, choices: [] })).toBeUndefined();
     expect(payloadVariant(null)).toBeUndefined();
-  });
-
-  it('вариант меняет тексты журнала и не меняет очки и переход', () => {
-    const scenario = graph('on', 'pool');
-    const plan = shift([{ id: 'on', version: 1 }]);
-    const state = createState(plan, [scenario]);
-    const variant = {
-      text: 'Пассажир говорит иначе',
-      choices: [
-        { id: 'do', text: 'Ответить другими словами' },
-        { id: 'skip', text: 'Отойти другими словами' },
-      ],
-    };
-    const played = step(
-      state,
-      scenario,
-      { choiceId: 'do' },
-      { elapsedMs: 500, textVariant: variant },
-    );
-    const plain = step(state, scenario, { choiceId: 'do' }, { elapsedMs: 500 });
-    expect(played.entry.situation).toBe(variant.text);
-    expect(played.entry.action).toBe('Ответить другими словами');
-    expect(played.entry.loyaltyDelta).toBe(plain.entry.loyaltyDelta);
-    expect(played.entry.safetyDelta).toBe(plain.entry.safetyDelta);
-    expect(played.entry.verdict).toBe(plain.entry.verdict);
-    expect(played.state.nodeId).toBe(plain.state.nodeId);
-    expect(played.state.loyalty).toBe(plain.state.loyalty);
-    expect(played.state.safety).toBe(plain.state.safety);
-    expect(plain.entry.situation).toBe('Исходная ситуация');
   });
 });

@@ -1,6 +1,6 @@
 import type { CarClass, Competency, RunOutcome, Stage, Verdict } from './schema';
 
-/** Снимок прогона. step() меняет его на каждом ходе, summarize() читает в конце. */
+/** Снимок прогона, который платформа хранит в итоге смены. */
 export type EngineState = {
   scenarioIndex: number;
   scenarioId: string;

@@ -6,11 +6,9 @@ import { Clock } from '../common/clock';
 import { SESSION_TEXT_REQUESTED, type SessionTextRequestItem } from '../common/events';
 import { APP_CONFIG, type AppConfig } from '../config/env';
 import { EngineError } from '../engine/errors';
-import type { CatalogEntry } from '../engine/generator';
-import { generateShift } from '../engine/generator';
+import { type CatalogEntry, type GenerateShiftOptions, generateShift } from '../engine/generator';
 import { commitOf, createRng, newSeed } from '../engine/rng';
 import type { ScenarioGraph } from '../engine/schema';
-import { createState } from '../engine/step';
 import type { ShiftPlan } from '../engine/types';
 import { ActorType, type GameSession, type Prisma } from '../generated/prisma/client';
 import type { LlmJobData } from '../llm/llm.constants';
@@ -26,15 +24,7 @@ import { gameLaunchUrl } from './platform-url';
 import { loadRoutesFile } from './routes-file';
 import { encryptSeed } from './seed-box';
 import { lockUserSessions } from './session-lock';
-import {
-  attachShown,
-  currentGraph,
-  deadlineFor,
-  isUuid,
-  readPlan,
-  toJson,
-  toPublicPlan,
-} from './state-json';
+import { isUuid, readPlan, toJson, toPublicPlan } from './state-json';
 import { buildTextPlan, selectedVariantIds } from './text-plan';
 import type { TicketClaims } from './ticket.service';
 import { TicketService } from './ticket.service';
@@ -54,8 +44,6 @@ type Draft = {
   seedEnc: string;
   seedCommit: string;
   plan: ShiftPlan;
-  state: ReturnType<typeof attachShown>;
-  deadline: Date | null;
   titles: string[];
   assignmentId: string | null;
   now: Date;
@@ -147,23 +135,12 @@ export class SessionsService {
       this.plannedAssignment(userId),
     ]);
     const seed = newSeed();
-    const plan = generateShift(
-      createRng(seed),
-      entries,
-      {
-        carClass: body.carClass ?? assignment?.carClass,
-        focus,
-        assigned: assignment?.scenarioIds ?? [],
-      },
-      this.routes,
-    );
+    const plan = this.safePlan(seed, entries, {
+      carClass: body.carClass ?? assignment?.carClass,
+      focus,
+      assigned: assignment?.scenarioIds ?? [],
+    });
     const graphs = await this.graphsFor(plan);
-    const state = this.safeState(plan, graphs);
-    const graph = currentGraph(state, graphs);
-    const node = graph.nodes[state.nodeId];
-    if (!node) {
-      throw fromEngine(new EngineError('NODE_MISSING'));
-    }
     const assembly = await buildTextPlan(createRng(seed), plan, graphs, async (query, fork) => {
       const chosen = await this.pool.pick(
         query.scenarioId,
@@ -178,8 +155,6 @@ export class SessionsService {
       seedEnc: encryptSeed(seed, this.config.seedEncKey),
       seedCommit: commitOf(seed),
       plan,
-      state: attachShown(state, now),
-      deadline: deadlineFor(node, now),
       titles: await this.titlesFor(plan),
       assignmentId: assignment?.id ?? null,
       now,
@@ -188,9 +163,13 @@ export class SessionsService {
     };
   }
 
-  private safeState(plan: ShiftPlan, graphs: readonly ScenarioGraph[]) {
+  private safePlan(
+    seed: Buffer,
+    entries: CatalogEntry[],
+    options: GenerateShiftOptions,
+  ): ShiftPlan {
     try {
-      return createState(plan, graphs);
+      return generateShift(createRng(seed), entries, options, this.routes);
     } catch (error) {
       if (error instanceof EngineError) {
         throw fromEngine(error);
@@ -225,9 +204,9 @@ export class SessionsService {
         ...(draft.textPlan ? { textPlan: toJson(draft.textPlan) } : {}),
         seedCommit: draft.seedCommit,
         seedEnc: draft.seedEnc,
-        state: toJson(draft.state),
-        seq: draft.state.seq,
-        nodeDeadlineAt: draft.deadline,
+        state: toJson({ seq: 0 }),
+        seq: 0,
+        nodeDeadlineAt: null,
         startedAt: null,
         expiresAt: new Date(draft.now.getTime() + SESSION_TTL_MS),
         flags: [],
