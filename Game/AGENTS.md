@@ -2,9 +2,11 @@
 
 ## Контекст и границы
 
-`Game/` — самостоятельный модуль браузерной игры внутри многомодульного
-репозитория. `index.html` является локальной оболочкой разработки, а способ
-встраивания игры в будущий клиент пока не зафиксирован.
+`Game/` — самостоятельный модуль Browser Game Client и authoritative Game
+Server внутри многомодульного репозитория. `index.html` — локальная браузерная
+оболочка, `src/server/main.ts` — composition root Game Server. Platform Server
+внешний: он владеет авторизацией, попытками и постоянными результатами, но не
+должен импортировать код Game.
 
 Перед изменением прочитайте:
 
@@ -15,6 +17,13 @@
 Для текущей реализации приоритет имеют документы
 [`docs/user/`](docs/user/README.md).
 Актуальные рабочие инструкции находятся в `docs/agent/`; исторический контекст перенесён в `docs/backlog/`.
+
+Текущее направление: `src/server/` владеет authoritative simulation и
+lifecycle попытки; `src/client/` отправляет intent и отображает только public
+presentation state через `src/common/`. Клиент не импортирует `simulation` и
+не принимает доменные решения. Детали — в
+[`docs/user/project_direction.md`](docs/user/project_direction.md) и
+[`docs/user/architecture/client-server.md`](docs/user/architecture/client-server.md).
 
 Необязательные локальные инструменты и их параметры описаны в
 `docs/agent/tools.md`.
@@ -49,6 +58,7 @@ Phaser 4.2.1. Перед новым вызовом Phaser API объясните
 ```powershell
 npm ci --include=dev
 npm run dev
+npm run server
 npm run verify
 ```
 
@@ -60,6 +70,8 @@ npm run verify
 
 - Чистые правила состояния, времени, событий, оценки, результатов и достижений
   не должны импортировать Phaser, DOM или Vite.
+- `src/server/` — composition root authoritative runtime; `src/client/`
+  импортирует только browser-safe `src/common/`, но не `src/simulation/`.
 - Phaser отвечает за сцены, ввод, отображение, звук и жизненный цикл движка.
 - Время и случайность должны иметь контролируемые границы, когда они влияют на
   доменную логику.
