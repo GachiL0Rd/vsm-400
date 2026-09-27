@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "setVersion": "baseline-v1",
+  "startingScore": 100,
+  "boarding": {
+    "unsafeAdmit": {
+      "safety": -15,
+      "customerSatisfaction": 0
+    },
+    "wrongReject": {
+      "safety": 0,
+      "customerSatisfaction": -25
+    }
+  },
+  "service": {
+    "targetResponseUs": {
+      "basic": 120000000,
+      "comfort": 90000000,
+      "business": 60000000
+    },
+    "timeoutPenalty": {
+      "basic": 10,
+      "comfort": 15,
+      "business": 20
+    },
+    "latePenalty": 5,
+    "veryLatePenalty": 10
+  },
+  "incidents": {
+    "criticalFire": {
+      "safety": -60,
+      "customerSatisfaction": -30
+    },
+    "criticalPressure": {
+      "safety": -50,
+      "customerSatisfaction": -25
+    }
+  },
+  "emergency": {
+    "falseActivation": {
+      "safety": -20,
+      "customerSatisfaction": -20
+    },
+    "sealRemovedWithoutActivation": {
+      "safety": -5,
+      "customerSatisfaction": 0
+    }
+  },
+  "safePredepartureMinimumSafety": 95,
+  "fastFireResponseUs": 120000000
+}

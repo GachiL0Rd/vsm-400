@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "bundles": [
+    {
+      "gameLevelId": "vsm-baseline-01",
+      "gameLevelVersion": "vsm-baseline-01",
+      "simulationCompatibilityVersion": "0.1.0",
+      "level": "vsm-baseline-01/level.json",
+      "scenario": "vsm-baseline-01/scenario.json",
+      "actions": "vsm-baseline-01/actions.json",
+      "assessment": "vsm-baseline-01/assessment.json"
+    }
+  ]
+}

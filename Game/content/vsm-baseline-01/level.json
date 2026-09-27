@@ -1,0 +1,391 @@
+{
+  "schemaVersion": 1,
+  "id": "demo-carriage",
+  "version": "1.0.0",
+  "regions": [
+    {
+      "id": "carriage-main",
+      "cellIds": [
+        "carriage.entry",
+        "carriage.cabin",
+        "carriage.service",
+        "carriage.seat-1",
+        "carriage.seat-2",
+        "carriage.seat-3"
+      ],
+      "defaultActive": true,
+      "publicVisualId": "region.carriage-main"
+    },
+    {
+      "id": "platform-origin",
+      "cellIds": [
+        "platform-origin.desk",
+        "platform-origin.door"
+      ],
+      "defaultActive": true,
+      "publicVisualId": "region.platform"
+    },
+    {
+      "id": "platform-standard",
+      "cellIds": [
+        "platform-standard.wait",
+        "platform-standard.door"
+      ],
+      "defaultActive": false,
+      "publicVisualId": "region.platform"
+    }
+  ],
+  "grid": {
+    "cells": [
+      {
+        "id": "carriage.entry",
+        "x": 0,
+        "y": 0,
+        "capacity": 3
+      },
+      {
+        "id": "carriage.cabin",
+        "x": 1,
+        "y": 0,
+        "capacity": 2
+      },
+      {
+        "id": "carriage.service",
+        "x": 2,
+        "y": 0,
+        "capacity": 2
+      },
+      {
+        "id": "carriage.seat-1",
+        "x": 1,
+        "y": 1,
+        "capacity": 1
+      },
+      {
+        "id": "carriage.seat-2",
+        "x": 2,
+        "y": 1,
+        "capacity": 1
+      },
+      {
+        "id": "carriage.seat-3",
+        "x": 3,
+        "y": 1,
+        "capacity": 1
+      },
+      {
+        "id": "platform-origin.desk",
+        "x": -2,
+        "y": 0,
+        "capacity": 3
+      },
+      {
+        "id": "platform-origin.door",
+        "x": -1,
+        "y": 0,
+        "capacity": 3
+      },
+      {
+        "id": "platform-standard.wait",
+        "x": -2,
+        "y": 0,
+        "capacity": 3
+      },
+      {
+        "id": "platform-standard.door",
+        "x": -1,
+        "y": 0,
+        "capacity": 3
+      }
+    ],
+    "edges": [
+      {
+        "id": "entry-cabin:forward",
+        "from": "carriage.entry",
+        "to": "carriage.cabin",
+        "traversable": true,
+        "cost": 1,
+        "transitionCapacity": 2,
+        "fireTransferWeight": 0.2,
+        "pressureTransferWeight": 0.5
+      },
+      {
+        "id": "entry-cabin:backward",
+        "from": "carriage.cabin",
+        "to": "carriage.entry",
+        "traversable": true,
+        "cost": 1,
+        "transitionCapacity": 2,
+        "fireTransferWeight": 0.2,
+        "pressureTransferWeight": 0.5
+      },
+      {
+        "id": "cabin-service:forward",
+        "from": "carriage.cabin",
+        "to": "carriage.service",
+        "traversable": true,
+        "cost": 1,
+        "transitionCapacity": 2,
+        "fireTransferWeight": 0.2,
+        "pressureTransferWeight": 0.5
+      },
+      {
+        "id": "cabin-service:backward",
+        "from": "carriage.service",
+        "to": "carriage.cabin",
+        "traversable": true,
+        "cost": 1,
+        "transitionCapacity": 2,
+        "fireTransferWeight": 0.2,
+        "pressureTransferWeight": 0.5
+      },
+      {
+        "id": "cabin-seat-1:forward",
+        "from": "carriage.cabin",
+        "to": "carriage.seat-1",
+        "traversable": true,
+        "cost": 1,
+        "transitionCapacity": 2,
+        "fireTransferWeight": 0.2,
+        "pressureTransferWeight": 0.5
+      },
+      {
+        "id": "cabin-seat-1:backward",
+        "from": "carriage.seat-1",
+        "to": "carriage.cabin",
+        "traversable": true,
+        "cost": 1,
+        "transitionCapacity": 2,
+        "fireTransferWeight": 0.2,
+        "pressureTransferWeight": 0.5
+      },
+      {
+        "id": "service-seat-2:forward",
+        "from": "carriage.service",
+        "to": "carriage.seat-2",
+        "traversable": true,
+        "cost": 1,
+        "transitionCapacity": 2,
+        "fireTransferWeight": 0.2,
+        "pressureTransferWeight": 0.5
+      },
+      {
+        "id": "service-seat-2:backward",
+        "from": "carriage.seat-2",
+        "to": "carriage.service",
+        "traversable": true,
+        "cost": 1,
+        "transitionCapacity": 2,
+        "fireTransferWeight": 0.2,
+        "pressureTransferWeight": 0.5
+      },
+      {
+        "id": "service-seat-3:forward",
+        "from": "carriage.service",
+        "to": "carriage.seat-3",
+        "traversable": true,
+        "cost": 1,
+        "transitionCapacity": 2,
+        "fireTransferWeight": 0.2,
+        "pressureTransferWeight": 0.5
+      },
+      {
+        "id": "service-seat-3:backward",
+        "from": "carriage.seat-3",
+        "to": "carriage.service",
+        "traversable": true,
+        "cost": 1,
+        "transitionCapacity": 2,
+        "fireTransferWeight": 0.2,
+        "pressureTransferWeight": 0.5
+      },
+      {
+        "id": "origin-desk-door:forward",
+        "from": "platform-origin.desk",
+        "to": "platform-origin.door",
+        "traversable": true,
+        "cost": 1,
+        "transitionCapacity": 2,
+        "fireTransferWeight": 0.2,
+        "pressureTransferWeight": 0.5
+      },
+      {
+        "id": "origin-desk-door:backward",
+        "from": "platform-origin.door",
+        "to": "platform-origin.desk",
+        "traversable": true,
+        "cost": 1,
+        "transitionCapacity": 2,
+        "fireTransferWeight": 0.2,
+        "pressureTransferWeight": 0.5
+      },
+      {
+        "id": "origin-door-entry:forward",
+        "from": "platform-origin.door",
+        "to": "carriage.entry",
+        "traversable": true,
+        "cost": 1,
+        "transitionCapacity": 2,
+        "fireTransferWeight": 0.2,
+        "pressureTransferWeight": 0.5
+      },
+      {
+        "id": "origin-door-entry:backward",
+        "from": "carriage.entry",
+        "to": "platform-origin.door",
+        "traversable": true,
+        "cost": 1,
+        "transitionCapacity": 2,
+        "fireTransferWeight": 0.2,
+        "pressureTransferWeight": 0.5
+      },
+      {
+        "id": "platform-wait-door:forward",
+        "from": "platform-standard.wait",
+        "to": "platform-standard.door",
+        "traversable": true,
+        "cost": 1,
+        "transitionCapacity": 2,
+        "fireTransferWeight": 0.2,
+        "pressureTransferWeight": 0.5
+      },
+      {
+        "id": "platform-wait-door:backward",
+        "from": "platform-standard.door",
+        "to": "platform-standard.wait",
+        "traversable": true,
+        "cost": 1,
+        "transitionCapacity": 2,
+        "fireTransferWeight": 0.2,
+        "pressureTransferWeight": 0.5
+      },
+      {
+        "id": "platform-door-entry:forward",
+        "from": "platform-standard.door",
+        "to": "carriage.entry",
+        "traversable": true,
+        "cost": 1,
+        "transitionCapacity": 2,
+        "fireTransferWeight": 0.2,
+        "pressureTransferWeight": 0.5
+      },
+      {
+        "id": "platform-door-entry:backward",
+        "from": "carriage.entry",
+        "to": "platform-standard.door",
+        "traversable": true,
+        "cost": 1,
+        "transitionCapacity": 2,
+        "fireTransferWeight": 0.2,
+        "pressureTransferWeight": 0.5
+      }
+    ]
+  },
+  "anchors": [
+    {
+      "id": "platform.acceptance-desk",
+      "cellId": "platform-origin.desk"
+    },
+    {
+      "id": "carriage.entry-door",
+      "cellId": "carriage.entry"
+    },
+    {
+      "id": "carriage.extinguisher-1",
+      "cellId": "carriage.cabin"
+    },
+    {
+      "id": "carriage.climate-control",
+      "cellId": "carriage.cabin"
+    },
+    {
+      "id": "carriage.emergency-brake",
+      "cellId": "carriage.entry"
+    },
+    {
+      "id": "carriage.driver-comms",
+      "cellId": "carriage.cabin"
+    },
+    {
+      "id": "carriage.service-point",
+      "cellId": "carriage.service"
+    }
+  ],
+  "objects": [
+    {
+      "id": "acceptance-journal",
+      "kind": "acceptance-journal",
+      "cellId": "platform-origin.desk",
+      "anchorId": "platform.acceptance-desk",
+      "publicVisualId": "item.acceptance-journal"
+    },
+    {
+      "id": "extinguisher",
+      "kind": "extinguisher",
+      "cellId": "carriage.cabin",
+      "anchorId": "carriage.extinguisher-1",
+      "publicVisualId": "item.extinguisher"
+    },
+    {
+      "id": "climate-control",
+      "kind": "climate-control",
+      "cellId": "carriage.cabin",
+      "anchorId": "carriage.climate-control",
+      "publicVisualId": "object.climate-control"
+    },
+    {
+      "id": "emergency-brake",
+      "kind": "emergency-brake",
+      "cellId": "carriage.entry",
+      "anchorId": "carriage.emergency-brake",
+      "publicVisualId": "object.emergency-brake"
+    },
+    {
+      "id": "driver-comms",
+      "kind": "driver-comms",
+      "cellId": "carriage.cabin",
+      "anchorId": "carriage.driver-comms",
+      "publicVisualId": "object.driver-comms"
+    },
+    {
+      "id": "service-point",
+      "kind": "service-point",
+      "cellId": "carriage.service",
+      "anchorId": "carriage.service-point",
+      "publicVisualId": "object.service-point"
+    }
+  ],
+  "failureLocations": [
+    {
+      "id": "fire.cabin",
+      "cellId": "carriage.cabin",
+      "kinds": [
+        "fire"
+      ]
+    },
+    {
+      "id": "pressure.entry",
+      "cellId": "carriage.entry",
+      "kinds": [
+        "pressure-leak"
+      ]
+    }
+  ],
+  "sanitationLocations": [
+    {
+      "id": "sanitation.entry",
+      "cellId": "carriage.entry",
+      "visualIds": [
+        "sanitation.stain",
+        "sanitation.trash"
+      ]
+    },
+    {
+      "id": "sanitation.service",
+      "cellId": "carriage.service",
+      "visualIds": [
+        "sanitation.stain"
+      ]
+    }
+  ]
+}

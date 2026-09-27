@@ -1,3 +1,8 @@
+import {
+  type AssessmentConfig,
+  BASELINE_ASSESSMENT_CONFIG,
+  serviceClassValue,
+} from './assessment-config';
 import type { ServiceClassTrait } from './entity-store';
 import type { PassengerBoardingDecision } from './game-attempt';
 import type { SanitationCheckState } from './item-store';
@@ -41,6 +46,8 @@ interface ScoreDelta {
  * changes simulation state or action availability.
  */
 export class AssessmentRuntime {
+  constructor(private readonly config: AssessmentConfig = BASELINE_ASSESSMENT_CONFIG) {}
+
   private readonly boarding = new Map<string, BoardingFact>();
   private readonly service: ServiceFact[] = [];
   private journalSubmitted = false;
@@ -108,29 +115,33 @@ export class AssessmentRuntime {
 
   result(termination: AssessmentTermination): AssessmentResult {
     const score = addDeltas([
-      boardingDelta(this.boarding.values()),
-      serviceDelta(this.service),
-      incidentDelta(this.fireCritical, this.pressureCritical),
-      emergencyDelta({
-        sealRemoved: this.emergencySealRemoved,
-        activated: this.emergencyActivated,
-        hazardActive: this.emergencyHazardActive,
-      }),
+      boardingDelta(this.boarding.values(), this.config),
+      serviceDelta(this.service, this.config),
+      incidentDelta(this.fireCritical, this.pressureCritical, this.config),
+      emergencyDelta(
+        {
+          sealRemoved: this.emergencySealRemoved,
+          activated: this.emergencyActivated,
+          hazardActive: this.emergencyHazardActive,
+        },
+        this.config,
+      ),
     ]);
 
     const adjustedSafety = safePredepartureOverride(
-      100 + score.safety,
+      this.config.startingScore + score.safety,
       termination,
       this.journalCriticalProblem,
+      this.config,
     );
 
     return {
       scores: {
         safety: clampScore(adjustedSafety),
-        customerSatisfaction: clampScore(100 + score.customerSatisfaction),
+        customerSatisfaction: clampScore(this.config.startingScore + score.customerSatisfaction),
       },
       achievements: {
-        setVersion: 'baseline-v1',
+        setVersion: this.config.setVersion,
         ids: this.achievementIds(),
       },
     };
@@ -139,7 +150,13 @@ export class AssessmentRuntime {
   private achievementIds(): string[] {
     const ids: string[] = [];
     if (allBoardingDecisionsCorrect(this.boarding)) ids.push('documents-perfect');
-    if (isFastFireResponse(this.fireStartedAt, this.fireExtinguishedAt)) {
+    if (
+      isFastFireResponse(
+        this.fireStartedAt,
+        this.fireExtinguishedAt,
+        this.config.fastFireResponseUs,
+      )
+    ) {
       ids.push('fast-fire-response');
     }
     if (this.emergencyActivated && this.emergencyHazardActive) ids.push('safe-emergency-stop');
@@ -157,50 +174,55 @@ export class AssessmentRuntime {
   }
 }
 
-function boardingDelta(facts: Iterable<BoardingFact>): ScoreDelta {
+function boardingDelta(facts: Iterable<BoardingFact>, config: AssessmentConfig): ScoreDelta {
   let safety = 0;
   let customerSatisfaction = 0;
   for (const fact of facts) {
     if (fact.actual === fact.expected) continue;
-    if (fact.actual === 'admit') safety -= 15;
-    else customerSatisfaction -= 25;
+    const delta =
+      fact.actual === 'admit' ? config.boarding.unsafeAdmit : config.boarding.wrongReject;
+    safety += delta.safety;
+    customerSatisfaction += delta.customerSatisfaction;
   }
   return { safety, customerSatisfaction };
 }
 
-function serviceDelta(facts: readonly ServiceFact[]): ScoreDelta {
+function serviceDelta(facts: readonly ServiceFact[], config: AssessmentConfig): ScoreDelta {
   let customerSatisfaction = 0;
   for (const fact of facts) {
     if (fact.timedOut) {
-      customerSatisfaction -= timeoutPenalty(fact.serviceClass);
+      customerSatisfaction -= serviceClassValue(config.service.timeoutPenalty, fact.serviceClass);
       continue;
     }
     const responseUs = fact.responseUs ?? 0;
-    const targetUs = serviceTargetUs(fact.serviceClass);
-    if (responseUs > targetUs * 2) customerSatisfaction -= 10;
-    else if (responseUs > targetUs) customerSatisfaction -= 5;
+    const targetUs = serviceClassValue(config.service.targetResponseUs, fact.serviceClass);
+    if (responseUs > targetUs * 2) customerSatisfaction -= config.service.veryLatePenalty;
+    else if (responseUs > targetUs) customerSatisfaction -= config.service.latePenalty;
   }
   return { safety: 0, customerSatisfaction };
 }
 
-function incidentDelta(fireCritical: boolean, pressureCritical: boolean): ScoreDelta {
-  return {
-    safety: (fireCritical ? -60 : 0) + (pressureCritical ? -50 : 0),
-    customerSatisfaction: (fireCritical ? -30 : 0) + (pressureCritical ? -25 : 0),
-  };
+function incidentDelta(
+  fireCritical: boolean,
+  pressureCritical: boolean,
+  config: AssessmentConfig,
+): ScoreDelta {
+  return addDeltas([
+    fireCritical ? config.incidents.criticalFire : { safety: 0, customerSatisfaction: 0 },
+    pressureCritical ? config.incidents.criticalPressure : { safety: 0, customerSatisfaction: 0 },
+  ]);
 }
 
-function emergencyDelta(input: {
-  readonly sealRemoved: boolean;
-  readonly activated: boolean;
-  readonly hazardActive: boolean;
-}): ScoreDelta {
-  if (input.activated && !input.hazardActive) {
-    return { safety: -20, customerSatisfaction: -20 };
-  }
-  if (input.sealRemoved && !input.activated) {
-    return { safety: -5, customerSatisfaction: 0 };
-  }
+function emergencyDelta(
+  input: {
+    readonly sealRemoved: boolean;
+    readonly activated: boolean;
+    readonly hazardActive: boolean;
+  },
+  config: AssessmentConfig,
+): ScoreDelta {
+  if (input.activated && !input.hazardActive) return config.emergency.falseActivation;
+  if (input.sealRemoved && !input.activated) return config.emergency.sealRemovedWithoutActivation;
   return { safety: 0, customerSatisfaction: 0 };
 }
 
@@ -208,13 +230,14 @@ function safePredepartureOverride(
   safety: number,
   termination: AssessmentTermination,
   journalCriticalProblem: boolean,
+  config: AssessmentConfig,
 ): number {
   if (
     termination.kind === 'terminal-rule' &&
     termination.outcomeId === 'wagon-unserviceable' &&
     journalCriticalProblem
   ) {
-    return Math.max(safety, 95);
+    return Math.max(safety, config.safePredepartureMinimumSafety);
   }
   return safety;
 }
@@ -226,8 +249,9 @@ function allBoardingDecisionsCorrect(boarding: ReadonlyMap<string, BoardingFact>
 function isFastFireResponse(
   startedAt: SimTimeUs | null,
   extinguishedAt: SimTimeUs | null,
+  thresholdUs: number,
 ): boolean {
-  return startedAt !== null && extinguishedAt !== null && extinguishedAt - startedAt <= 120_000_000;
+  return startedAt !== null && extinguishedAt !== null && extinguishedAt - startedAt <= thresholdUs;
 }
 
 function addDeltas(deltas: readonly ScoreDelta[]): ScoreDelta {
@@ -238,28 +262,6 @@ function addDeltas(deltas: readonly ScoreDelta[]): ScoreDelta {
     }),
     { safety: 0, customerSatisfaction: 0 },
   );
-}
-
-function serviceTargetUs(serviceClass: ServiceClassTrait): number {
-  switch (serviceClass) {
-    case 'business':
-      return 60_000_000;
-    case 'comfort':
-      return 90_000_000;
-    case 'basic':
-      return 120_000_000;
-  }
-}
-
-function timeoutPenalty(serviceClass: ServiceClassTrait): number {
-  switch (serviceClass) {
-    case 'business':
-      return 20;
-    case 'comfort':
-      return 15;
-    case 'basic':
-      return 10;
-  }
 }
 
 function clampScore(value: number): number {

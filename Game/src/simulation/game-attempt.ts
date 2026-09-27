@@ -14,6 +14,7 @@ import {
   createWaitActionHandler,
 } from './action-runtime';
 import { type AssessmentResult, AssessmentRuntime } from './assessment';
+import type { AssessmentConfig } from './assessment-config';
 import { BASELINE_ACTION_CONTENT } from './baseline-content';
 import {
   createEntityStore,
@@ -99,6 +100,7 @@ export interface GameAttemptOptions {
   readonly level?: LoadedLevel;
   readonly scenario?: LoadedScenario;
   readonly actionContent?: ActionContent;
+  readonly assessmentConfig?: AssessmentConfig;
   readonly playerId?: EntityId;
   readonly microsecondsPerMovementCost?: number;
 }
@@ -132,7 +134,7 @@ export class GameAttempt {
   readonly catalog: ActionCatalog;
   readonly random: SimulationRandom;
 
-  private readonly assessmentRuntime = new AssessmentRuntime();
+  private readonly assessmentRuntime: AssessmentRuntime;
 
   private readonly queue = new EventQueue<AttemptEvent>();
   private readonly activeRegions = new Set<string>();
@@ -163,6 +165,7 @@ export class GameAttempt {
   constructor(options: GameAttemptOptions) {
     this.level = options.level ?? BASELINE_LEVEL;
     this.scenario = options.scenario ?? BASELINE_SCENARIO;
+    this.assessmentRuntime = new AssessmentRuntime(options.assessmentConfig);
     assertScenarioMatchesLevel(this.scenario, this.level);
     this.playerId = options.playerId ?? 'player';
     this.random = createSimulationRandom(options.rootSeed);
