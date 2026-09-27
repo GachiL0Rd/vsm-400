@@ -25,8 +25,8 @@ function waiting(actionId: string, generation: number): CurrentAction {
 
 function setup(): { entities: EntityStore; items: ItemStore } {
   const entities = createEntityStore({
-    schedule() {
-      return undefined;
+    scheduleReplacing() {
+      return 1;
     },
     generation() {
       return 0;

@@ -141,6 +141,28 @@ describe('EventQueue', () => {
     expect(queue.currentTime).toBe(15);
   });
 
+  it('replaces a keyed event only after the new schedule is valid', () => {
+    const queue = new EventQueue<string>();
+    const first = queue.scheduleReplacing(10, 'first', 'request:p1');
+    expect(first.generation).toBe(1);
+    queue.advanceTo(
+      5,
+      () => undefined,
+      () => undefined,
+    );
+    expect(() => queue.scheduleReplacing(4, 'invalid', 'request:p1')).toThrow(RangeError);
+    expect(queue.generation('request:p1')).toBe(1);
+    const second = queue.scheduleReplacing(12, 'second', 'request:p1');
+    expect(second.generation).toBe(2);
+    const applied: string[] = [];
+    queue.advanceTo(
+      12,
+      () => undefined,
+      (event) => applied.push(event.payload),
+    );
+    expect(applied).toEqual(['second']);
+  });
+
   it('does not apply an event invalidated by materialize', () => {
     const queue = new EventQueue<string>();
     queue.setGeneration('movement:1', 4);

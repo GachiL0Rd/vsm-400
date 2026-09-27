@@ -70,6 +70,28 @@ export class EventQueue<T> {
     return this.snapshot(event);
   }
 
+  /** Replaces a keyed event only after its new schedule has been accepted. */
+  scheduleReplacing(at: SimTimeUs, payload: T, generationKey: string): ScheduledEvent<T> {
+    const time = assertSimTimeUs(at);
+    if (time < this.schedulingFloor()) {
+      throw new RangeError('Cannot schedule an event in the past');
+    }
+    const generation = this.generation(generationKey) + 1;
+    if (!Number.isSafeInteger(generation)) {
+      throw new RangeError('Generation exceeded the safe integer range');
+    }
+    const event: ScheduledEvent<T> = {
+      at: time,
+      order: this.takeOrder(),
+      payload,
+      generationKey,
+      generation,
+    };
+    this.push(event);
+    this.generations.set(generationKey, generation);
+    return this.snapshot(event);
+  }
+
   /**
    * Materializes to each selected event at or before `targetTime`, applies it
    * when that event is still live, then materializes to the target itself.

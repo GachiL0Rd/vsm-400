@@ -27,8 +27,10 @@ type AttemptEvent =
 function harness(rules: Parameters<typeof createEntityStore>[1] = []) {
   const queue = new EventQueue<AttemptEvent>();
   const scheduler: TraitExpiryScheduler = {
-    schedule(at, key) {
-      queue.schedule(at, { kind: 'trait-expiry', key }, key);
+    scheduleReplacing(at, key) {
+      const event = queue.scheduleReplacing(at, { kind: 'trait-expiry', key }, key);
+      if (event.generation === null) throw new RangeError('Expiry generation is missing');
+      return event.generation;
     },
     generation(key) {
       return queue.generation(key);
@@ -104,6 +106,24 @@ describe('entity store', () => {
     advance(7_400);
     expect(store.get('p1').traits).toContain('hungry');
     advance(8_500);
+    expect(store.get('p1').traits).toEqual(['basic']);
+  });
+
+  it('keeps the existing expiry when replacement scheduling fails', () => {
+    const { queue, store, advance } = harness();
+    store.addPassenger({ id: 'p1', position: cell('a'), traits: ['basic'] });
+    store.grantTrait('p1', 'impatient', 0, 1_000);
+    const key = traitExpiryKey('p1', 'impatient');
+    const generation = queue.generation(key);
+    advance(400);
+
+    expect(() => store.grantTrait('p1', 'impatient', 0, 100)).toThrow(RangeError);
+    expect(queue.generation(key)).toBe(generation);
+    expect(store.get('p1').traits).toContain('impatient');
+    advance(1_000);
+    expect(store.get('p1').traits).toEqual(['basic']);
+
+    expect(() => store.grantTrait('p1', 'hungry', 0, 100)).toThrow(RangeError);
     expect(store.get('p1').traits).toEqual(['basic']);
   });
 

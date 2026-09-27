@@ -67,7 +67,8 @@ export interface TraitGrantRule {
  * `key` comes from `traitExpiryKey` and is safe for composite entity/trait ids.
  */
 export interface TraitExpiryScheduler {
-  schedule(at: SimTimeUs, key: string): void;
+  /** Atomically schedules the new event and returns its generation. */
+  scheduleReplacing(at: SimTimeUs, key: string): number;
   generation(key: string): number;
   setGeneration(key: string, generation: number): void;
 }
@@ -293,8 +294,7 @@ class EntityRuntime implements EntityStore {
   ): void {
     const expiresAt = addTime(at, lifetime);
     const key = traitExpiryKey(entity.id, traitId);
-    const generation = this.bumpExpiry(key);
-    this.scheduler.schedule(expiresAt, key);
+    const generation = this.scheduler.scheduleReplacing(expiresAt, key);
     this.timing.set(key, {
       entityId: entity.id,
       traitId,
