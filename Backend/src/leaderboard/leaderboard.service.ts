@@ -3,6 +3,7 @@ import { OnEvent } from '@nestjs/event-emitter';
 import { Cron } from '@nestjs/schedule';
 import type { AuthUser } from '../auth/auth-user';
 import { Clock } from '../common/clock';
+import { acquireCronLock, cronWindow } from '../common/cron-lock';
 import { RUN_RECORDED, type RunRecordedPayload } from '../common/events';
 import { NotificationKind, type Season } from '../generated/prisma/client';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -37,6 +38,7 @@ import { SeasonsService } from './seasons.service';
 
 /** Дольше сезона и срока баллов: повтор run.recorded не должен доначислить. */
 const APPLIED_TTL_SEC = 40 * 24 * 60 * 60;
+const CRON_SLOT_TTL_MS = 30 * 60_000;
 
 type ScoreFilter = {
   brigadeId?: string;
@@ -83,6 +85,20 @@ export class LeaderboardService {
     timeZone: 'Europe/Moscow',
     waitForCompletion: true,
   })
+  async closeSeasonJob(): Promise<void> {
+    const now = this.clock.now();
+    const locked = await acquireCronLock(
+      this.redis,
+      'social-season-close',
+      cronWindow(now, 'day'),
+      CRON_SLOT_TTL_MS,
+    );
+    if (!locked) {
+      return;
+    }
+    await this.closeSeason(now);
+  }
+
   async closeSeason(at?: Date): Promise<void> {
     const now = at ?? this.clock.now();
     const current = seasonWindow(now);
@@ -106,6 +122,20 @@ export class LeaderboardService {
     timeZone: 'Europe/Moscow',
     waitForCompletion: true,
   })
+  async snapshotRanksJob(): Promise<void> {
+    const now = this.clock.now();
+    const locked = await acquireCronLock(
+      this.redis,
+      'social-leaderboard-snap',
+      cronWindow(now, 'day'),
+      CRON_SLOT_TTL_MS,
+    );
+    if (!locked) {
+      return;
+    }
+    await this.snapshotRanks(now);
+  }
+
   async snapshotRanks(at?: Date): Promise<void> {
     const now = at ?? this.clock.now();
     const season = await this.seasons.current(now);

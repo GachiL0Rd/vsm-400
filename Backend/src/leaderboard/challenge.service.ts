@@ -2,6 +2,7 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 import { Cron } from '@nestjs/schedule';
 import { Clock } from '../common/clock';
+import { acquireCronLock, cronWindow } from '../common/cron-lock';
 import { RUN_RECORDED, type RunRecordedPayload } from '../common/events';
 import {
   ActorType,
@@ -20,6 +21,7 @@ import { SeasonsService } from './seasons.service';
 
 const DAY_SEC = 86_400;
 const AWARD_TTL_SEC = 40 * DAY_SEC;
+const CRON_SLOT_TTL_MS = 30 * 60_000;
 
 /** Пн 00:00 МСК — та же минута, что закрывает прошлую неделю. */
 export const CHALLENGE_CRON = '0 0 * * 1';
@@ -44,8 +46,18 @@ export class ChallengeService {
     timeZone: 'Europe/Moscow',
     waitForCompletion: true,
   })
-  openDue(): Promise<void> {
-    return this.openWeek(this.clock.now());
+  async openDue(): Promise<void> {
+    const now = this.clock.now();
+    const locked = await acquireCronLock(
+      this.redis,
+      'social-challenge-open',
+      cronWindow(now, 'day'),
+      CRON_SLOT_TTL_MS,
+    );
+    if (!locked) {
+      return;
+    }
+    await this.openWeek(now);
   }
 
   @OnEvent(RUN_RECORDED, { async: true })
