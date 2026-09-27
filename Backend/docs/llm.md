@@ -216,8 +216,10 @@ abort и expire вызывают `releaseSession`: у `APPROVED` этой сес
 Выдача в сессию одна: `sessions` зовёт `pick` и `markUsed`. `pick` берёт
 `APPROVED` с `sessionId = null`, по желанию с персоной сессии, список
 сортируется по id, выбирает переданный rng. `markUsed` делает `uses++`.
-Когда `uses >= maxUses`, статус `RETIRED` и в очередь ставится `refill`.
-Отдельного инкремента в `text-plan` нет.
+Когда `uses >= maxUses`, статус `RETIRED`, и `markUsed` возвращает задачу
+`refill`. В очередь её ставит `enqueueRefills` после коммита открытия смены:
+Redis внутри транзакции не держит advisory lock, а сбой очереди не ломает
+«Играть» — пул доберёт cron. Отдельного инкремента в `text-plan` нет.
 
 Пока live-задача не готова, показ берёт пул (если слот уже выбран на создании)
 или YAML. Готовый `APPROVED` с `sessionId` этой сессии пишется в
