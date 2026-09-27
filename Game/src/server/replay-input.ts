@@ -12,7 +12,9 @@ const idSchema = z.string().min(1);
 
 export const recordedGameplayCommandSchema: z.ZodType<RecordedGameplayCommand> =
   z.discriminatedUnion('kind', [
+    // Legacy direct-edge record remains accepted for existing replay artifacts.
     z.object({ kind: z.literal('move'), edgeId: idSchema }).strict(),
+    z.object({ kind: z.literal('move-to'), targetCellId: idSchema }).strict(),
     z.object({ kind: z.literal('take-consumable'), itemKind: z.enum(['food', 'drink']) }).strict(),
     z.object({ kind: z.literal('give-held-item'), targetId: idSchema }).strict(),
     z.object({ kind: z.literal('take-journal') }).strict(),

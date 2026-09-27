@@ -9,7 +9,13 @@ import { MockPlatformGateway, mockMode } from './platform-gateway.ts';
 import { CommonGameProtocolAdapter, type GameProtocolConnection } from './protocol-adapter.ts';
 import { InMemoryResumeTokenRegistry } from './resume-token-registry.ts';
 import { GameSessionHost } from './session-host.ts';
-import type { SessionMode } from './types.ts';
+import type {
+  FinishedGameResult,
+  FinishSessionResponse,
+  PlatformGateway,
+  ResolvedPlatformSession,
+  SessionMode,
+} from './types.ts';
 
 class FakeConnection implements GameProtocolConnection {
   readonly sent: ServerMessage[] = [];
@@ -47,6 +53,39 @@ class FakeConnection implements GameProtocolConnection {
   disconnect(): void {
     this.closeListener?.();
   }
+}
+
+class DeferredResolveGateway implements PlatformGateway {
+  private resolvePending: ((session: ResolvedPlatformSession) => void) | null = null;
+
+  resolveSession(): Promise<ResolvedPlatformSession> {
+    return new Promise((resolve) => {
+      this.resolvePending = resolve;
+    });
+  }
+
+  completeResolve(): void {
+    this.resolvePending?.({
+      attemptId: 'attempt-1',
+      gameLevelId: 'vsm-baseline-01',
+      mode: mockMode('live'),
+    });
+  }
+
+  async finishSession(_result: FinishedGameResult): Promise<FinishSessionResponse> {
+    return { resultId: 'result-1', redirectUrl: 'http://localhost/results/attempt-1' };
+  }
+}
+
+function setupWithPlatform(platform: PlatformGateway) {
+  const host = new GameSessionHost({
+    platformGateway: platform,
+    contentRegistry: new BaselineContentRegistry(),
+    resumeTokens: new InMemoryResumeTokenRegistry(),
+    disconnectDebounceMs: 1_000,
+    reconnectGraceMs: 30_000,
+  });
+  return { host, adapter: new CommonGameProtocolAdapter({ host }) };
 }
 
 function setup(mode: SessionMode = mockMode('live')) {
@@ -148,19 +187,19 @@ describe('CommonGameProtocolAdapter', () => {
     });
 
     expect(connection.sent.slice(1).map((message) => message.type)).toEqual([
-      'delta',
       'command-result',
+      'delta',
     ]);
     expect(connection.sent[1]).toMatchObject({
+      type: 'command-result',
+      status: 'accepted',
+      revision: 1,
+    });
+    expect(connection.sent[2]).toMatchObject({
       type: 'delta',
       baseRevision: 0,
       revision: 1,
       changes: { clock: { timeScale: 2, paused: false } },
-    });
-    expect(connection.sent[2]).toMatchObject({
-      type: 'command-result',
-      status: 'accepted',
-      revision: 1,
     });
   });
 
@@ -297,6 +336,55 @@ describe('CommonGameProtocolAdapter', () => {
       code: 'authentication-failed',
     });
     expect(connection.closes).toEqual([{ code: 1008, reason: 'authentication failed' }]);
+  });
+
+  it('does not attach a socket that disconnects while platform authentication is pending', async () => {
+    const platform = new DeferredResolveGateway();
+    const { host, adapter } = setupWithPlatform(platform);
+    const connection = new FakeConnection('socket-pending-close');
+    adapter.open(connection);
+
+    connection.receive({
+      protocolVersion: GAME_PROTOCOL_VERSION,
+      type: 'hello',
+      requestId: 'hello-pending',
+      sessionKey: 'platform-key',
+    });
+    connection.disconnect();
+    platform.completeResolve();
+    await flush();
+
+    expect(connection.sent).toEqual([]);
+    expect(host.worker('attempt-1')?.connectionLifecycle).toBe('detached');
+  });
+
+  it('invalidates pending authentication when another frame arrives before hello completes', async () => {
+    const platform = new DeferredResolveGateway();
+    const { host, adapter } = setupWithPlatform(platform);
+    const connection = new FakeConnection('socket-double-hello');
+    adapter.open(connection);
+
+    connection.receive({
+      protocolVersion: GAME_PROTOCOL_VERSION,
+      type: 'hello',
+      requestId: 'hello-first',
+      sessionKey: 'platform-key',
+    });
+    connection.receive({
+      protocolVersion: GAME_PROTOCOL_VERSION,
+      type: 'hello',
+      requestId: 'hello-second',
+      sessionKey: 'platform-key',
+    });
+    platform.completeResolve();
+    await flush();
+
+    expect(connection.closes).toContainEqual({
+      code: 1008,
+      reason: 'hello authentication is already in progress',
+    });
+    expect(connection.sent).toEqual([]);
+    expect(host.worker('attempt-1')?.connectionLifecycle).toBe('detached');
   });
 
   it('closes malformed messages after reporting a protocol error', () => {

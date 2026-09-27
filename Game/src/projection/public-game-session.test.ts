@@ -33,6 +33,47 @@ function moveToCell(projection: PublicGameProjection, targetCellId: string): voi
   projection.advanceTo(player.position.arrivesAt);
 }
 
+describe('PublicGameProjection movement routing', () => {
+  it('accepts a final destination and chains authoritative edge movements until arrival', () => {
+    const projection = createProjection();
+    const initial = projection.snapshot().state;
+    const result = projection.moveTo({
+      protocolVersion: GAME_PROTOCOL_VERSION,
+      type: 'move-to',
+      requestId: 'move-remote',
+      knownRevision: initial.revision,
+      targetCellId: 'carriage.service',
+    });
+
+    expect(result.result.status).toBe('accepted');
+    expect(result.recordedCommand).toEqual({
+      kind: 'move-to',
+      targetCellId: 'carriage.service',
+    });
+
+    let state = result.snapshot?.state;
+    const traversedEdges: string[] = [];
+    for (let step = 0; step < 8; step += 1) {
+      const player = state?.entities.find((entity) => entity.kind === 'player');
+      if (player?.position.kind === 'cell') break;
+      if (player?.position.kind !== 'moving') throw new Error('Expected routed player movement');
+      traversedEdges.push(player.position.edgeId);
+      state = projection.advanceTo(player.position.arrivesAt).changes.entities?.upsert.length
+        ? projection.snapshot().state
+        : projection.snapshot().state;
+    }
+
+    const player = state?.entities.find((entity) => entity.kind === 'player');
+    expect(player?.position).toEqual({ kind: 'cell', cellId: 'carriage.service' });
+    expect(traversedEdges).toEqual([
+      'origin-desk-door:forward',
+      'origin-door-entry:forward',
+      'entry-cabin:forward',
+      'cabin-service:forward',
+    ]);
+  });
+});
+
 function moveToServicePoint(projection: PublicGameProjection): void {
   for (const cellId of [
     'platform-origin.door',

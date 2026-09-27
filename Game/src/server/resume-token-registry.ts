@@ -1,7 +1,8 @@
 import { randomBytes } from 'node:crypto';
 
 export interface ResumeTokenRegistry {
-  issue(attemptId: string, expiresAtMs: number): string;
+  issue(attemptId: string): string;
+  expireAttemptAt(attemptId: string, expiresAtMs: number): void;
   validate(token: string, attemptId: string, nowMs: number): boolean;
   resolve(token: string, nowMs: number): string | null;
   revokeAttempt(attemptId: string): void;
@@ -9,17 +10,23 @@ export interface ResumeTokenRegistry {
 
 interface TokenRecord {
   readonly attemptId: string;
-  readonly expiresAtMs: number;
+  expiresAtMs: number | null;
 }
 
 export class InMemoryResumeTokenRegistry implements ResumeTokenRegistry {
   private readonly records = new Map<string, TokenRecord>();
 
-  issue(attemptId: string, expiresAtMs: number): string {
+  issue(attemptId: string): string {
     this.revokeAttempt(attemptId);
     const token = randomBytes(24).toString('base64url');
-    this.records.set(token, { attemptId, expiresAtMs });
+    this.records.set(token, { attemptId, expiresAtMs: null });
     return token;
+  }
+
+  expireAttemptAt(attemptId: string, expiresAtMs: number): void {
+    for (const record of this.records.values()) {
+      if (record.attemptId === attemptId) record.expiresAtMs = expiresAtMs;
+    }
   }
 
   validate(token: string, attemptId: string, nowMs: number): boolean {
@@ -34,7 +41,7 @@ export class InMemoryResumeTokenRegistry implements ResumeTokenRegistry {
   private currentRecord(token: string, nowMs: number): TokenRecord | null {
     const record = this.records.get(token);
     if (record === undefined) return null;
-    if (record.expiresAtMs < nowMs) {
+    if (record.expiresAtMs !== null && record.expiresAtMs < nowMs) {
       this.records.delete(token);
       return null;
     }

@@ -31,6 +31,8 @@ Relevant configuration:
 - `GAME_DISCONNECT_DEBOUNCE_MS` — delay before a detached active attempt pauses;
 - `GAME_RECONNECT_GRACE_MS` — additional lifetime before an abandoned attempt aborts.
 
+The resume credential delivered by `session-ready` remains valid while its socket is attached. On detach its expiry is bounded to disconnect debounce plus reconnect grace; a successful reconnect rotates it. Entering `finishing` revokes resume credentials.
+
 Release `0.1.0` live time scales are `1x`, `2x`, and `4x`. A clock/state change and any
 simulation-originated public state change are projected through the same public
 revision path as command-induced changes. Pure idle time does not invalidate
