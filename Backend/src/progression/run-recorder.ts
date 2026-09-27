@@ -15,7 +15,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RulesService } from '../rules/rules.service';
 import { isUniqueViolation } from '../users/unique-violation';
 import { assertUuid, lockUser } from './lock-user';
-import { computePoints, ewmaCompetency, NEUTRAL_COMPETENCY } from './scoring';
+import { difficultyOf, pointsForRun } from './run-points';
+import { ewmaCompetency, NEUTRAL_COMPETENCY } from './scoring';
 import { nextStreak } from './streak';
 import { decisionList, isRunOutcome, summaryViolations } from './summary-invariants';
 
@@ -80,16 +81,6 @@ function playSeconds(startedAt: Date | null, finishedAt: Date): number {
   return seconds;
 }
 
-function asDifficulty(value: number): 1 | 2 | 3 {
-  if (value >= 3) {
-    return 3;
-  }
-  if (value <= 1) {
-    return 1;
-  }
-  return 2;
-}
-
 function readPlan(plan: unknown): z.infer<typeof SessionPlanSchema> {
   const parsed = SessionPlanSchema.safeParse(plan);
   if (!parsed.success) {
@@ -128,28 +119,6 @@ function assertEvent(event: RunCompletedPayload): void {
   if (!event.summary || typeof event.summary !== 'object') {
     throw new Error('В событии нет итога рейса');
   }
-}
-
-async function difficultyOf(
-  tx: Prisma.TransactionClient,
-  decisions: readonly JournalEntry[],
-): Promise<1 | 2 | 3> {
-  const ids = [...new Set(decisions.map((decision) => decision.scenarioId))];
-  if (ids.length === 0) {
-    return 1;
-  }
-  const rows = await tx.scenario.findMany({
-    where: { id: { in: ids } },
-    select: { difficulty: true },
-  });
-  if (rows.length === 0) {
-    return 1;
-  }
-  let hardest = 1;
-  for (const row of rows) {
-    hardest = Math.max(hardest, row.difficulty);
-  }
-  return asDifficulty(hardest);
 }
 
 async function applyCompetencies(
@@ -248,8 +217,28 @@ export class RunRecorder {
     const suspicious = event.suspicious === true || violations.length > 0;
     const decisions = decisionList(summary);
     const outcome = isRunOutcome(summary.outcome) ? summary.outcome : 'terminated';
-    const difficulty = await difficultyOf(tx, decisions);
-    const points = suspicious ? 0 : computePoints(summary, difficulty, this.rules.scoring());
+    const difficulty = await difficultyOf(
+      tx,
+      decisions.map((decision) => decision.scenarioId),
+    );
+    const points = suspicious
+      ? 0
+      : pointsForRun(
+          {
+            outcome,
+            loyalty: summary.loyalty,
+            safety: summary.safety,
+            decisions: decisions.map((decision) => ({
+              scenarioId: decision.scenarioId,
+              choiceId: decision.choiceId,
+              verdict: decision.verdict,
+              reactionMs: decision.reactionMs,
+              timerSec: decision.timerSec,
+            })),
+          },
+          difficulty,
+          this.rules.scoring(),
+        );
     const expiresAt = new Date(now.getTime() + this.rules.pointsTtlDays() * DAY_MS);
     if (violations.length > 0) {
       await tx.auditLog.create({
