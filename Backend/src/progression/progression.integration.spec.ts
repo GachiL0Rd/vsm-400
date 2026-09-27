@@ -795,6 +795,179 @@ describe('прогрессия в базе', () => {
     );
   });
 
+  it('одобрение подозрительного рейса начисляет очки и рейтинг один раз', async () => {
+    const { brigade, depot } = await createBrigade();
+    const conductor = await createUser({ brigadeId: brigade.id });
+    const chief = await createUser({ role: Role.CHIEF, brigadeId: brigade.id });
+    const other = await createBrigade();
+    const foreignChief = await createUser({ role: Role.CHIEF, brigadeId: other.brigade.id });
+    const admin = await createUser({ role: Role.ADMIN });
+    const scenarioId = await createScenario('service', 2);
+    const session = await createSession(conductor.id, new Date());
+    const payload = completed(
+      conductor.id,
+      session.id,
+      summary({
+        loyalty: 80,
+        safety: 60,
+        decisions: [decision({ scenarioId, verdict: 'ok', stage: 'enroute' })],
+      }),
+      true,
+    );
+    await recorder.onRunCompleted(payload);
+    const redis = app.get(RedisService);
+    expect(await redis.get(appliedRunKey(payload.runId))).toBe('skip');
+
+    const chiefView: AuthUser = {
+      id: chief.id,
+      role: Role.CHIEF,
+      brigadeId: brigade.id,
+      depotId: depot.id,
+    };
+    const foreignView: AuthUser = {
+      id: foreignChief.id,
+      role: Role.CHIEF,
+      brigadeId: other.brigade.id,
+      depotId: other.depot.id,
+    };
+    const adminView: AuthUser = {
+      id: admin.id,
+      role: Role.ADMIN,
+      brigadeId: null,
+      depotId: null,
+    };
+    const selfView: AuthUser = {
+      id: chief.id,
+      role: Role.CHIEF,
+      brigadeId: brigade.id,
+      depotId: depot.id,
+    };
+
+    const queue = await inject(app, 'GET', '/api/v1/runs/suspicious', chiefView);
+    expect(queue.statusCode).toBe(200);
+    expect(queue.json()).toEqual([
+      expect.objectContaining({ id: payload.runId, userId: conductor.id }),
+    ]);
+    const foreignQueue = await inject(app, 'GET', '/api/v1/runs/suspicious', foreignView);
+    expect(foreignQueue.json()).toEqual([]);
+
+    const forbidden = await inject(
+      app,
+      'POST',
+      `/api/v1/runs/${payload.runId}/review`,
+      foreignView,
+      {
+        approve: true,
+      },
+    );
+    expect(forbidden.statusCode).toBe(403);
+    expect(forbidden.json()).toMatchObject({ code: 'FORBIDDEN' });
+
+    const ownSession = await createSession(chief.id, new Date());
+    const ownPayload = completed(chief.id, ownSession.id, summary(), true);
+    await recorder.onRunCompleted(ownPayload);
+    const ownDenied = await inject(
+      app,
+      'POST',
+      `/api/v1/runs/${ownPayload.runId}/review`,
+      selfView,
+      {
+        approve: true,
+      },
+    );
+    expect(ownDenied.statusCode).toBe(403);
+    expect(ownDenied.json()).toMatchObject({ code: 'SELF_DECISION' });
+
+    const bystander = await createUser({ brigadeId: brigade.id });
+    const cleanSession = await createSession(bystander.id, new Date());
+    const clean = completed(bystander.id, cleanSession.id, summary());
+    await recorder.onRunCompleted(clean);
+    const notFlagged = await inject(app, 'POST', `/api/v1/runs/${clean.runId}/review`, chiefView, {
+      approve: true,
+    });
+    expect(notFlagged.statusCode).toBe(409);
+    expect(notFlagged.json()).toMatchObject({ code: 'RUN_NOT_SUSPICIOUS' });
+
+    const approved = await inject(app, 'POST', `/api/v1/runs/${payload.runId}/review`, chiefView, {
+      approve: true,
+    });
+    expect(approved.statusCode).toBe(200);
+    expect(approved.json()).toMatchObject({
+      id: payload.runId,
+      suspicious: false,
+      reviewApproved: true,
+      points: 105,
+    });
+    const run = await prisma.run.findUniqueOrThrow({ where: { id: payload.runId } });
+    expect(run.points).toBe(105);
+    expect(run.suspicious).toBe(false);
+    expect(run.effectsAt).not.toBeNull();
+    expect(await prisma.pointLedger.count({ where: { runId: payload.runId, reason: 'RUN' } })).toBe(
+      1,
+    );
+    const season = await prisma.season.findFirst({ orderBy: { startsAt: 'desc' } });
+    expect(season).toBeTruthy();
+    const score = await prisma.seasonScore.findUniqueOrThrow({
+      where: { seasonId_userId: { seasonId: season?.id ?? '', userId: conductor.id } },
+    });
+    expect(score.points).toBe(105);
+    expect(await redis.zscore(companyBoardKey(season?.id ?? ''), conductor.id)).toBe('105');
+    expect(
+      await prisma.auditLog.findFirst({
+        where: { actorId: chief.id, action: 'run.review.approved', target: payload.runId },
+      }),
+    ).toBeTruthy();
+
+    const again = await inject(app, 'POST', `/api/v1/runs/${payload.runId}/review`, adminView, {
+      approve: true,
+    });
+    expect(again.statusCode).toBe(409);
+    expect(again.json()).toMatchObject({ code: 'RUN_REVIEWED' });
+    expect(await prisma.pointLedger.count({ where: { runId: payload.runId, reason: 'RUN' } })).toBe(
+      1,
+    );
+    const scoreAgain = await prisma.seasonScore.findUniqueOrThrow({
+      where: { seasonId_userId: { seasonId: season?.id ?? '', userId: conductor.id } },
+    });
+    expect(scoreAgain.points).toBe(105);
+
+    const after = await inject(app, 'GET', '/api/v1/runs/suspicious', adminView);
+    const ids = (after.json() as { id: string }[]).map((row) => row.id);
+    expect(ids).not.toContain(payload.runId);
+  });
+
+  it('отклонение подозрительного рейса не начисляет очки', async () => {
+    const { brigade, depot } = await createBrigade();
+    const conductor = await createUser({ brigadeId: brigade.id });
+    const chief = await createUser({ role: Role.CHIEF, brigadeId: brigade.id });
+    const session = await createSession(conductor.id, new Date());
+    const payload = completed(conductor.id, session.id, summary({ loyalty: 90, safety: 90 }), true);
+    await recorder.onRunCompleted(payload);
+    const chiefView: AuthUser = {
+      id: chief.id,
+      role: Role.CHIEF,
+      brigadeId: brigade.id,
+      depotId: depot.id,
+    };
+    const rejected = await inject(app, 'POST', `/api/v1/runs/${payload.runId}/review`, chiefView, {
+      approve: false,
+    });
+    expect(rejected.statusCode).toBe(200);
+    expect(rejected.json()).toMatchObject({ reviewApproved: false, suspicious: true, points: 0 });
+    expect(await prisma.pointLedger.count({ where: { runId: payload.runId, reason: 'RUN' } })).toBe(
+      0,
+    );
+    expect(await prisma.seasonScore.count({ where: { userId: conductor.id } })).toBe(0);
+    const again = await inject(app, 'POST', `/api/v1/runs/${payload.runId}/review`, chiefView, {
+      approve: true,
+    });
+    expect(again.statusCode).toBe(409);
+    expect(again.json()).toMatchObject({ code: 'RUN_REVIEWED' });
+    const spec = await inject(app, 'GET', '/api/openapi.json');
+    const paths = (spec.json() as { paths: Record<string, unknown> }).paths;
+    expect(paths['/api/v1/runs/suspicious']).toBeDefined();
+    expect(paths['/api/v1/runs/{id}/review']).toBeDefined();
+  });
 });
 
 type HttpResult = {

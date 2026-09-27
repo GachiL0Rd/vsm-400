@@ -40,6 +40,19 @@ import { SeasonsService } from './seasons.service';
 const APPLIED_TTL_SEC = 40 * 24 * 60 * 60;
 const CRON_SLOT_TTL_MS = 30 * 60_000;
 
+/**
+ * skip — подозрительный или нулевой рейс. Одобрение разбора имеет право занять ключ.
+ * pending/любое другое значение — очки уже учтены или учёт идёт.
+ */
+const CLAIM_APPLY = `
+local cur = redis.call('GET', KEYS[1])
+if cur == false or cur == 'skip' then
+  redis.call('SET', KEYS[1], 'pending', 'EX', ARGV[1])
+  return 1
+end
+return 0
+`;
+
 type ScoreFilter = {
   brigadeId?: string;
   depotId?: string;
@@ -67,9 +80,12 @@ export class LeaderboardService {
   @OnEvent(RUN_RECORDED, { async: true, promisify: true, suppressErrors: false })
   async onRunRecorded(payload: RunRecordedPayload): Promise<void> {
     const key = appliedRunKey(payload.runId);
-    const skip = payload.suspicious || payload.points <= 0;
-    const gate = await this.redis.set(key, skip ? 'skip' : 'pending', 'EX', APPLIED_TTL_SEC, 'NX');
-    if (gate !== 'OK' || skip) {
+    if (payload.suspicious || payload.points <= 0) {
+      await this.redis.set(key, 'skip', 'EX', APPLIED_TTL_SEC, 'NX');
+      return;
+    }
+    const claimed = await this.redis.eval(CLAIM_APPLY, 1, key, String(APPLIED_TTL_SEC));
+    if (Number(claimed) !== 1) {
       return;
     }
     try {
@@ -201,7 +217,10 @@ export class LeaderboardService {
   }
 
   private async applyRecorded(payload: RunRecordedPayload): Promise<void> {
-    const season = await this.seasons.current();
+    const season = await this.seasonFor(payload);
+    if (!season) {
+      return;
+    }
     const brigadeKey = payload.brigadeId ? brigadeBoardKey(season.id, payload.brigadeId) : null;
     const before = brigadeKey
       ? await this.readBoard(brigadeKey, season.id, { brigadeId: payload.brigadeId ?? undefined })
@@ -226,6 +245,23 @@ export class LeaderboardService {
     } catch (error) {
       this.logger.error(error instanceof Error ? error.message : String(error));
     }
+  }
+
+  /**
+   * Сезон недели finishedAt. Если неделя уже сменилась, в текущий ZSET не пишем:
+   * закрытый сезон не пересчитывается, леджер при этом уже хранит очки.
+   */
+  private async seasonFor(payload: RunRecordedPayload): Promise<Season | null> {
+    const finishedAt = payload.finishedAt ? new Date(payload.finishedAt) : this.clock.now();
+    if (Number.isNaN(finishedAt.getTime())) {
+      return null;
+    }
+    const current = seasonWindow(this.clock.now());
+    const run = seasonWindow(finishedAt);
+    if (run.startsAt.getTime() !== current.startsAt.getTime()) {
+      return null;
+    }
+    return this.seasons.current(finishedAt);
   }
 
   private async bumpBoards(payload: RunRecordedPayload, seasonId: string): Promise<string[]> {
