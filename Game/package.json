@@ -20,6 +20,7 @@
     "test": "vitest run",
     "map:build": "tsx scripts/build-train2-map.ts",
     "map:check": "tsx scripts/build-train2-map.ts --check",
+    "samples:generate": "tsx scripts/generate-sample-results.ts",
     "check:bundle": "node scripts/check-bundle.mjs",
     "verify": "npm run check:biome && npm run typecheck && npm run map:check && npm run test && npm run audit:dead-code && npm run build && npm run test:production && npm run check:bundle",
     "audit:dead-code": "node scripts/check-dead-code.mjs",
