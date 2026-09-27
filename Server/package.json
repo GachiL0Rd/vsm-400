@@ -1,0 +1,32 @@
+{
+  "name": "vsm-server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.18.0"
+  },
+  "scripts": {
+    "dev": "node --watch --disable-warning=ExperimentalWarning src/main.ts",
+    "start": "node --disable-warning=ExperimentalWarning src/main.ts",
+    "test": "node --disable-warning=ExperimentalWarning --test test/*.test.ts",
+    "format": "biome format --write .",
+    "lint": "biome lint .",
+    "check:biome": "biome ci .",
+    "check:write": "biome check --write .",
+    "typecheck": "tsc --noEmit",
+    "verify": "npm run check:biome && npm run typecheck && npm test"
+  },
+  "dependencies": {
+    "@hono/node-server": "2.1.1",
+    "@hono/swagger-ui": "0.6.1",
+    "@hono/zod-openapi": "1.6.3",
+    "hono": "4.13.9",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.14",
+    "@types/node": "24.13.6",
+    "typescript": "5.9.3"
+  }
+}

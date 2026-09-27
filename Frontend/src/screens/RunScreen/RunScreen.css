@@ -1,0 +1,138 @@
+.back {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  align-self: flex-start;
+  margin-bottom: calc(var(--stack) * -1);
+  color: var(--iron);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.back:hover {
+  color: var(--ink);
+}
+
+/* ---------- Шкалы ---------- */
+
+.scores {
+  display: grid;
+  gap: 20px;
+  padding: 20px 0;
+  border-top: 2px solid var(--ink);
+  border-bottom: 1px solid var(--line);
+}
+
+.scale {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.scale__value {
+  font-size: 32px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.scores__points {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.scores__points b {
+  font-size: 20px;
+}
+
+.report {
+  display: grid;
+  gap: 32px;
+}
+
+@media (min-width: 700px) {
+  .scores {
+    grid-template-columns: 1fr 1fr 160px;
+    gap: 40px;
+  }
+
+  .report {
+    grid-template-columns: 1fr 1fr;
+    gap: 40px;
+  }
+}
+
+/* Показатели в строку: серая подпись, жирное значение */
+.metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 20px;
+  margin: 0;
+  font-size: 15px;
+}
+
+.metrics div {
+  display: flex;
+  gap: 6px;
+}
+
+.metrics dt {
+  color: var(--iron);
+}
+
+.metrics dd {
+  margin: 0;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- Лента решений ---------- */
+
+.log {
+  margin: calc(var(--stack) * -1) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.log__entry {
+  display: grid;
+  grid-template-columns: 72px 1fr;
+  gap: 16px;
+  padding: 18px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.log__when {
+  display: flex;
+  flex-direction: column;
+}
+
+.log__when b {
+  font-size: 18px;
+}
+
+.log__body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.log__result {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 20px;
+}
+
+.log__situation {
+  color: var(--iron);
+  line-height: 1.4;
+}
+
+.log__action {
+  margin-top: -6px;
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.3;
+}

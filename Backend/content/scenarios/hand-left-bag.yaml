@@ -1,0 +1,130 @@
+# Бесхозная сумка: Ситуации на борту.pdf, с. 16, ситуация 41. Описание — ситуация 17.
+id: hand-left-bag
+title: "Сумка на сдаче вагона"
+category: security
+stage: handover
+carClasses: [FIRST]
+difficulty: 2
+competencies: [detection, safety, procedure]
+params:
+  occupancy: { min: 0, max: 80 }
+init: { loyalty: 70, safety: 68 }
+gates:
+  failIf:
+    safety: { lt: 30 }
+start: open
+nodes:
+  open:
+    text: "На сдаче первого класса на кресле сумка. Хозяина нет."
+    variants:
+      - if: { param: occupancy, gte: 40 }
+        text: "В салоне ещё люди, кто-то уже тянется к сумке."
+    timer: 16
+    choices:
+      - id: cordon
+        text: "Не трогать, отвести людей, вызвать начальника и ПТБ"
+        effects: { safety: 10, loyalty: -2 }
+        skills: { detection: 2, safety: 1 }
+        set: [called]
+        verdict: best
+        next: follow
+      - id: open-bag
+        text: "Открыть и найти телефон, чтобы вернуть самому"
+        effects: { loyalty: 8, safety: -18 }
+        verdict: worse
+        better: "Бесхозную вещь не открывают и не уносят"
+        basis: "Ситуации на борту.pdf, с. 16, ситуация 41"
+        next: risk
+      - id: note
+        text: "Записать место и время в лист, сумку не открывать"
+        deviation: true
+        verdict: ok
+        better: "Запись после вызова начальника и ПТБ, не вместо него"
+        basis: "Ситуации на борту.pdf, с. 16, ситуация 41"
+        set: [noted]
+        next: follow
+    onTimeout:
+      effects: { safety: -14, loyalty: -4 }
+      verdict: missed
+      consequence: "Чужой пассажир берёт сумку: передаст сам"
+      next: late
+  follow:
+    text: "Подходит человек и говорит, что сумка его."
+    timer: 18
+    choices:
+      - id: describe
+        text: "Попросить описание, в руки не давать"
+        requires: { flags: [called] }
+        effects: { safety: 8 }
+        skills: { procedure: 1 }
+        verdict: best
+        next: end-ok
+      - id: color
+        text: "Отдать, раз назвал цвет"
+        effects: { loyalty: 6, safety: -16 }
+        verdict: worse
+        better: "Цвета мало: вещь не отдают с рук"
+        basis: "Ситуации на борту.pdf, с. 16, ситуация 41"
+        next: end-bad
+      - id: call-now
+        text: "Вызвать начальника и ПТБ, потом спросить приметы"
+        effects: { safety: 6 }
+        set: [called]
+        verdict: ok
+        better: "Вызов — первый шаг, не запись в лист"
+        basis: "Ситуации на борту.pdf, с. 16, ситуация 41"
+        next: end-ok
+    onTimeout:
+      effects: { safety: -16 }
+      verdict: missed
+      consequence: "Сумку уже вынесли в тамбур"
+      next: end-stop
+  late:
+    text: "Сумка в чужих руках у двери первого класса."
+    timer: 12
+    choices:
+      - id: stop-hand
+        text: "Остановить передачу и вызвать начальника и ПТБ"
+        effects: { safety: 10, loyalty: -2 }
+        set: [called]
+        verdict: best
+        next: end-ok
+      - id: carry
+        text: "Помочь донести до платформы: так вежливее"
+        effects: { loyalty: 7, safety: -16 }
+        verdict: worse
+        better: "Чужую сумку не носят и не отдают на платформе"
+        basis: "Ситуации на борту.pdf, с. 16, ситуация 41"
+        next: end-bad
+    onTimeout:
+      effects: { safety: -18, loyalty: -6 }
+      verdict: missed
+      consequence: "Сумка ушла на платформу без вас"
+      next: end-stop
+  risk:
+    text: "Внутри ключи и карточка. Сумку уже открыли."
+    choices:
+      - id: shut
+        text: "Закрыть и срочно звать начальника и ПТБ"
+        effects: { safety: 4, loyalty: -4 }
+        set: [called]
+        verdict: ok
+        better: "Не открывают; если открыли — сразу начальник и ПТБ"
+        basis: "Ситуации на борту.pdf, с. 16, ситуация 41"
+        next: end-bad
+      - id: dial
+        text: "Позвонить по карточке самому"
+        effects: { loyalty: 5, safety: -14 }
+        verdict: worse
+        better: "По чужим вещам не звонят сами"
+        basis: "Ситуации на борту.pdf, с. 16, ситуация 41"
+        next: end-stop
+  end-ok:
+    end: completed
+    text: "Сумку не трогали, начальник поезда и ПТБ в курсе"
+  end-bad:
+    end: incident
+    text: "Сумку открыли или отдали без описания"
+  end-stop:
+    end: terminated
+    text: "Вещь ушла из вагона без контроля"

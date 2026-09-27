@@ -1,0 +1,139 @@
+# Медицина: Ситуации на борту, ситуации 19 и 28. Плед бизнеса — 974_р, табл. 2.
+id: ride-unwell
+title: "Пассажиру плохо в бизнесе"
+category: medical
+stage: enroute
+carClasses: [BUSINESS]
+difficulty: 3
+competencies: [reaction, escalation, safety]
+params:
+  nextStopMin: { min: 6, max: 25 }
+init: { loyalty: 64, safety: 68 }
+gates:
+  failIf:
+    safety: { lt: 30 }
+llm:
+  enabled: true
+  mode: pool
+  keep: [пассажир, начальник, вода, грудь]
+  forbid: [medications, numbers, names, new-facts]
+  personas:
+    - говорит тихо и испуганно
+    - говорит сбивчиво и просит помощи
+    - держится спокойно, но торопит
+start: open
+nodes:
+  open:
+    text: "В бизнесе пассажир побледнел и держится за грудь."
+    variants:
+      - if: { param: nextStopMin, lt: 10 }
+        text: "До станции меньше 10 минут, лицо серое."
+    timer: 15
+    choices:
+      - id: call
+        text: "Вызвать начальника поезда и остаться рядом"
+        effects: { safety: 10, loyalty: 4 }
+        skills: { reaction: 2, escalation: 1 }
+        set: [called]
+        verdict: best
+        next: follow
+      - id: pill
+        text: "Дать таблетку, на которую он показывает"
+        effects: { loyalty: 8, safety: -22 }
+        verdict: worse
+        better: "Свои и чужие лекарства пассажиру не выдают"
+        basis: "Ситуации на борту.pdf, с. 12, ситуация 28"
+        next: risk
+      - id: whisper
+        text: "Тихо спросить ряд про медика, без громкой связи"
+        deviation: true
+        verdict: ok
+        better: "Сначала начальник поезда, поиск медика не вместо вызова"
+        basis: "Ситуации на борту.pdf, с. 9, ситуация 19"
+        set: [asked]
+        next: follow
+    onTimeout:
+      effects: { safety: -14, loyalty: -8 }
+      verdict: missed
+      consequence: "Пассажир сполз с кресла в проход"
+      next: late
+  follow:
+    text: "Начальник на связи. Пассажир просит воды и мёрзнет."
+    timer: 16
+    choices:
+      - id: stay
+        text: "Вода, плед бизнеса, не отходить до передачи"
+        requires: { flags: [called] }
+        effects: { safety: 6, loyalty: 4 }
+        skills: { service: 1 }
+        verdict: best
+        next: end-ok
+      - id: leave
+        text: "Сказать, что лекарств нет, и уйти к тележке"
+        effects: { loyalty: -4, safety: -14 }
+        verdict: worse
+        better: "Рядом остаются и помогают в своей компетенции"
+        basis: "Ситуации на борту.pdf, с. 9, ситуация 19"
+        next: end-bad
+      - id: call-now
+        text: "Вызвать начальника сейчас и не отходить"
+        effects: { safety: 4 }
+        set: [called]
+        verdict: ok
+        better: "Вызов делают в первую минуту, не после пледа"
+        basis: "Ситуации на борту.pdf, с. 9, ситуация 19"
+        next: end-ok
+    onTimeout:
+      effects: { safety: -16, loyalty: -6 }
+      verdict: missed
+      consequence: "Пассажир один, дыхание стало реже"
+      next: end-stop
+  late:
+    text: "Пассажир на полу. Соседи встали и шумят."
+    timer: 12
+    choices:
+      - id: floor
+        text: "Вызвать начальника, искать медика, гасить панику"
+        effects: { safety: 8 }
+        set: [called]
+        verdict: best
+        next: follow
+      - id: lift
+        text: "Поднять рывком в кресло, чтобы открыть проход"
+        effects: { loyalty: 4, safety: -16 }
+        verdict: worse
+        better: "Не тащат в одиночку: зовут начальника и медика"
+        basis: "Ситуации на борту.pdf, с. 9, ситуация 19"
+        next: end-bad
+    onTimeout:
+      effects: { safety: -18, loyalty: -8 }
+      verdict: missed
+      consequence: "Проход забит, до пассажира не добраться"
+      next: end-stop
+  risk:
+    text: "Таблетка уже во рту. Пассажир просит ещё одну."
+    choices:
+      - id: tell
+        text: "Сказать начальнику, что именно дали, и остаться"
+        effects: { safety: 4, loyalty: -2 }
+        set: [called]
+        verdict: ok
+        better: "Лекарство не дают; если дали — сразу начальнику"
+        basis: "Ситуации на борту.pdf, с. 12, ситуация 28"
+        next: end-bad
+      - id: second
+        text: "Дать вторую: первая вроде помогла"
+        effects: { loyalty: 6, safety: -20 }
+        verdict: worse
+        better: "Вторую дозу тем более не выдают"
+        basis: "Ситуации на борту.pdf, с. 12, ситуация 28"
+        next: end-stop
+  end-ok:
+    end: completed
+    text: "Начальник принял пассажира, лекарства не выдавали"
+  end-bad:
+    end: incident
+    text: "Пассажиру дали лекарство или оставили одного"
+  end-stop:
+    end: terminated
+    text: "Состояние упало, помощь не вызвали"

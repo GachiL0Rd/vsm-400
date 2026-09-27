@@ -1,0 +1,128 @@
+# Маломобильный: СТО РЖД 03.014–2026. Дверь — ИОТ ВСМ-2026, п. 3.4.5.
+id: board-prm-first
+title: "Маломобильный пассажир в первый"
+category: service
+stage: boarding
+carClasses: [FIRST]
+difficulty: 2
+competencies: [service, procedure]
+params:
+  occupancy: { min: 20, max: 100 }
+init: { loyalty: 70, safety: 70 }
+gates:
+  failIf:
+    safety: { lt: 30 }
+start: open
+nodes:
+  open:
+    text: "У двери первого класса пассажир в кресле-коляске и с багажом."
+    variants:
+      - if: { param: occupancy, gte: 70 }
+        text: "Сзади поджимает очередь, проход ещё узкий."
+    timer: 20
+    choices:
+      - id: ask
+        text: "Спросить, какая помощь нужна, и взять багаж"
+        effects: { safety: 6, loyalty: 6 }
+        skills: { service: 2, procedure: 1 }
+        set: [asked]
+        verdict: best
+        next: follow
+      - id: push
+        text: "Закатить без спроса, чтобы ускорить очередь"
+        effects: { loyalty: 6, safety: -16 }
+        verdict: worse
+        better: "Сначала спрашивают, чем помочь, и не торопят кресло"
+        basis: "СТО РЖД 03.014–2026: помощь с вещами, темп пассажира"
+        next: risk
+      - id: spare
+        text: "Сразу предложить запасное кресло поезда"
+        deviation: true
+        verdict: ok
+        better: "Запасное кресло — после вопроса, чем помочь"
+        basis: "СТО РЖД 03.014–2026: кресло-коляска во временное пользование"
+        set: [spare]
+        next: follow
+    onTimeout:
+      effects: { safety: -14, loyalty: -4 }
+      verdict: missed
+      consequence: "Очередь давит, кресло стоит в створе двери"
+      next: late
+  follow:
+    text: "Пассажир просит место у прохода и помощь с сумкой."
+    timer: 16
+    choices:
+      - id: seat
+        text: "Посадить, место спутнику и сложенному креслу"
+        requires: { flags: [asked] }
+        effects: { safety: 8, loyalty: 4 }
+        skills: { service: 1 }
+        verdict: best
+        next: end-ok
+      - id: vestibule
+        text: "Оставить в тамбуре: так быстрее выйдет"
+        effects: { loyalty: 2, safety: -18 }
+        verdict: worse
+        better: "В первом сажают на место, не держат в тамбуре"
+        basis: "СТО РЖД 03.014–2026: проезд на пассажирском месте"
+        next: end-bad
+      - id: ask-now
+        text: "Спросить сейчас и посадить со спутником"
+        effects: { safety: 4, loyalty: 2 }
+        set: [asked]
+        verdict: ok
+        better: "Вопрос задают до того, как кресло уже в салоне"
+        basis: "СТО РЖД 03.014–2026: коммуникация в темпе пассажира"
+        next: end-ok
+    onTimeout:
+      effects: { safety: -20 }
+      verdict: missed
+      consequence: "Дверь закрывается, кресло всё ещё в створе"
+      next: end-stop
+  late:
+    text: "Кресло в створе, дверь не закрыть безопасно."
+    timer: 12
+    choices:
+      - id: hold-queue
+        text: "Остановить посадку в створ и спросить, чем помочь"
+        effects: { safety: 8, loyalty: -2 }
+        set: [asked]
+        verdict: best
+        next: follow
+      - id: yank
+        text: "Потянуть кресло внутрь за ручки"
+        effects: { loyalty: 3, safety: -18 }
+        verdict: worse
+        better: "Кресло не тянут в закрывающуюся дверь"
+        basis: "ИОТ ВСМ-2026, п. 3.4.5"
+        next: end-bad
+    onTimeout:
+      effects: { safety: -22 }
+      verdict: missed
+      consequence: "Створка упёрлась в кресло"
+      next: end-stop
+  risk:
+    text: "Пассажир в кресле молчит. Очередь уже в салоне."
+    choices:
+      - id: check-in
+        text: "Остановиться и спросить, всё ли так"
+        effects: { safety: 6, loyalty: 2 }
+        set: [asked]
+        verdict: best
+        next: follow
+      - id: any-seat
+        text: "Докатить до любого свободного места"
+        effects: { loyalty: 4, safety: -10 }
+        verdict: worse
+        better: "Место согласуют с пассажиром, не с очередью"
+        basis: "СТО РЖД 03.014–2026: помощь при размещении в вагоне"
+        next: end-bad
+  end-ok:
+    end: completed
+    text: "Пассажир на месте, кресло и багаж не в проходе"
+  end-bad:
+    end: incident
+    text: "Кресло оставили не там, пассажира не спросили"
+  end-stop:
+    end: terminated
+    text: "Кресло зажало в двери"

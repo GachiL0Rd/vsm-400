@@ -1,0 +1,67 @@
+# Маршрут ВСМ Москва — Санкт-Петербург.
+# Класс вагона со слайда ВСМ: стандарт → ECONOMY, комфорт (игровая) → FAMILY,
+# бизнес → BUSINESS, первый → FIRST. В enum нет COMFORT, комфорт с детьми
+# ближе всего к FAMILY.
+
+trainPrefix: "ВСМ"
+trainNumberMin: 701
+trainNumberMax: 799
+sameStageGapMin: 18
+nodeStepMin: 4
+
+departures:
+  - "06:20"
+  - "07:40"
+  - "09:15"
+  - "12:05"
+  - "15:30"
+  - "18:45"
+  - "21:10"
+
+stageOrder:
+  - acceptance
+  - boarding
+  - enroute
+  - stop
+  - handover
+
+stageClockOffsetMin:
+  acceptance: -50
+  boarding: -15
+  enroute: 40
+  stop: 110
+  handover: 230
+
+directions:
+  - from: "Москва"
+    to: "Санкт-Петербург"
+    stops:
+      - "Тверь"
+      - "Вышний Волочёк"
+      - "Бологое"
+      - "Чудово"
+  - from: "Санкт-Петербург"
+    to: "Москва"
+    stops:
+      - "Чудово"
+      - "Бологое"
+      - "Вышний Волочёк"
+      - "Тверь"
+
+cars:
+  - car: 1
+    class: ECONOMY
+  - car: 2
+    class: ECONOMY
+  - car: 3
+    class: FAMILY
+  - car: 4
+    class: FAMILY
+  - car: 5
+    class: BUSINESS
+  - car: 6
+    class: BUSINESS
+  - car: 7
+    class: FIRST
+  - car: 8
+    class: FIRST

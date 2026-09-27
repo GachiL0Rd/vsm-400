@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Кабинет проводника</title>
+    <link rel="stylesheet" href="styles.css" />
+    <script type="module" src="app.js"></script>
+  </head>
+  <body>
+    <section class="login" id="login-view" hidden>
+      <form class="login__form" id="login-form">
+        <h1 class="login__title">Кабинет проводника ВСМ</h1>
+        <label class="field">
+          <span class="field__label">Логин</span>
+          <input class="field__input" name="login" autocomplete="username" required />
+        </label>
+        <label class="field">
+          <span class="field__label">Пароль</span>
+          <input
+            class="field__input"
+            name="password"
+            type="password"
+            autocomplete="current-password"
+            required
+          />
+        </label>
+        <p class="login__error" id="login-error" role="alert"></p>
+        <button class="button button--primary" type="submit">Войти</button>
+        <p class="login__hint">Тестовые учётки: demo / demo, novice / novice</p>
+      </form>
+    </section>
+
+    <div class="cabinet" id="cabinet-view" hidden>
+      <header class="header">
+        <span class="header__brand">ВСМ · Кабинет</span>
+        <button class="button button--ghost" id="logout" type="button">Выйти</button>
+      </header>
+
+      <main class="cabinet__main">
+        <section class="card profile">
+          <div class="profile__avatar" id="profile-avatar" aria-hidden="true"></div>
+          <div class="profile__info">
+            <h1 class="profile__name" id="profile-name">Загрузка…</h1>
+            <p class="profile__meta" id="profile-meta"></p>
+          </div>
+          <a class="button button--primary profile__play" id="play" href="http://localhost:5173/">Играть</a>
+        </section>
+
+        <section class="card">
+          <h2 class="card__title">Статистика</h2>
+          <dl class="stats" id="stats"></dl>
+        </section>
+
+        <section class="card">
+          <h2 class="card__title">Достижения</h2>
+          <ul class="achievements" id="achievements"></ul>
+        </section>
+
+        <section class="card">
+          <h2 class="card__title">История рейсов</h2>
+          <div class="runs" id="runs"></div>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>

@@ -1,0 +1,127 @@
+# Питомец: Ситуации на борту.pdf, с. 4, ситуация 4; проход — ситуация 14.
+id: board-pet-carrier
+title: "Питомец без переноски"
+category: service
+stage: boarding
+carClasses: [FAMILY]
+difficulty: 2
+competencies: [service, safety, escalation]
+params:
+  occupancy: { min: 30, max: 100 }
+init: { loyalty: 66, safety: 70 }
+gates:
+  failIf:
+    safety: { lt: 30 }
+start: open
+nodes:
+  open:
+    text: "В детском салоне просят пустить кошку на руках. Переноски нет."
+    variants:
+      - if: { param: occupancy, gte: 75 }
+        text: "Проход узкий: дети и сумки уже стоят вплотную."
+    timer: 18
+    choices:
+      - id: offer
+        text: "Напомнить про переноску и предложить купить"
+        effects: { safety: 8, loyalty: 2 }
+        skills: { service: 2, safety: 1 }
+        set: [offered]
+        verdict: best
+        next: follow
+      - id: arms
+        text: "Разрешить на руках: ребёнок плачет"
+        effects: { loyalty: 8, safety: -14 }
+        verdict: worse
+        better: "Животное на борту только в переноске"
+        basis: "Ситуации на борту.pdf, с. 4, ситуация 4"
+        next: risk
+      - id: feet
+        text: "Спросить место у ног соседа, правило не называя"
+        deviation: true
+        verdict: ok
+        better: "Сначала переноска, место у ног — только после неё"
+        basis: "Ситуации на борту.pdf, с. 4, ситуация 4"
+        set: [asked-seat]
+        next: follow
+    onTimeout:
+      effects: { safety: -12, loyalty: -4 }
+      verdict: missed
+      consequence: "Кошка выскользнула, ребёнок бежит за ней"
+      next: late
+  follow:
+    text: "Переноска на борту есть. Пассажир ещё сомневается."
+    timer: 16
+    choices:
+      - id: repeat
+        text: "Коротко про безопасность и звать начальника при отказе"
+        requires: { flags: [offered] }
+        effects: { safety: 6 }
+        skills: { escalation: 1 }
+        verdict: best
+        next: end-ok
+      - id: aisle
+        text: "Поставить переноску в проход у детских мест"
+        effects: { loyalty: 4, safety: -12 }
+        verdict: worse
+        better: "Переноска не перекрывает проход"
+        basis: "Ситуации на борту.pdf, с. 7, ситуация 14"
+        next: end-bad
+      - id: chief-now
+        text: "Сразу звать начальника поезда, правило не повторяя"
+        effects: { safety: 2 }
+        verdict: ok
+        better: "Сначала коротко правило и предложение купить"
+        basis: "Ситуации на борту.pdf, с. 4, ситуация 4"
+        next: end-ok
+    onTimeout:
+      effects: { safety: -16, loyalty: -4 }
+      verdict: missed
+      consequence: "Кошка царапает соседа, салон шумит"
+      next: end-stop
+  late:
+    text: "Кошка в проходе, ребёнок плачет, очередь стоит."
+    timer: 14
+    choices:
+      - id: catch
+        text: "Спокойно вернуть к покупке переноски"
+        effects: { safety: 6 }
+        set: [offered]
+        verdict: best
+        next: follow
+      - id: shout
+        text: "Гнать кошку к выходу криком"
+        effects: { loyalty: -4, safety: -10 }
+        verdict: worse
+        better: "Без крика: переноска или начальник поезда"
+        basis: "Ситуации на борту.pdf, с. 4, ситуация 4"
+        next: end-bad
+    onTimeout:
+      effects: { safety: -18 }
+      verdict: missed
+      consequence: "Кошка в соседнем вагоне, посадка встала"
+      next: end-stop
+  risk:
+    text: "Кошка на коленях. Сосед отодвигается."
+    choices:
+      - id: stop
+        text: "Остановить и предложить переноску сейчас"
+        effects: { safety: 8, loyalty: -2 }
+        set: [offered]
+        verdict: best
+        next: follow
+      - id: leave
+        text: "Оставить на руках, раз ребёнок затих"
+        effects: { loyalty: 4, safety: -12 }
+        verdict: worse
+        better: "Тишина ребёнка не заменяет переноску"
+        basis: "Ситуации на борту.pdf, с. 4, ситуация 4"
+        next: end-bad
+  end-ok:
+    end: completed
+    text: "Питомец в переноске, проход свободен"
+  end-bad:
+    end: incident
+    text: "Животное едет без переноски"
+  end-stop:
+    end: terminated
+    text: "Посадка встала, животное не под контролем"

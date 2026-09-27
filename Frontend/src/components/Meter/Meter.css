@@ -1,0 +1,19 @@
+.track {
+  height: 8px;
+  background: var(--cloud);
+  overflow: hidden;
+}
+
+.track--grow {
+  flex: 1;
+}
+
+.track__fill {
+  display: block;
+  height: 100%;
+  background: var(--ink);
+}
+
+.track__fill--stop {
+  background: var(--stop);
+}
