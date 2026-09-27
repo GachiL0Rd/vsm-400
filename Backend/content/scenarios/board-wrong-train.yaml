@@ -1,0 +1,127 @@
+# Билет не на этот рейс: Ситуации на борту.pdf, с. 3, ситуация 1.
+id: board-wrong-train
+title: "Билет на другой рейс"
+category: service
+stage: boarding
+carClasses: [ECONOMY]
+difficulty: 1
+competencies: [procedure, service]
+params:
+  occupancy: { min: 30, max: 100 }
+init: { loyalty: 68, safety: 74 }
+gates:
+  failIf:
+    safety: { lt: 30 }
+start: open
+nodes:
+  open:
+    text: "На посадке билет на другой рейс. Пассажир уже у тамбура."
+    variants:
+      - if: { param: occupancy, gte: 80 }
+        text: "Очередь плотная, сзади подталкивают в вагон."
+    timer: 18
+    choices:
+      - id: check
+        text: "Сверить дату, время и номер заказа"
+        effects: { safety: 6 }
+        skills: { procedure: 2, detection: 1 }
+        set: [checked]
+        verdict: best
+        next: follow
+      - id: let-in
+        text: "Пропустить до ближайшей остановки"
+        effects: { loyalty: 8, safety: -18 }
+        verdict: worse
+        better: "Без билета на этот рейс посадку не выполняют"
+        basis: "Ситуации на борту.pdf, с. 3, ситуация 1"
+        next: risk
+      - id: slip
+        text: "Выписать время его поезда и показать кассу"
+        deviation: true
+        verdict: ok
+        better: "Сначала сверка даты и времени, потом касса"
+        basis: "Ситуации на борту.pdf, с. 3, ситуация 1"
+        set: [noted]
+        next: follow
+    onTimeout:
+      effects: { safety: -10, loyalty: -4 }
+      verdict: missed
+      consequence: "Пассажир уже в тамбуре, очередь встала"
+      next: late
+  follow:
+    text: "Дата и время не совпадают с этим отправлением."
+    timer: 16
+    choices:
+      - id: refuse
+        text: "Отказать в посадке и направить в кассу"
+        requires: { flags: [checked] }
+        effects: { safety: 8, loyalty: -2 }
+        skills: { service: 1 }
+        verdict: best
+        next: end-ok
+      - id: seat
+        text: "Довести до кресла и обсудить там"
+        effects: { loyalty: 4, safety: -16 }
+        verdict: worse
+        better: "Без действительного билета в салон не ведут"
+        basis: "Ситуации на борту.pdf, с. 3, ситуация 1"
+        next: end-bad
+      - id: refund
+        text: "Сверить рейс сейчас и назвать контактный центр"
+        effects: { safety: 4 }
+        set: [checked]
+        verdict: ok
+        better: "Отказ звучит сразу после сверки, не вместо неё"
+        basis: "Ситуации на борту.pdf, с. 3, ситуация 1"
+        next: end-ok
+    onTimeout:
+      effects: { safety: -18 }
+      verdict: missed
+      consequence: "Двери закрываются, пассажир остаётся в вагоне"
+      next: end-stop
+  late:
+    text: "Пассажир в тамбуре и показывает чужой QR на телефоне."
+    timer: 14
+    choices:
+      - id: out
+        text: "Вывести на платформу и сверить рейс вслух"
+        effects: { safety: 6, loyalty: -2 }
+        set: [checked]
+        verdict: best
+        next: follow
+      - id: stay
+        text: "Оставить в тамбуре до отправления"
+        effects: { loyalty: 5, safety: -14 }
+        verdict: worse
+        better: "Чужой рейс не держат в тамбуре"
+        basis: "Ситуации на борту.pdf, с. 3, ситуация 1"
+        next: end-bad
+    onTimeout:
+      effects: { safety: -20, loyalty: -6 }
+      verdict: missed
+      consequence: "Дверь закрылась, пассажир уехал без своего рейса"
+      next: end-stop
+  risk:
+    text: "Пассажир сел. Сосед спрашивает, чей это рейс."
+    choices:
+      - id: remove
+        text: "Снять с места и доложить начальнику поезда"
+        effects: { safety: 8, loyalty: -6 }
+        verdict: best
+        next: end-ok
+      - id: hide
+        text: "Попросить сидеть тихо до конечной"
+        effects: { loyalty: 3, safety: -12 }
+        verdict: worse
+        better: "Чужой билет не оставляют в салоне"
+        basis: "Ситуации на борту.pdf, с. 3, ситуация 1"
+        next: end-stop
+  end-ok:
+    end: completed
+    text: "Посадка без билета на этот рейс не выполнена"
+  end-bad:
+    end: incident
+    text: "Пассажир остался в салоне с чужим билетом"
+  end-stop:
+    end: terminated
+    text: "Чужой билет уехал вместе с поездом"

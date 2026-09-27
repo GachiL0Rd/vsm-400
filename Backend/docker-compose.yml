@@ -1,0 +1,74 @@
+# Локальные Postgres и Valkey. Пароль vsm — только для этой машины, не для prod.
+name: vsm-backend
+
+services:
+  postgres:
+    image: postgres:18
+    container_name: vsm-backend-postgres
+    environment:
+      POSTGRES_USER: vsm
+      POSTGRES_PASSWORD: vsm
+      POSTGRES_DB: vsm
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vsm -d vsm"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+    restart: unless-stopped
+
+  valkey:
+    image: valkey/valkey:9
+    container_name: vsm-backend-valkey
+    ports:
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
+    volumes:
+      - valkey:/data
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+    restart: unless-stopped
+
+  # Профиль app не стартует вместе с `docker compose up -d`.
+  # DATABASE_URL и REDIS_URL здесь — имена сервисов сети compose, не 127.0.0.1 из .env.
+  backend:
+    profiles: ["app"]
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: vsm-backend-api
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      DATABASE_URL: postgresql://vsm:vsm@postgres:5432/vsm
+      REDIS_URL: redis://valkey:6379/0
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?задайте JWT_ACCESS_SECRET}
+      GAME_TICKET_SECRET: ${GAME_TICKET_SECRET:?задайте GAME_TICKET_SECRET}
+      GAME_SERVER_TOKEN: ${GAME_SERVER_TOKEN:?задайте GAME_SERVER_TOKEN}
+      SEED_ENC_KEY: ${SEED_ENC_KEY:?задайте SEED_ENC_KEY}
+      EXT_ID_PEPPER: ${EXT_ID_PEPPER:?задайте EXT_ID_PEPPER}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://127.0.0.1:5173}
+      PUBLIC_GAME_WS_URL: ${PUBLIC_GAME_WS_URL:-ws://127.0.0.1:3001/game}
+      # Образ всегда NODE_ENV=production: false из .env хоста роняет старт.
+      COOKIE_SECURE: "true"
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
+    init: true
+    stop_grace_period: 20s
+    restart: unless-stopped
+
+volumes:
+  postgres:
+  valkey:

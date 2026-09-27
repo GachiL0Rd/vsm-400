@@ -1,0 +1,19 @@
+{
+  "name": "vsm-client",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "format": "biome format --write .",
+    "lint": "biome lint .",
+    "check:biome": "biome ci .",
+    "check:write": "biome check --write .",
+    "verify": "npm run check:biome"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.14"
+  }
+}
