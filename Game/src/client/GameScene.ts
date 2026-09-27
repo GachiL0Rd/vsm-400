@@ -14,7 +14,6 @@ export interface GameSceneDependencies {
   store: PresentationStore;
   interactions: InteractionController;
   log?(source: 'input' | 'render', event: string, data: Record<string, unknown>): void;
-  downloadLog?(): void;
 }
 
 /** Browser view of server state. Clicks are sent as intents, never applied locally. */
@@ -53,7 +52,6 @@ export class GameScene extends Phaser.Scene {
         parent,
         this.dependencies.store,
         this.dependencies.interactions,
-        this.dependencies.downloadLog,
       );
     }
     this.input.mouse?.disableContextMenu();

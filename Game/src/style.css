@@ -73,7 +73,6 @@ button, a, input, select, textarea { font: inherit; }
 .hud-toast,
 .hud-session,
 .hud-rotate,
-.hud-tasks__log,
 .hud-speed__button,
 .hud-help,
 .hud-strip__tab,
@@ -147,17 +146,6 @@ button, a, input, select, textarea { font: inherit; }
 }
 
 .hud-tasks__metrics { margin: 0; color: #eef9ff; }
-
-.hud-tasks__log {
-  margin-top: 10px;
-  min-height: 44px;
-  padding: 8px 12px;
-  border: 1px solid #d2a96e;
-  border-radius: 999px;
-  background: #956344;
-  color: #fff5df;
-  cursor: pointer;
-}
 
 .hud-time {
   position: absolute;
