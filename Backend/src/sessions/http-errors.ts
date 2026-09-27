@@ -1,5 +1,7 @@
 import {
+  BadRequestException,
   ConflictException,
+  GoneException,
   InternalServerErrorException,
   NotFoundException,
   UnauthorizedException,
@@ -50,6 +52,46 @@ export function ticketReused(): ConflictException {
 
 export function invalidTicket(): UnauthorizedException {
   return new UnauthorizedException({ message: 'Билет недействителен', code: 'INVALID_TICKET' });
+}
+
+export function invalidSession(): NotFoundException {
+  return new NotFoundException({
+    message: 'Ключ сессии недействителен',
+    code: 'invalid-session',
+  });
+}
+
+export function sessionExpired(): GoneException {
+  return new GoneException({ message: 'Ключ сессии истёк', code: 'session-expired' });
+}
+
+export function sessionConsumed(): GoneException {
+  return new GoneException({ message: 'Ключ сессии уже использован', code: 'session-consumed' });
+}
+
+export function sessionUnavailable(): ConflictException {
+  return new ConflictException({
+    message: 'Смена сейчас недоступна для запуска',
+    code: 'session-unavailable',
+  });
+}
+
+export function resultConflict(): ConflictException {
+  return new ConflictException({
+    message: 'Для этой смены уже сохранён другой итог',
+    code: 'result-conflict',
+  });
+}
+
+export function attemptMismatch(): BadRequestException {
+  return new BadRequestException({
+    message: 'attemptId в пути и в теле не совпадают',
+    code: 'attempt-mismatch',
+  });
+}
+
+export function attemptNotFound(): NotFoundException {
+  return new NotFoundException({ message: 'Попытка не найдена', code: 'attempt-not-found' });
 }
 
 export function fromEngine(error: EngineError): Error {

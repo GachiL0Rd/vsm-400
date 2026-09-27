@@ -1,5 +1,6 @@
 import {
   type ArgumentsHost,
+  GoneException,
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
@@ -58,6 +59,19 @@ describe('ProblemFilter', () => {
     expect(body.detail).toBe('Сессия не найдена');
     expect(body.code).toBe('HTTP_404');
     expect(reply.payload).not.toHaveProperty('stack');
+  });
+
+  it('410 Gone остаётся 410', () => {
+    const reply = new FakeReply();
+    filter.catch(
+      new GoneException({ message: 'Ключ сессии истёк', code: 'session-expired' }),
+      hostWith(reply),
+    );
+    const body = bodyOf(reply);
+    expect(reply.statusCode).toBe(410);
+    expect(body.status).toBe(410);
+    expect(body.code).toBe('session-expired');
+    expect(body.title).toBe('Больше не доступен');
   });
 
   it('кладёт ZodError в 422 и errors[]', () => {
