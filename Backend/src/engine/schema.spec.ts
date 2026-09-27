@@ -136,6 +136,35 @@ describe('ScenarioGraphSchema', () => {
     expect(finale.set).toEqual(['intervention']);
   });
 
+  it('принимает необязательный блок llm и ставит mode pool', () => {
+    const parsed = ScenarioGraphSchema.safeParse({
+      ...validGraph,
+      llm: {
+        enabled: true,
+        keep: ['фиксатор'],
+        forbid: ['medications', 'numbers', 'names', 'new-facts'],
+        personas: ['раздражённый', 'тихий'],
+      },
+    });
+    expect(parsed.success).toBe(true);
+    if (!parsed.success) {
+      return;
+    }
+    expect(parsed.data.llm).toEqual({
+      enabled: true,
+      mode: 'pool',
+      keep: ['фиксатор'],
+      forbid: ['medications', 'numbers', 'names', 'new-facts'],
+      personas: ['раздражённый', 'тихий'],
+    });
+
+    const broken = ScenarioGraphSchema.safeParse({
+      ...validGraph,
+      llm: { enabled: true, mode: 'cloud', forbid: ['spells'] },
+    });
+    expect(broken.success).toBe(false);
+  });
+
   it('отклоняет чужую категорию и сломанный узел', () => {
     const badCategory = ScenarioGraphSchema.safeParse({ ...validGraph, category: 'magic' });
     expect(badCategory.success).toBe(false);
