@@ -142,10 +142,22 @@ export class WorldRenderer {
     const origin =
       mapped && this.mapOriginPoint !== null ? this.mapOriginPoint : originFromCells(this.cells);
     this.layout = new TileLayout(origin);
-    if (mapped) this.floor.clear();
-    else this.drawFallbackCells();
+    if (mapped) {
+      this.floor.clear();
+      this.cropMapFrame(this.layout);
+    } else this.drawFallbackCells();
     this.drawObjects(state.world.objects);
     this.drawHover();
+  }
+
+  /** The Tiled map pads the car with empty Void columns; keep the camera on playable content. */
+  private cropMapFrame(layout: TileLayout): void {
+    const map = this.mapFrame;
+    if (map === null || this.cells.length === 0) return;
+    const cells = layout.boundsFor(this.cells);
+    const left = Math.max(map.x, cells.x - layout.tileSize);
+    const right = Math.min(map.x + map.width, cells.x + cells.width + layout.tileSize * 2);
+    this.mapFrame = { x: left, y: map.y, width: right - left, height: map.height };
   }
 
   private ensureMap(): boolean {
