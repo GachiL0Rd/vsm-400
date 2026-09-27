@@ -4,6 +4,7 @@ import type {
   AvailableActionView,
   ClimateControlInput,
   CommandResultMessage,
+  EmergencyBrakeInput,
   ExtinguisherInspectionInput,
   GameDeltaMessage,
   GameSnapshotMessage,
@@ -20,6 +21,7 @@ import type {
 import {
   acceptanceJournalInputSchema,
   climateControlInputSchema,
+  emergencyBrakeInputSchema,
   extinguisherInspectionInputSchema,
   GAME_PROTOCOL_VERSION,
 } from '../common/game-wire';
@@ -45,7 +47,8 @@ export type RecordedGameplayCommand =
   | { readonly kind: 'inspect-extinguisher'; readonly value: ExtinguisherInspectionInput }
   | { readonly kind: 'return-extinguisher' }
   | { readonly kind: 'use-extinguisher'; readonly targetId: string }
-  | { readonly kind: 'inspect-climate'; readonly value: ClimateControlInput };
+  | { readonly kind: 'inspect-climate'; readonly value: ClimateControlInput }
+  | { readonly kind: 'inspect-emergency-brake'; readonly value: EmergencyBrakeInput };
 
 type RuntimeOperation =
   | Exclude<
@@ -53,10 +56,12 @@ type RuntimeOperation =
       | { readonly kind: 'edit-journal' }
       | { readonly kind: 'inspect-extinguisher' }
       | { readonly kind: 'inspect-climate' }
+      | { readonly kind: 'inspect-emergency-brake' }
     >
   | { readonly kind: 'edit-journal-form' }
   | { readonly kind: 'inspect-extinguisher-form' }
-  | { readonly kind: 'inspect-climate-form' };
+  | { readonly kind: 'inspect-climate-form' }
+  | { readonly kind: 'inspect-emergency-brake-form' };
 
 interface RuntimeAction {
   readonly sortKey: string;
@@ -319,6 +324,11 @@ export class PublicGameProjection {
         this.attempt.inspectClimate();
         if (operation.value.refresh) this.attempt.refreshClimate();
         return;
+      case 'inspect-emergency-brake':
+        this.attempt.inspectEmergencyBrake();
+        if (operation.value.action === 'remove-seal') this.attempt.removeEmergencyBrakeSeal();
+        else this.attempt.activateEmergencyBrake();
+        return;
     }
   }
 
@@ -454,9 +464,44 @@ function collectObjectActions(
       return collectServicePointActions(player, object.id, object.cellId);
     case 'climate-control':
       return collectClimateActions(attempt, snapshot, player, object.id, object.cellId);
+    case 'emergency-brake':
+      return collectEmergencyBrakeActions(attempt, snapshot, player, object.id, object.cellId);
     default:
       return [];
   }
+}
+
+function collectEmergencyBrakeActions(
+  attempt: GameAttempt,
+  snapshot: GameAttemptSnapshot,
+  player: EntityState,
+  objectId: string,
+  cellId: string,
+): RuntimeAction[] {
+  if (player.position.kind !== 'cell') return [];
+  if (!withinInteractionRange(attempt, snapshot, player.position.cellId, cellId)) return [];
+  const brake = attempt.inspectEmergencyBrake();
+  const travelling = snapshot.phase.kind === 'travel';
+  return [
+    {
+      sortKey: 'emergency-brake/inspect',
+      view: {
+        uiKind: 'form',
+        label: 'Осмотреть аварийный тормоз',
+        target: { kind: 'object', objectId },
+        form: {
+          kind: 'emergency-brake',
+          value: {
+            seal: brake.seal,
+            activated: brake.activated,
+            canRemoveSeal: travelling && brake.seal === 'intact' && !brake.activated,
+            canActivate: travelling && brake.seal === 'broken' && !brake.activated,
+          },
+        },
+      },
+      operation: { kind: 'inspect-emergency-brake-form' },
+    },
+  ];
 }
 
 function collectClimateActions(
@@ -708,6 +753,9 @@ function resolveOperation(template: RuntimeOperation, input: unknown): RecordedG
   }
   if (template.kind === 'inspect-climate-form') {
     return { kind: 'inspect-climate', value: climateControlInputSchema.parse(input) };
+  }
+  if (template.kind === 'inspect-emergency-brake-form') {
+    return { kind: 'inspect-emergency-brake', value: emergencyBrakeInputSchema.parse(input) };
   }
   if (input !== undefined) throw new RangeError('This action does not accept input');
   return template;

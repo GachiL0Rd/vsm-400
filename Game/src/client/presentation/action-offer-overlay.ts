@@ -2,6 +2,7 @@ import type {
   AcceptanceJournalInput,
   AvailableActionView,
   ClimateControlValue,
+  EmergencyBrakeValue,
   ExtinguisherInspectionValue,
 } from '../../common';
 import type { InteractionController } from '../input/interaction-controller';
@@ -52,7 +53,70 @@ export class ActionOfferOverlay {
       this.showClimateForm(action.handle, form.value, interactions);
       return;
     }
+    if (form?.kind === 'emergency-brake') {
+      this.showEmergencyBrakeForm(action.handle, form.value, interactions);
+      return;
+    }
     interactions.invokeAction(action.handle);
+  }
+
+  private showEmergencyBrakeForm(
+    actionHandle: string,
+    value: EmergencyBrakeValue,
+    interactions: InteractionController,
+  ): void {
+    this.openDialog?.remove();
+    const dialog = document.createElement('dialog');
+    dialog.className = 'game-form-dialog';
+    const form = document.createElement('form');
+    form.method = 'dialog';
+    const title = document.createElement('h2');
+    title.textContent = 'Аварийный тормоз';
+    form.append(title);
+
+    const seal = document.createElement('p');
+    seal.textContent = `Пломба: ${value.seal === 'intact' ? 'цела' : 'сорвана'}`;
+    const state = document.createElement('p');
+    state.textContent = `Состояние: ${value.activated ? 'активирован' : 'не активирован'}`;
+    form.append(seal, state);
+
+    const controls = document.createElement('div');
+    controls.className = 'game-form-dialog__controls';
+    const close = document.createElement('button');
+    close.type = 'button';
+    close.textContent = 'Закрыть';
+    close.addEventListener('click', () => dialog.close());
+    controls.append(close);
+
+    if (value.canRemoveSeal) {
+      const removeSeal = document.createElement('button');
+      removeSeal.type = 'button';
+      removeSeal.textContent = 'Снять пломбу';
+      removeSeal.addEventListener('click', () => {
+        interactions.invokeAction(actionHandle, { action: 'remove-seal' });
+        dialog.close();
+      });
+      controls.append(removeSeal);
+    }
+    if (value.canActivate) {
+      const activate = document.createElement('button');
+      activate.type = 'button';
+      activate.textContent = 'Активировать аварийный тормоз';
+      activate.addEventListener('click', () => {
+        interactions.invokeAction(actionHandle, { action: 'activate' });
+        dialog.close();
+      });
+      controls.append(activate);
+    }
+    form.append(controls);
+    dialog.addEventListener('close', () => {
+      dialog.remove();
+      if (this.openDialog === dialog) this.openDialog = null;
+    });
+    dialog.append(form);
+    document.body.append(dialog);
+    this.openDialog = dialog;
+    dialog.showModal();
   }
 
   private showClimateForm(

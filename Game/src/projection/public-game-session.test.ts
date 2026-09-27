@@ -478,6 +478,67 @@ describe('PublicGameProjection', () => {
     });
   });
 
+  it('exposes emergency-brake seal removal and activation as sequential modal actions', () => {
+    const projection = createProjection();
+    projection.snapshot();
+    completeJournal(projection);
+    projection.attempt.advanceTo(secondsToSimTimeUs(5 * 60));
+    moveToCell(projection, 'platform-origin.door');
+    moveToCell(projection, 'carriage.entry');
+    projection.attempt.advanceTo(secondsToSimTimeUs(35 * 60));
+
+    const firstOffer = projection.queryActions({
+      protocolVersion: GAME_PROTOCOL_VERSION,
+      type: 'query-actions',
+      requestId: 'query-brake-sealed',
+      knownRevision: projection.revision,
+      target: { kind: 'object', objectId: 'emergency-brake' },
+    });
+    const inspectSealed = firstOffer.actions[0];
+    expect(inspectSealed?.form).toMatchObject({
+      kind: 'emergency-brake',
+      value: { seal: 'intact', activated: false, canRemoveSeal: true, canActivate: false },
+    });
+
+    const unsealed = projection.invoke({
+      protocolVersion: GAME_PROTOCOL_VERSION,
+      type: 'invoke-action',
+      requestId: 'remove-brake-seal',
+      knownRevision: projection.revision,
+      actionHandle: inspectSealed?.handle ?? 'missing',
+      input: { action: 'remove-seal' },
+    });
+    expect(unsealed.result.status).toBe('accepted');
+    expect(projection.attempt.termination).toBeNull();
+
+    const secondOffer = projection.queryActions({
+      protocolVersion: GAME_PROTOCOL_VERSION,
+      type: 'query-actions',
+      requestId: 'query-brake-ready',
+      knownRevision: projection.revision,
+      target: { kind: 'object', objectId: 'emergency-brake' },
+    });
+    const inspectReady = secondOffer.actions[0];
+    expect(inspectReady?.form).toMatchObject({
+      kind: 'emergency-brake',
+      value: { seal: 'broken', activated: false, canRemoveSeal: false, canActivate: true },
+    });
+
+    const stopped = projection.invoke({
+      protocolVersion: GAME_PROTOCOL_VERSION,
+      type: 'invoke-action',
+      requestId: 'activate-brake',
+      knownRevision: projection.revision,
+      actionHandle: inspectReady?.handle ?? 'missing',
+      input: { action: 'activate' },
+    });
+    expect(stopped.result.status).toBe('accepted');
+    expect(stopped.snapshot?.state.termination).toMatchObject({
+      kind: 'terminal-rule',
+      outcomeId: 'route-safely-interrupted',
+    });
+  });
+
   it('offers a passenger transfer without exposing waiting traits/action ids', () => {
     const projection = createProjection();
     const attempt = projection.attempt;

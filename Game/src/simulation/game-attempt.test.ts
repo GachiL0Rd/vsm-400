@@ -281,6 +281,27 @@ describe('GameAttempt', () => {
     });
   });
 
+  it('requires the emergency-brake seal to be removed before a controlled stop', () => {
+    const attempt = new GameAttempt({ rootSeed: 24, scenario: scenarioWithoutIncidents() });
+    completeJournal(attempt);
+    attempt.advanceTo(secondsToSimTimeUs(35 * 60));
+
+    expect(attempt.phase).toEqual({ kind: 'travel', nextStopIndex: 0 });
+    expect(attempt.inspectEmergencyBrake()).toEqual({ seal: 'intact', activated: false });
+    expect(() => attempt.activateEmergencyBrake()).toThrow(/seal must be removed/i);
+
+    expect(attempt.removeEmergencyBrakeSeal()).toEqual({ seal: 'broken', activated: false });
+    expect(attempt.termination).toBeNull();
+
+    expect(attempt.activateEmergencyBrake()).toMatchObject({
+      kind: 'terminal-rule',
+      ruleId: 'emergency-brake',
+      outcomeId: 'route-safely-interrupted',
+    });
+    expect(attempt.inspectEmergencyBrake).toBeDefined();
+    expect(attempt.snapshot().emergencyBrake).toEqual({ seal: 'broken', activated: true });
+  });
+
   it('keeps terminal-rule outcome separate from route completion', () => {
     const attempt = new GameAttempt({ rootSeed: 8 });
     const result = attempt.signal('critical-predeparture-fault');

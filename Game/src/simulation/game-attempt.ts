@@ -61,6 +61,11 @@ export type AttemptTermination =
       readonly outcomeId: string;
     };
 
+export interface EmergencyBrakeState {
+  readonly seal: 'intact' | 'broken';
+  readonly activated: boolean;
+}
+
 export interface ClimateObservation {
   readonly connection: 'connected' | 'disconnected';
   readonly temperatureC: number;
@@ -78,6 +83,7 @@ export interface GameAttemptSnapshot {
   readonly items: ItemSnapshot;
   readonly fields: readonly CellFieldState[];
   readonly climate: ClimateObservation;
+  readonly emergencyBrake: EmergencyBrakeState;
   readonly termination: AttemptTermination | null;
 }
 
@@ -137,6 +143,7 @@ export class GameAttempt {
     updatedAt: 0,
   };
   private activePressureIncidentId: string | null = null;
+  private emergencyBrakeState: EmergencyBrakeState = { seal: 'intact', activated: false };
 
   constructor(options: GameAttemptOptions) {
     this.level = options.level ?? BASELINE_LEVEL;
@@ -226,6 +233,7 @@ export class GameAttempt {
       items: this.items.snapshot(),
       fields: this.fields.snapshot(),
       climate: this.climateObservation,
+      emergencyBrake: this.emergencyBrakeState,
       termination: this.terminationState,
     };
   }
@@ -327,6 +335,41 @@ export class GameAttempt {
     this.fields.setFireSource(cellId, 0);
     this.fields.reduceFire(cellId, 5);
     return event;
+  }
+
+  inspectEmergencyBrake(): EmergencyBrakeState {
+    this.requireRunning();
+    return this.emergencyBrakeState;
+  }
+
+  removeEmergencyBrakeSeal(): EmergencyBrakeState {
+    this.requireRunning();
+    if (this.phaseState.kind !== 'travel') {
+      throw new RangeError('Emergency brake seal can only be removed while travelling');
+    }
+    if (this.emergencyBrakeState.activated) {
+      throw new RangeError('Emergency brake is already activated');
+    }
+    this.emergencyBrakeState = { ...this.emergencyBrakeState, seal: 'broken' };
+    return this.emergencyBrakeState;
+  }
+
+  activateEmergencyBrake(): AttemptTermination {
+    this.requireRunning();
+    if (this.phaseState.kind !== 'travel') {
+      throw new RangeError('Emergency brake can only be activated while travelling');
+    }
+    if (this.emergencyBrakeState.seal !== 'broken') {
+      throw new RangeError('Emergency brake seal must be removed before activation');
+    }
+    if (this.emergencyBrakeState.activated) {
+      throw new RangeError('Emergency brake is already activated');
+    }
+    this.emergencyBrakeState = { seal: 'broken', activated: true };
+    const termination = this.signal('emergency-brake-used');
+    if (termination === null)
+      throw new RangeError('Emergency brake terminal rule is not configured');
+    return termination;
   }
 
   inspectClimate(): ClimateObservation {

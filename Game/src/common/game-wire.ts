@@ -170,6 +170,19 @@ export type ClimateControlValue = z.infer<typeof climateControlValueSchema>;
 export const climateControlInputSchema = z.object({ refresh: z.boolean() }).strict();
 export type ClimateControlInput = z.infer<typeof climateControlInputSchema>;
 
+export const emergencyBrakeValueSchema = z.object({
+  seal: z.enum(['intact', 'broken']),
+  activated: z.boolean(),
+  canRemoveSeal: z.boolean(),
+  canActivate: z.boolean(),
+});
+export type EmergencyBrakeValue = z.infer<typeof emergencyBrakeValueSchema>;
+
+export const emergencyBrakeInputSchema = z
+  .object({ action: z.enum(['remove-seal', 'activate']) })
+  .strict();
+export type EmergencyBrakeInput = z.infer<typeof emergencyBrakeInputSchema>;
+
 const acceptanceJournalFormSchema = z.object({
   kind: z.literal('acceptance-journal'),
   value: acceptanceJournalInputSchema,
@@ -185,10 +198,16 @@ const climateControlFormSchema = z.object({
   value: climateControlValueSchema,
 });
 
+const emergencyBrakeFormSchema = z.object({
+  kind: z.literal('emergency-brake'),
+  value: emergencyBrakeValueSchema,
+});
+
 export const actionFormSchema = z.discriminatedUnion('kind', [
   acceptanceJournalFormSchema,
   extinguisherInspectionFormSchema,
   climateControlFormSchema,
+  emergencyBrakeFormSchema,
 ]);
 export type ActionFormView = z.infer<typeof actionFormSchema>;
 
